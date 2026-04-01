@@ -1859,56 +1859,6 @@ async def speak(text_gen):
     collected: list[str] = []
     tts_start = _time.monotonic()
 
-    async def _eleven_streaming() -> bool:
-        api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
-        if not api_11:
-            return False
-        uri = (f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
-               f"?model_id={TTS_MODEL}&output_format=pcm_{SR}")
-        try:
-            async with ws_lib.connect(uri, open_timeout=6) as ws:
-                await ws.send(json.dumps({
-                    "text": " ",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                    "xi_api_key": api_11,
-                    "generation_config": {"chunk_length_schedule": [50, 120, 200]},
-                }))
-                out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
-                out.start()
-                got_audio = False
-
-                async def _send():
-                    async for chunk in text_gen:
-                        collected.append(chunk)
-                        if chunk.strip():
-                            await ws.send(json.dumps({"text": chunk}))
-                    await ws.send(json.dumps({"text": ""}))
-
-                async def _recv():
-                    nonlocal got_audio
-                    async for raw in ws:
-                        try:
-                            msg = json.loads(raw)
-                            if msg.get("audio"):
-                                out.write(np.frombuffer(
-                                    base64.b64decode(msg["audio"]), dtype=np.int16))
-                                got_audio = True
-                            if msg.get("isFinal"):
-                                break
-                        except Exception:
-                            break
-
-                try:
-                    await asyncio.gather(_send(), _recv())
-                finally:
-                    out.stop(); out.close()
-                return got_audio
-        except asyncio.CancelledError:
-            print("[tts] barge-in"); raise
-        except Exception as e:
-            print(f"[tts] ElevenLabs stream: {str(e)[:80]}")
-            return False
-
     async def _pyttsx3_tts(text: str) -> bool:
         try:
             def _sapi():
@@ -1994,30 +1944,49 @@ async def speak(text_gen):
             if collected:
                 await _fallback_tts("".join(collected))
         else:
-            # Patch _eleven_streaming to use broadcasting gen
             _eleven_gen = _broadcasting_gen()
             async def _patched_eleven() -> bool:
                 api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
                 if not api_11:
                     return False
+                # auto_mode=true disables internal buffering schedules — ElevenLabs
+                # processes each sentence/phrase immediately for lower latency.
                 uri = (f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
-                       f"?model_id={TTS_MODEL}&output_format=pcm_{SR}")
+                       f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true")
                 try:
-                    async with ws_lib.connect(uri, open_timeout=6) as ws:
+                    # API key in header (not JSON body) — standard, avoids logging it
+                    async with ws_lib.connect(
+                        uri,
+                        open_timeout=6,
+                        additional_headers={"xi-api-key": api_11},
+                    ) as ws:
                         await ws.send(json.dumps({
                             "text": " ",
                             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                            "xi_api_key": api_11,
-                            "generation_config": {"chunk_length_schedule": [50, 120, 200]},
                         }))
                         out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
                         out.start()
                         got_audio = False
 
                         async def _send():
+                            # Sentence-chunk tokens before sending — stable prosody with auto_mode.
+                            # Buffer until sentence boundary, then flush whole sentence at once.
+                            buf = ""
                             async for chunk in _eleven_gen:
-                                if chunk.strip():
-                                    await ws.send(json.dumps({"text": chunk}))
+                                if not chunk:
+                                    continue
+                                buf += chunk
+                                while True:
+                                    idx = max(buf.rfind("."), buf.rfind("?"),
+                                              buf.rfind("!"), buf.rfind("\n"))
+                                    if idx < 0:
+                                        break
+                                    sentence = buf[:idx + 1].strip()
+                                    buf = buf[idx + 1:]
+                                    if sentence:
+                                        await ws.send(json.dumps({"text": sentence + " "}))
+                            if buf.strip():
+                                await ws.send(json.dumps({"text": buf.strip()}))
                             await ws.send(json.dumps({"text": ""}))
 
                         async def _recv():
