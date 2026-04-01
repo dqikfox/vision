@@ -1778,9 +1778,13 @@ async def _llm_stream_openai(user_text: str):
                         full += word + " "
                         await asyncio.sleep(0.012)
 
-        except openai.RateLimitError:
+        except openai.RateLimitError as e:
+            rid = getattr(e, "request_id", None)
+            print(f"[llm/openai] rate_limit request_id={rid}")
             yield "Rate limit reached — please wait a moment."; break
         except openai.APIStatusError as e:
+            rid = getattr(e, "request_id", None)
+            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]}")
             yield f"API error {e.status_code}: {str(e.message)[:100]}"; break
         except openai.APIConnectionError:
             yield "Connection error — check your internet."; break
@@ -1835,8 +1839,9 @@ async def _llm_stream_openai(user_text: str):
 
 async def llm_stream(user_text: str):
     """
-    Route to the right LLM backend:
-      ollama                       → _llm_stream_ollama  (native SDK, streaming)
+    Route to the right LLM backend with local-first cascade:
+      ollama                       → _llm_stream_ollama (native SDK, streaming)
+                                     → auto-falls back to _llm_stream_openai on failure
       openai + Responses API model → _llm_stream_responses_api
       all other providers          → _llm_stream_openai  (streaming Chat Completions)
     """
@@ -1848,8 +1853,26 @@ async def llm_stream(user_text: str):
         return
 
     if current_provider == "ollama":
+        # Local-first cascade: run Ollama, fall back to OpenAI if it errors.
+        # Collect output; if the only thing emitted is an error prefix, escalate.
+        collected_chunks: list[str] = []
+        errored = False
         async for chunk in _llm_stream_ollama(user_text):
+            collected_chunks.append(chunk)
+            # Ollama yields "Ollama error: …" or "Error: …" on failure
+            if len(collected_chunks) == 1 and (
+                chunk.startswith("Ollama error:") or chunk.startswith("Error:")
+            ):
+                errored = True
+                break
             yield chunk
+
+        if errored and PROVIDERS["openai"].get("api_key"):
+            print(f"[llm] Ollama failed ({collected_chunks[0].strip()}) — cascading to OpenAI")
+            # Remove the user message we added above (will be re-added by openai path via history)
+            # history already has it; just route directly
+            async for chunk in _llm_stream_openai(user_text):
+                yield chunk
         return
 
     async for chunk in _llm_stream_openai(user_text):
