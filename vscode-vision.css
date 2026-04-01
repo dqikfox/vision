@@ -1,0 +1,228 @@
+/* ═══════════════════════════════════════════════════════════
+   VISION — VS Code Chat Panel Theme
+   Uses real VS Code internal class names
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Scan-line atmosphere ──────────────────────────────────── */
+.monaco-workbench::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+  );
+}
+
+/* ── Chat panel wrapper ────────────────────────────────────── */
+.chat-widget,
+.interactive-session {
+  background: #080c18 !important;
+}
+
+/* ── Individual message rows ───────────────────────────────── */
+.interactive-item-container {
+  border-radius: 4px !important;
+  margin: 3px 8px !important;
+  padding: 10px 14px !important;
+  transition: background 0.15s ease !important;
+}
+
+/* User messages — blue left border */
+.interactive-item-container.interactive-request {
+  background: #0d1625 !important;
+  border-left: 2px solid #3b82f6 !important;
+  box-shadow: inset 0 0 0 1px rgba(59,130,246,0.06) !important;
+}
+
+/* AI response messages — green left border */
+.interactive-item-container.interactive-response {
+  background: #080c18 !important;
+  border-left: 2px solid #22c55e !important;
+}
+
+/* ── Response text ─────────────────────────────────────────── */
+.interactive-item-container .value,
+.interactive-item-container .rendered-markdown,
+.chat-markdown-part {
+  color: #cdd9e5 !important;
+  line-height: 1.65 !important;
+}
+
+/* ── Inline code ───────────────────────────────────────────── */
+.interactive-item-container code,
+.rendered-markdown code {
+  background: #0d1625 !important;
+  color: #06b6d4 !important;
+  border: 1px solid rgba(29,78,216,0.3) !important;
+  border-radius: 3px !important;
+  padding: 1px 5px !important;
+  font-size: 0.88em !important;
+}
+
+/* ── Code blocks ───────────────────────────────────────────── */
+.interactive-item-container .code,
+.interactive-item-container [data-code] {
+  border: 1px solid rgba(29,78,216,0.25) !important;
+  border-radius: 5px !important;
+  box-shadow: 0 0 14px rgba(59,130,246,0.18) !important;
+  overflow: hidden !important;
+}
+
+/* ── Chat input container ──────────────────────────────────── */
+.chat-input-container {
+  background: #060a14 !important;
+  border-top: 1px solid rgba(29,78,216,0.25) !important;
+  padding: 6px !important;
+}
+
+/* Input box itself */
+.chat-input-container .interactive-input-part,
+.interactive-input-part {
+  background: #0d1625 !important;
+  border: 1px solid rgba(29,78,216,0.4) !important;
+  border-radius: 6px !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+.chat-input-container .interactive-input-part:focus-within,
+.interactive-input-part:focus-within {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.18), 0 0 14px rgba(59,130,246,0.25) !important;
+}
+
+/* ── Input placeholder text ────────────────────────────────── */
+.interactive-input-part .placeholder-text {
+  color: #334155 !important;
+}
+
+/* ── Chat toolbar / action icons ───────────────────────────── */
+.chat-toolbar,
+.chat-input-toolbar,
+.chat-footer-toolbar {
+  background: transparent !important;
+}
+
+.chat-toolbar .action-item:hover .codicon,
+.chat-input-toolbar .action-item:hover .codicon {
+  color: #3b82f6 !important;
+}
+
+/* ── Thinking/reasoning box ────────────────────────────────── */
+.chat-thinking-box {
+  background: #0d1625 !important;
+  border: 1px solid rgba(29,78,216,0.2) !important;
+  border-radius: 4px !important;
+}
+
+.chat-thinking-text {
+  color: #64748b !important;
+}
+
+/* ── Chat view title bar ───────────────────────────────────── */
+.chat-view-title-container {
+  background: #060a14 !important;
+  border-bottom: 1px solid rgba(29,78,216,0.2) !important;
+}
+
+.chat-view-title-label {
+  color: #3b82f6 !important;
+  letter-spacing: 0.08em !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  font-size: 0.7rem !important;
+}
+
+/* ── Welcome view ──────────────────────────────────────────── */
+.chat-welcome-view,
+.chat-view-welcome {
+  background: #080c18 !important;
+}
+
+.chat-welcome-view-title {
+  color: #3b82f6 !important;
+}
+
+.chat-welcome-view-message {
+  color: #64748b !important;
+}
+
+/* ── Used context / file references ───────────────────────── */
+.chat-used-context {
+  background: #0d1625 !important;
+  border: 1px solid rgba(29,78,216,0.15) !important;
+  border-radius: 3px !important;
+}
+
+/* ── Tool invocation parts ─────────────────────────────────── */
+.chat-tool-invocation-part {
+  background: #0a0e1a !important;
+  border: 1px solid rgba(6,182,212,0.2) !important;
+  border-radius: 3px !important;
+}
+
+/* ── Rate limit / quota messages ───────────────────────────── */
+.chat-rate-limited-widget,
+.chat-quota-error-widget {
+  background: #1a0f1f !important;
+  border-color: rgba(255,71,87,0.3) !important;
+}
+
+/* ── Most recent response highlight ───────────────────────── */
+.chat-most-recent-response {
+  border-left-color: #22c55e !important;
+}
+
+/* ── Slim scrollbars ───────────────────────────────────────── */
+.chat-widget ::-webkit-scrollbar,
+.interactive-session ::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+.chat-widget ::-webkit-scrollbar-thumb,
+.interactive-session ::-webkit-scrollbar-thumb {
+  background: rgba(29,78,216,0.35) !important;
+  border-radius: 99px !important;
+}
+.chat-widget ::-webkit-scrollbar-thumb:hover,
+.interactive-session ::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6 !important;
+}
+.chat-widget ::-webkit-scrollbar-track,
+.interactive-session ::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* ── Badges / notification dots ────────────────────────────── */
+.badge-content {
+  background: #22c55e !important;
+  color: #0a0e1a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 6px rgba(34,197,94,0.5) !important;
+}
+
+/* ── Editor cursor glow ─────────────────────────────────────── */
+.cursor {
+  box-shadow: 0 0 8px rgba(34,197,94,0.6) !important;
+}
+
+/* ── Diff editor colours ────────────────────────────────────── */
+.line-insert { background: rgba(34,197,94,0.07) !important; }
+.line-delete  { background: rgba(255,71,87,0.07) !important; }
+
+/* ── Auxiliary bar (right panel) border glow ────────────────── */
+.auxiliarybar-part {
+  border-left: 1px solid rgba(29,78,216,0.4) !important;
+  box-shadow: -3px 0 18px rgba(29,78,216,0.1) !important;
+}
+
+/* ── Global slim scrollbars ─────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px !important; height: 5px !important; }
+::-webkit-scrollbar-track { background: transparent !important; }
+::-webkit-scrollbar-thumb {
+  background: rgba(29,78,216,0.3) !important;
+  border-radius: 99px !important;
+}
+::-webkit-scrollbar-thumb:hover { background: #3b82f6 !important; }

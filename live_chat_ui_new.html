@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vision — Universal Accessibility Operator</title>
+<script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060610;--surface:#0a0a1a;--card:#0f0f22;--border:rgba(255,255,255,0.07);
+  --bh:rgba(255,255,255,0.13);--text:#e8eaf2;--dim:#4a5568;--mid:#718096;
+  --blue:#4f8ef7;--purple:#9f7aea;--cyan:#38bdf8;--green:#34d399;
+  --red:#f87171;--amber:#fbbf24;--pink:#f472b6;--indigo:#6366f1;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'Cascadia Code','Consolas',monospace;
+  --glow-blue:0 0 20px rgba(79,142,247,0.25);
+  --glow-purple:0 0 20px rgba(159,122,234,0.25);
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* ── Layout ── */
+#app{display:grid;grid-template-rows:52px 1fr;grid-template-columns:340px 1fr;height:100vh;gap:0}
+
+/* ── Header ── */
+#hdr{
+  grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 18px;
+  background:rgba(10,10,26,0.95);border-bottom:1px solid var(--border);
+  backdrop-filter:blur(12px);z-index:100;
+}
+.logo-wrap{display:flex;align-items:center;gap:9px}
+.logo{
+  width:28px;height:28px;border-radius:8px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--indigo),var(--purple));
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  box-shadow:0 0 14px rgba(99,102,241,0.4);
+}
+.brand{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.brand-sub{font-size:10px;color:var(--dim);letter-spacing:.05em}
+
+#model-btn{
+  display:flex;align-items:center;gap:8px;padding:6px 14px;
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  cursor:pointer;font-size:11px;color:var(--mid);transition:all .2s;white-space:nowrap;
+}
+#model-btn:hover{border-color:var(--bh);color:var(--text);box-shadow:var(--glow-blue)}
+.mdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--dim)}
+.po{background:var(--green)} .po2{background:var(--blue)} .po3{background:var(--purple)}
+.po4{background:#f77f00} .po5{background:#f55036} .po6{background:#fa520f} .po7{background:#4285f4}
+
+.hdr-sep{flex:1}
+.mode-wrap{display:flex;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:2px;gap:2px}
+.mode-btn{
+  padding:4px 14px;border-radius:16px;font-size:11px;font-weight:500;
+  cursor:pointer;transition:all .2s;color:var(--dim);border:none;background:none;font-family:var(--font)
+}
+.mode-btn.on{background:var(--indigo);color:#fff;box-shadow:0 0 10px rgba(99,102,241,0.4)}
+.conn-badge{
+  display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim);
+  padding:4px 10px;background:var(--card);border:1px solid var(--border);border-radius:10px;
+}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);transition:all .3s}
+.conn-dot.ok{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* ── Left panel — Orb + Controls ── */
+#left{
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;
+  gap:0;overflow:hidden;
+}
+#orb-wrap{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;padding:20px;width:100%;
+}
+#orb-canvas{
+  width:180px;height:180px;cursor:pointer;filter:drop-shadow(0 0 30px rgba(99,102,241,0.3));
+  transition:filter .3s;
+}
+#orb-canvas:hover{filter:drop-shadow(0 0 40px rgba(99,102,241,0.5))}
+#state-label{
+  font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--mid);
+  font-weight:600;text-align:center;min-height:16px;
+}
+/* Volume bars */
+#vol-wrap{display:flex;align-items:flex-end;gap:2px;height:32px;justify-content:center}
+.vbar{
+  width:3px;border-radius:2px;background:var(--indigo);
+  transition:height .08s ease,opacity .08s;opacity:.5;min-height:3px;
+}
+/* Input area */
+#input-area{
+  width:100%;padding:14px;border-top:1px solid var(--border);
+  display:flex;flex-direction:column;gap:8px;background:var(--surface);
+}
+#text-input{
+  width:100%;background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;color:var(--text);font-family:var(--font);
+  font-size:12px;resize:none;height:56px;outline:none;transition:border-color .2s;
+}
+#text-input:focus{border-color:var(--indigo);box-shadow:0 0 0 2px rgba(99,102,241,0.15)}
+#text-input::placeholder{color:var(--dim)}
+.btn-row{display:flex;gap:6px;align-items:center}
+.btn{
+  padding:7px 14px;border-radius:8px;border:1px solid var(--border);
+  background:var(--card);color:var(--mid);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .2s;font-family:var(--font);white-space:nowrap;
+}
+.btn:hover{border-color:var(--bh);color:var(--text)}
+.btn.primary{background:var(--indigo);border-color:var(--indigo);color:#fff}
+.btn.primary:hover{background:#5a67d8;box-shadow:0 0 12px rgba(99,102,241,0.4)}
+.btn.danger{border-color:rgba(248,113,113,.3);color:var(--red)}
+.btn.danger:hover{background:rgba(248,113,113,.1)}
+.btn.active{background:rgba(248,113,113,.15);border-color:rgba(248,113,113,.4);color:var(--red)}
+#send-btn{flex:1}
+
+/* Status strip */
+#status-strip{
+  width:100%;padding:6px 14px;background:rgba(6,6,16,.6);
+  display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);
+  font-size:10px;color:var(--dim);
+}
+.stt-badge{
+  padding:2px 8px;border-radius:8px;font-size:9px;font-weight:600;letter-spacing:.06em;
+  background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.25);
+}
+
+/* ── Right panel — Tabs ── */
+#right{display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+.tabs{
+  display:flex;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 16px;flex-shrink:0;gap:2px;
+}
+.tab{
+  padding:14px 16px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;
+  transition:all .2s;white-space:nowrap;
+}
+.tab:hover{color:var(--mid)}
+.tab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-badge{
+  display:inline-block;background:var(--amber);color:#000;
+  border-radius:8px;font-size:9px;padding:1px 5px;margin-left:5px;font-weight:700;
+}
+.panel{display:none;flex:1;overflow-y:auto;flex-direction:column}
+.panel.on{display:flex}
+
+/* ── Chat panel ── */
+#p-chat{padding:0;gap:0}
+#chat-body{
+  flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;
+  scroll-behavior:smooth;
+}
+#chat-body::-webkit-scrollbar{width:4px}
+#chat-body::-webkit-scrollbar-track{background:transparent}
+#chat-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.msg{
+  display:flex;flex-direction:column;gap:4px;max-width:88%;animation:fadeIn .25s ease;
+}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.assistant{align-self:flex-start;align-items:flex-start}
+.msg.system{align-self:center;align-items:center;max-width:100%}
+.bubble{
+  padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.55;word-break:break-word;
+}
+.msg.user .bubble{
+  background:linear-gradient(135deg,var(--indigo),var(--purple));
+  color:#fff;border-radius:14px 14px 4px 14px;
+}
+.msg.assistant .bubble{
+  background:var(--card);border:1px solid var(--border);
+  color:var(--text);border-radius:14px 14px 14px 4px;
+}
+.msg.system .bubble{
+  background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);
+  color:var(--amber);font-size:11px;border-radius:8px;padding:6px 12px;
+}
+.role-tag{font-size:10px;color:var(--dim);font-weight:600;letter-spacing:.06em;padding:0 4px}
+.typing-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--mid);
+  animation:blink 1s infinite;display:inline-block;margin:0 2px;
+}
+.typing-dot:nth-child(2){animation-delay:.15s}
+.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
+
+/* ── Actions panel ── */
+#p-actions{padding:14px;gap:8px}
+.action-card{
+  background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:10px 14px;display:flex;flex-direction:column;gap:6px;
+  animation:fadeIn .2s ease;
+}
+.action-header{display:flex;align-items:center;gap:8px}
+.action-icon{font-size:16px}
+.action-name{font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:.06em}
+.action-params{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.action-result{
+  font-size:11px;color:var(--mid);background:var(--surface);
+  border-radius:6px;padding:6px 8px;font-family:var(--mono);
+  word-break:break-all;max-height:80px;overflow-y:auto;
+}
+.screenshot-img{
+  width:100%;border-radius:8px;border:1px solid var(--border);margin-top:4px;
+  cursor:pointer;transition:opacity .2s;
+}
+.screenshot-img:hover{opacity:.9}
+
+/* ── Memory panel ── */
+#p-memory{padding:14px;gap:14px}
+.mem-section{display:flex;flex-direction:column;gap:8px}
+.mem-title{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim);display:flex;align-items:center;gap:8px;
+}
+.mem-count{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:2px 8px;font-size:10px;color:var(--mid);font-weight:400;
+}
+.fact-item{
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:8px 12px;display:flex;align-items:flex-start;gap:8px;
+  font-size:11px;color:var(--mid);
+}
+.fact-del{
+  margin-left:auto;cursor:pointer;color:var(--red);opacity:.5;
+  font-size:13px;line-height:1;flex-shrink:0;
+  transition:opacity .2s;background:none;border:none;
+}
+.fact-del:hover{opacity:1}
+.add-fact-row{display:flex;gap:6px}
+.fact-input{
+  flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:7px 10px;color:var(--text);font-family:var(--font);font-size:11px;outline:none;
+}
+.fact-input:focus{border-color:var(--indigo)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-card{
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:12px;text-align:center;
+}
+.stat-val{font-size:22px;font-weight:700;color:var(--blue)}
+.stat-lbl{font-size:10px;color:var(--dim);margin-top:2px}
+.task-item{
+  font-size:11px;color:var(--dim);padding:5px 10px;
+  border-left:2px solid var(--border);margin-left:4px;font-family:var(--mono);
+}
+
+/* ── Vision panel ── */
+#p-vision{padding:0;gap:0}
+.vision-hdr{
+  padding:14px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.vision-hdr h3{font-size:12px;font-weight:600;flex:1}
+.vision-badge{
+  font-size:10px;padding:3px 10px;border-radius:10px;font-weight:600;
+  background:rgba(159,122,234,.15);color:var(--purple);border:1px solid rgba(159,122,234,.3);
+}
+.vision-badge.active{background:rgba(52,211,153,.15);color:var(--green);border-color:rgba(52,211,153,.3)}
+.vision-body{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;gap:18px;
+}
+.vision-note{
+  font-size:11px;color:var(--dim);text-align:center;max-width:260px;line-height:1.6;
+}
+.vision-tool-log{
+  max-height:140px;overflow-y:auto;border-top:1px solid var(--border);
+  padding:8px 14px;display:flex;flex-direction:column;gap:3px;flex-shrink:0;
+}
+.vtool-row{
+  display:flex;gap:8px;align-items:flex-start;font-size:10px;font-family:var(--mono);
+}
+.vtool-name{color:var(--cyan);font-weight:700;flex-shrink:0;min-width:90px}
+.vtool-result{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+
+/* ── Log panel ── */
+#p-log{padding:8px;gap:1px;font-family:var(--mono)}
+.log-entry{
+  display:flex;gap:8px;padding:3px 6px;border-radius:4px;font-size:10px;
+  align-items:flex-start;transition:background .1s;
+}
+.log-entry:hover{background:var(--card)}
+.log-ts{color:var(--dim);flex-shrink:0;min-width:50px}
+.log-type{
+  flex-shrink:0;min-width:50px;font-weight:700;font-size:9px;letter-spacing:.08em;
+}
+.log-msg{color:var(--mid);word-break:break-all}
+.lt-ws{color:var(--green)} .lt-state{color:var(--blue)} .lt-stt{color:var(--cyan)}
+.lt-llm{color:var(--purple)} .lt-action{color:var(--amber)} .lt-model{color:var(--pink)}
+.lt-init{color:var(--mid)} .lt-error{color:var(--red)} .lt-vision{color:var(--indigo)}
+
+/* ── Model picker overlay ── */
+#picker-overlay{
+  display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,.65);backdrop-filter:blur(6px);
+  align-items:flex-start;justify-content:center;padding-top:60px;
+}
+#picker-overlay.open{display:flex}
+#picker{
+  background:#0d0d20;border:1px solid var(--bh);border-radius:16px;
+  width:540px;max-height:72vh;overflow-y:auto;
+  box-shadow:0 30px 80px rgba(0,0,0,.9),0 0 0 1px rgba(99,102,241,.15);
+}
+.picker-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;
+  background:#0d0d20;z-index:1;
+}
+.picker-title{font-size:14px;font-weight:700}
+.picker-close{
+  cursor:pointer;color:var(--dim);font-size:20px;line-height:1;
+  transition:color .2s;background:none;border:none;font-family:var(--font);
+}
+.picker-close:hover{color:var(--text)}
+.prov-section{border-bottom:1px solid var(--border)}
+.prov-section:last-child{border-bottom:none}
+.prov-hdr{
+  display:flex;align-items:center;gap:8px;padding:12px 20px 6px;
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+}
+.prov-badge{
+  padding:2px 8px;border-radius:8px;font-size:9px;font-weight:700;
+  letter-spacing:.06em;margin-left:auto;
+}
+.pb-local{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.3)}
+.pb-cloud{background:rgba(79,142,247,.15);color:var(--blue);border:1px solid rgba(79,142,247,.3)}
+.model-list{padding:0 8px 8px}
+.model-opt{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
+  cursor:pointer;font-size:12px;color:var(--mid);transition:all .15s;
+}
+.model-opt:hover{background:var(--card);color:var(--text)}
+.model-opt.selected{background:rgba(99,102,241,.12);color:var(--text);border:1px solid rgba(99,102,241,.3)}
+.model-opt .chk{margin-left:auto;color:var(--indigo);opacity:0;font-size:13px}
+.model-opt.selected .chk{opacity:1}
+.refresh-btn{
+  margin-left:auto;background:var(--card);border:1px solid var(--border);
+  border-radius:6px;padding:3px 9px;font-size:10px;color:var(--mid);
+  cursor:pointer;transition:all .2s;
+}
+.refresh-btn:hover{border-color:var(--bh);color:var(--text)}
+.key-row{
+  display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--border);
+}
+.key-input{
+  flex:1;background:var(--card);border:1px solid var(--border);
+  border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--mono);
+  font-size:11px;outline:none;
+}
+.key-input:focus{border-color:var(--indigo)}
+.save-btn{
+  background:var(--indigo);border:1px solid var(--indigo);border-radius:7px;
+  padding:7px 14px;font-size:11px;font-weight:600;color:#fff;
+  cursor:pointer;transition:all .2s;white-space:nowrap;
+}
+.save-btn:hover{background:#5a67d8}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--card);border:1px solid var(--bh);border-radius:10px;
+  padding:10px 20px;font-size:12px;color:var(--text);z-index:999;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);animation:toastIn .25s ease;
+  pointer-events:none;white-space:nowrap;
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* scrollbar global */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ── Header ── -->
+<header id="hdr">
+  <div class="logo-wrap">
+    <div class="logo">👁️</div>
+    <div>
+      <div class="brand">Vision</div>
+      <div class="brand-sub">Universal Accessibility Operator</div>
+    </div>
+  </div>
+
+  <button id="model-btn" onclick="openPicker()">
+    <div class="mdot po" id="hdr-dot"></div>
+    <span id="hdr-model-lbl" style="font-weight:600;color:var(--text)">—</span>
+    <span style="opacity:.5">via</span>
+    <span id="hdr-prov-lbl">—</span>
+    <span style="opacity:.4;font-size:10px">▾</span>
+  </button>
+
+  <div class="hdr-sep"></div>
+
+  <div class="mode-wrap">
+    <button class="mode-btn on" id="mode-chat" onclick="setMode('chat')">💬 Chat</button>
+    <button class="mode-btn" id="mode-operator" onclick="setMode('operator')">🤖 Operator</button>
+  </div>
+
+  <div class="conn-badge">
+    <div class="conn-dot" id="conn-dot"></div>
+    <span id="conn-lbl">connecting…</span>
+  </div>
+</header>
+
+<!-- ── Left panel ── -->
+<aside id="left">
+  <div id="orb-wrap">
+    <canvas id="orb-canvas" width="360" height="360" title="Click to mute/unmute"></canvas>
+    <div id="state-label">initialising</div>
+    <div id="vol-wrap">
+      <!-- 22 bars injected by JS -->
+    </div>
+  </div>
+
+  <div id="input-area">
+    <textarea id="text-input" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+    <div class="btn-row">
+      <button class="btn primary" id="send-btn" onclick="sendText()">Send ↑</button>
+      <button class="btn" id="mute-btn" onclick="toggleMute()" title="[M]">🎙 Mic</button>
+      <button class="btn danger" onclick="clearChat()" title="[Esc]">✕ Clear</button>
+    </div>
+  </div>
+
+  <div id="status-strip">
+    <span id="stt-badge" class="stt-badge">local whisper</span>
+    <span style="flex:1"></span>
+    <span id="session-info" style="font-size:10px"></span>
+  </div>
+</aside>
+
+<!-- ── Right panel ── -->
+<main id="right">
+  <div class="tabs">
+    <div class="tab on" data-p="p-chat" onclick="switchTab('p-chat')">Chat <span id="chat-badge" class="tab-badge" style="display:none">0</span></div>
+    <div class="tab" data-p="p-actions" onclick="switchTab('p-actions')">Actions <span id="action-badge" class="tab-badge" style="display:none">0</span></div>
+    <div class="tab" data-p="p-memory" onclick="switchTab('p-memory')">Memory</div>
+    <div class="tab" data-p="p-vision" onclick="switchTab('p-vision')">👁️ Vision</div>
+    <div class="tab" data-p="p-log" onclick="switchTab('p-log')">Log</div>
+  </div>
+
+  <!-- Chat -->
+  <div id="p-chat" class="panel on">
+    <div id="chat-body"></div>
+  </div>
+
+  <!-- Actions -->
+  <div id="p-actions" class="panel" style="padding:14px;gap:8px"></div>
+
+  <!-- Memory -->
+  <div id="p-memory" class="panel" style="padding:16px;gap:16px">
+    <div class="mem-section">
+      <div class="mem-title">📊 Session Stats</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-val" id="stat-sessions">0</div><div class="stat-lbl">Sessions</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-facts">0</div><div class="stat-lbl">Facts</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-tasks">0</div><div class="stat-lbl">Tasks done</div></div>
+        <div class="stat-card"><div class="stat-val" id="stat-msgs">0</div><div class="stat-lbl">Messages</div></div>
+      </div>
+    </div>
+    <div class="mem-section">
+      <div class="mem-title">🧠 Remembered Facts <span class="mem-count" id="fact-count">0</span></div>
+      <div id="facts-list"></div>
+      <div class="add-fact-row">
+        <input class="fact-input" id="fact-input" placeholder="Add a fact to remember…">
+        <button class="btn primary" onclick="addFact()">+ Add</button>
+      </div>
+    </div>
+    <div class="mem-section">
+      <div class="mem-title">📋 Task History</div>
+      <div id="task-list"></div>
+    </div>
+  </div>
+
+  <!-- Vision widget -->
+  <div id="p-vision" class="panel">
+    <div class="vision-hdr">
+      <span style="font-size:18px">👁️</span>
+      <h3>Vision — Conversational AI Agent</h3>
+      <span class="vision-badge" id="vision-badge">idle</span>
+    </div>
+    <div class="vision-body">
+      <elevenlabs-convai agent-id="agent_7201kmxc5trte9tarb626ed8dgt1" style="width:100%;max-width:320px"></elevenlabs-convai>
+      <p class="vision-note">Click the orb to talk to Vision. Vision can read your screen, click, type, run commands, and operate your computer by voice.</p>
+    </div>
+    <div class="vision-tool-log" id="vision-tool-log"></div>
+  </div>
+
+  <!-- Log -->
+  <div id="p-log" class="panel"></div>
+</main>
+</div>
+
+<!-- ── Model picker ── -->
+<div id="picker-overlay">
+  <div id="picker">
+    <div class="picker-hdr">
+      <span class="picker-title">🤖 Select Model</span>
+      <button class="picker-close" onclick="closePicker()">×</button>
+    </div>
+    <div id="picker-body"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let ws, currentProvider='ollama', currentModel='', mode='chat';
+let muted=false, vol=0, msgCount=0, actionCount=0;
+
+const PROVIDER_DOTS = {
+  ollama:'po', openai:'po2', github:'po3',
+  deepseek:'po4', groq:'po5', mistral:'po6', gemini:'po7'
+};
+const PROVIDER_LABELS = {
+  ollama:'Ollama (Local)', openai:'OpenAI', github:'GitHub Copilot',
+  deepseek:'DeepSeek', groq:'Groq', mistral:'Mistral AI', gemini:'Google Gemini'
+};
+const PROVIDER_LOCAL = new Set(['ollama']);
+let allProviders = {};
+
+// ── Orb ────────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('orb-canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height, CX = W/2, CY = H/2;
+
+const STATES = {
+  idle:      {r:72, blobs:6,  speed:.4,  distort:.08, color1:'#1a1a3e', color2:'#2d2d5e', glow:'rgba(99,102,241,0.15)'},
+  listening: {r:80, blobs:8,  speed:.7,  distort:.15, color1:'#1e3a5f', color2:'#2563eb', glow:'rgba(37,99,235,0.3)'},
+  recording: {r:90, blobs:10, speed:1.4, distort:.28, color1:'#3b1f5e', color2:'#7c3aed', glow:'rgba(124,58,237,0.4)'},
+  thinking:  {r:78, blobs:7,  speed:.9,  distort:.18, color1:'#1a3a2e', color2:'#059669', glow:'rgba(5,150,105,0.3)'},
+  speaking:  {r:88, blobs:12, speed:1.8, distort:.32, color1:'#3b2a1a', color2:'#d97706', glow:'rgba(217,119,6,0.4)'},
+};
+let curState = STATES.idle;
+let targetState = STATES.idle;
+let orbT = 0;
+let blobAngles = Array.from({length:16},(_,i)=>i*(Math.PI*2/16));
+
+function lerpState() {
+  const k = 0.06;
+  curState = {
+    r: curState.r + (targetState.r - curState.r) * k,
+    blobs: targetState.blobs,
+    speed: curState.speed + (targetState.speed - curState.speed) * k,
+    distort: curState.distort + (targetState.distort - curState.distort) * k,
+    color1: targetState.color1,
+    color2: targetState.color2,
+    glow: targetState.glow,
+  };
+}
+
+function drawOrb() {
+  ctx.clearRect(0, 0, W, H);
+  lerpState();
+  orbT += curState.speed * 0.016;
+
+  const r = curState.r + vol * 28;
+  const pts = [];
+  const n = Math.ceil(curState.blobs);
+
+  for (let i = 0; i < n; i++) {
+    const base = (i / n) * Math.PI * 2;
+    const noise = Math.sin(orbT * 1.3 + i * 2.1) * curState.distort
+                + Math.sin(orbT * 0.7 + i * 1.3) * curState.distort * 0.5;
+    const angle = base + noise;
+    const rad = r * (1 + Math.sin(orbT * 0.9 + i * 1.7) * curState.distort * 0.6);
+    pts.push({ x: CX + Math.cos(angle) * rad, y: CY + Math.sin(angle) * rad });
+  }
+
+  // Outer glow
+  const grd = ctx.createRadialGradient(CX, CY, r*0.3, CX, CY, r*1.8);
+  grd.addColorStop(0, curState.glow);
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(CX, CY, r * 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Blob shape
+  ctx.beginPath();
+  if (pts.length > 1) {
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length; i++) {
+      const next = pts[(i + 1) % pts.length];
+      const mx = (pts[i].x + next.x) / 2;
+      const my = (pts[i].y + next.y) / 2;
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    ctx.closePath();
+  }
+  const fg = ctx.createRadialGradient(CX - r*0.2, CY - r*0.2, 0, CX, CY, r*1.1);
+  fg.addColorStop(0, '#ffffff18');
+  fg.addColorStop(0.4, curState.color2 + 'cc');
+  fg.addColorStop(1, curState.color1);
+  ctx.fillStyle = fg;
+  ctx.fill();
+
+  // Inner highlight
+  ctx.beginPath();
+  ctx.arc(CX - r*0.25, CY - r*0.25, r*0.3, 0, Math.PI*2);
+  const hi = ctx.createRadialGradient(CX - r*0.25, CY - r*0.25, 0, CX - r*0.25, CY - r*0.25, r*0.3);
+  hi.addColorStop(0, 'rgba(255,255,255,0.18)');
+  hi.addColorStop(1, 'transparent');
+  ctx.fillStyle = hi;
+  ctx.fill();
+
+  requestAnimationFrame(drawOrb);
+}
+drawOrb();
+
+// Volume bars
+const volWrap = document.getElementById('vol-wrap');
+const NBARS = 22;
+for (let i = 0; i < NBARS; i++) {
+  const b = document.createElement('div');
+  b.className = 'vbar';
+  b.style.height = '3px';
+  volWrap.appendChild(b);
+}
+const bars = volWrap.querySelectorAll('.vbar');
+
+function updateVol(v) {
+  vol = Math.min(1, v);
+  bars.forEach((b, i) => {
+    const center = (NBARS - 1) / 2;
+    const dist = Math.abs(i - center) / center;
+    const h = Math.max(3, (v * 28 + Math.sin(Date.now()*0.006 + i) * v * 8) * (1 - dist * 0.5));
+    b.style.height = h + 'px';
+    b.style.opacity = 0.4 + v * 0.5;
+    const hue = 220 + v * 60;
+    b.style.background = `hsl(${hue},80%,65%)`;
+  });
+}
+
+// ── State machine ──────────────────────────────────────────────────────────────
+function applyState(s) {
+  targetState = STATES[s] || STATES.idle;
+  const labels = {idle:'idle',listening:'listening…',recording:'recording…',thinking:'thinking…',speaking:'speaking…'};
+  document.getElementById('state-label').textContent = labels[s] || s;
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('mode-chat').classList.toggle('on', m === 'chat');
+  document.getElementById('mode-operator').classList.toggle('on', m === 'operator');
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'mode', mode:m}));
+}
+
+function toggleMute() {
+  muted = !muted;
+  const btn = document.getElementById('mute-btn');
+  btn.textContent = muted ? '🔇 Muted' : '🎙 Mic';
+  btn.classList.toggle('active', muted);
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'mute', muted}));
+}
+canvas.onclick = toggleMute;
+
+// ── Tabs ───────────────────────────────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.p === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === id));
+  if (id === 'p-chat') {
+    document.getElementById('chat-badge').style.display = 'none';
+    document.getElementById('chat-badge').textContent = '0';
+  }
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────────
+const chatBody = document.getElementById('chat-body');
+
+function addMsg(role, text) {
+  removeTyping();
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const tag = role === 'user' ? 'You' : role === 'assistant' ? 'Vision' : 'System';
+  div.innerHTML = `<span class="role-tag">${tag}</span><div class="bubble">${escHtml(text)}</div>`;
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+  msgCount++;
+  document.getElementById('stat-msgs').textContent = msgCount;
+  // Badge if not on chat tab
+  if (!document.getElementById('p-chat').classList.contains('on')) {
+    const badge = document.getElementById('chat-badge');
+    badge.style.display = 'inline';
+    badge.textContent = parseInt(badge.textContent || '0') + 1;
+  }
+}
+
+function showTyping() {
+  removeTyping();
+  const div = document.createElement('div');
+  div.className = 'msg assistant typing-indicator';
+  div.innerHTML = `<div class="bubble"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
+  chatBody.appendChild(div);
+  chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+function removeTyping() {
+  document.querySelectorAll('.typing-indicator').forEach(e => e.remove());
+}
+
+function clearChat() {
+  chatBody.innerHTML = '';
+  msgCount = 0;
+  document.getElementById('stat-msgs').textContent = '0';
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+           .replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+}
+
+// ── Text send ──────────────────────────────────────────────────────────────────
+document.getElementById('text-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+function sendText() {
+  const inp = document.getElementById('text-input');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  inp.value = '';
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'text', text:txt}));
+  showTyping();
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'm' || e.key === 'M') toggleMute();
+  if (e.key === 'Escape') clearChat();
+});
+
+// ── Actions ────────────────────────────────────────────────────────────────────
+const TOOL_ICONS = {read_screen:'🖥️',click:'🖱️',type_text:'⌨️',press_key:'⌨️',scroll:'🖱️',run_command:'💻'};
+const actPanel = document.getElementById('p-actions');
+
+function addAction(name, params, result) {
+  const card = document.createElement('div');
+  card.className = 'action-card';
+  const icon = TOOL_ICONS[name] || '⚡';
+  const paramStr = Object.entries(params).map(([k,v])=>`${k}=${JSON.stringify(v)}`).join(' ');
+  card.innerHTML = `
+    <div class="action-header">
+      <span class="action-icon">${icon}</span>
+      <span class="action-name">${name}</span>
+      <span class="action-params">${escHtml(paramStr.slice(0,60))}</span>
+    </div>
+    <div class="action-result">${escHtml(String(result).slice(0,300))}</div>`;
+  actPanel.insertBefore(card, actPanel.firstChild);
+  actionCount++;
+  const badge = document.getElementById('action-badge');
+  badge.style.display = 'inline';
+  badge.textContent = actionCount;
+  switchTab('p-actions');
+}
+
+function addScreenshot(data) {
+  const img = document.createElement('img');
+  img.className = 'screenshot-img';
+  img.src = 'data:image/jpeg;base64,' + data;
+  img.onclick = () => window.open(img.src, '_blank');
+  const last = actPanel.querySelector('.action-card');
+  if (last) last.appendChild(img);
+  else actPanel.insertBefore(img, actPanel.firstChild);
+}
+
+// ── Memory ─────────────────────────────────────────────────────────────────────
+function renderMemory(mem) {
+  if (!mem) return;
+  document.getElementById('stat-sessions').textContent = mem.session_count ?? 0;
+  document.getElementById('stat-facts').textContent = (mem.facts ?? []).length;
+  document.getElementById('stat-tasks').textContent = (mem.task_history ?? []).length;
+  document.getElementById('fact-count').textContent = (mem.facts ?? []).length;
+  const fl = document.getElementById('facts-list');
+  fl.innerHTML = (mem.facts || []).map((f,i) => `
+    <div class="fact-item">
+      <span>💡 ${escHtml(f)}</span>
+      <button class="fact-del" onclick="delFact(${i})">×</button>
+    </div>`).join('');
+  const tl = document.getElementById('task-list');
+  tl.innerHTML = (mem.task_history || []).slice(-10).reverse().map(t =>
+    `<div class="task-item">${escHtml(t)}</div>`).join('');
+}
+
+function addFact() {
+  const inp = document.getElementById('fact-input');
+  const val = inp.value.trim();
+  if (!val || !ws) return;
+  ws.send(JSON.stringify({type:'add_fact', fact:val}));
+  inp.value = '';
+  toast('Fact saved');
+}
+function delFact(i) {
+  if (ws) ws.send(JSON.stringify({type:'del_fact', index:i}));
+}
+document.getElementById('fact-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addFact();
+});
+
+// ── Model picker ───────────────────────────────────────────────────────────────
+function openPicker() {
+  document.getElementById('picker-overlay').classList.add('open');
+  fetchModels();
+}
+function closePicker() {
+  document.getElementById('picker-overlay').classList.remove('open');
+}
+document.getElementById('picker-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('picker-overlay')) closePicker();
+});
+
+async function fetchModels() {
+  try {
+    const r = await fetch('/api/models');
+    const d = await r.json();
+    allProviders = d.providers || {};
+    currentProvider = d.current_provider || currentProvider;
+    currentModel = d.current_model || currentModel;
+    renderPicker();
+    updateHdrModel();
+  } catch {}
+}
+
+function renderPicker() {
+  const body = document.getElementById('picker-body');
+  body.innerHTML = '';
+  for (const [pid, pdata] of Object.entries(allProviders)) {
+    const isLocal = PROVIDER_LOCAL.has(pid);
+    const needsKey = !isLocal && !pdata.has_key;
+    const sec = document.createElement('div');
+    sec.className = 'prov-section';
+    sec.innerHTML = `
+      <div class="prov-hdr">
+        <div class="mdot ${PROVIDER_DOTS[pid] || 'po2'}"></div>
+        <span>${pdata.label || pid}</span>
+        ${pid==='ollama'?`<button class="refresh-btn" onclick="fetchModels()">⟳ Refresh</button>`:''}
+        <span class="prov-badge ${isLocal?'pb-local':'pb-cloud'}">${isLocal?'LOCAL':'CLOUD'}</span>
+      </div>
+      <div class="model-list" id="ml-${pid}">${
+        (pdata.models||[]).map(m=>`
+          <div class="model-opt${m===currentModel&&pid===currentProvider?' selected':''}" onclick="selectModel('${pid}','${escHtml(m)}')">
+            <div class="mdot ${PROVIDER_DOTS[pid]||'po2'}"></div>${escHtml(m)}
+            <span class="chk">✓</span>
+          </div>`).join('') ||
+        `<div style="padding:8px 12px;font-size:11px;color:var(--dim)">No models found</div>`
+      }</div>
+      ${needsKey?`<div class="key-row">
+        <input class="key-input" id="key-${pid}" placeholder="Paste API key for ${pdata.label||pid}…" type="password">
+        <button class="save-btn" onclick="saveKey('${pid}')">Save</button>
+      </div>`:''}`;
+    body.appendChild(sec);
+  }
+}
+
+function selectModel(provider, model) {
+  currentProvider = provider; currentModel = model;
+  fetch('/api/model', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({provider, model})});
+  updateHdrModel();
+  closePicker();
+  toast(`Model: ${model}`);
+  ulog('model', `${provider}/${model}`);
+}
+
+function saveKey(pid) {
+  const val = document.getElementById(`key-${pid}`)?.value?.trim();
+  if (!val) return;
+  if (ws) ws.send(JSON.stringify({type:'set_api_key', provider:pid, key:val}));
+  toast(`Key saved for ${PROVIDER_LABELS[pid]||pid}`);
+  setTimeout(fetchModels, 500);
+}
+
+function updateHdrModel() {
+  document.getElementById('hdr-dot').className = `mdot ${PROVIDER_DOTS[currentProvider]||'po2'}`;
+  document.getElementById('hdr-model-lbl').textContent = currentModel || '—';
+  document.getElementById('hdr-prov-lbl').textContent = PROVIDER_LABELS[currentProvider] || currentProvider;
+}
+
+// ── Log ────────────────────────────────────────────────────────────────────────
+const logPanel = document.getElementById('p-log');
+function ulog(type, msg) {
+  const t = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `<span class="log-ts">${t}</span><span class="log-type lt-${type}">${type}</span><span class="log-msg">${escHtml(String(msg).slice(0,120))}</span>`;
+  logPanel.appendChild(el);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+function toast(msg, dur=2000) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .4s'; }, dur);
+  setTimeout(() => t.remove(), dur + 500);
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket('ws://localhost:8765/ws');
+  ws.onopen = () => {
+    document.getElementById('conn-dot').className = 'conn-dot ok';
+    document.getElementById('conn-lbl').textContent = 'connected';
+    ulog('ws', 'connected');
+    fetchModels();
+  };
+  ws.onclose = () => {
+    document.getElementById('conn-dot').className = 'conn-dot';
+    document.getElementById('conn-lbl').textContent = 'reconnecting…';
+    applyState('idle');
+    ulog('ws', 'disconnected — retrying');
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = e => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    switch (m.type) {
+      case 'init':
+        currentProvider = m.provider; currentModel = m.model; mode = m.mode;
+        setMode(m.mode); updateHdrModel(); renderMemory(m.memory);
+        document.getElementById('session-info').textContent = `session #${m.memory?.session_count||1}`;
+        ulog('init', `${m.provider}/${m.model}`);
+        break;
+      case 'state':
+        removeTyping();
+        if (m.state === 'thinking') showTyping();
+        applyState(m.state);
+        ulog('state', m.state);
+        break;
+      case 'transcript':
+        removeTyping();
+        addMsg(m.role, m.text);
+        ulog('stt', `[${m.role}] ${m.text.slice(0,60)}`);
+        break;
+      case 'volume':
+        updateVol(m.level);
+        break;
+      case 'action':
+        addAction(m.action, m.params||{}, m.result||'');
+        ulog('action', `${m.action} → ${String(m.result||'').slice(0,40)}`);
+        break;
+      case 'screenshot':
+        addScreenshot(m.data);
+        break;
+      case 'model_changed':
+        currentProvider = m.provider; currentModel = m.model;
+        updateHdrModel();
+        ulog('model', `${m.provider}/${m.model}`);
+        break;
+      case 'memory_update':
+        renderMemory(m.memory);
+        break;
+      case 'error':
+        toast('⚠️ ' + m.message, 3500);
+        ulog('error', m.message);
+        break;
+    }
+  };
+}
+
+// ── Vision ConvAI client tools ─────────────────────────────────────────────────
+async function execVisionTool(name, params) {
+  addVisionLog(name, '…');
+  try {
+    const r = await fetch('/api/tool/execute', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, parameters: params})
+    });
+    const d = await r.json();
+    const result = String(d.result ?? d.error ?? 'done');
+    addVisionLog(name, result);
+    ulog('vision', `${name} → ${result.slice(0,40)}`);
+    return result;
+  } catch(err) {
+    addVisionLog(name, 'ERROR: ' + err.message);
+    return 'error: ' + err.message;
+  }
+}
+
+function addVisionLog(name, result) {
+  const log = document.getElementById('vision-tool-log');
+  if (!log) return;
+  const el = document.createElement('div');
+  el.className = 'vtool-row';
+  el.innerHTML = `<span class="vtool-name">${name}</span><span class="vtool-result">${escHtml(String(result).slice(0,100))}</span>`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+function initVisionWidget() {
+  const widget = document.querySelector('elevenlabs-convai');
+  if (!widget) return;
+  widget.addEventListener('elevenlabs-convai:connect', () => {
+    const b = document.getElementById('vision-badge');
+    if (b) { b.textContent = 'connected'; b.classList.add('active'); }
+  });
+  widget.addEventListener('elevenlabs-convai:disconnect', () => {
+    const b = document.getElementById('vision-badge');
+    if (b) { b.textContent = 'idle'; b.classList.remove('active'); }
+  });
+  widget.addEventListener('elevenlabs-convai:call', async ev => {
+    const conv = ev.detail?.conversation;
+    if (!conv) return;
+    const tools = {
+      read_screen: p => execVisionTool('read_screen', p),
+      click:       p => execVisionTool('click', p),
+      type_text:   p => execVisionTool('type_text', p),
+      press_key:   p => execVisionTool('press_key', p),
+      scroll:      p => execVisionTool('scroll', p),
+      run_command: p => execVisionTool('run_command', p),
+    };
+    if (conv.registerClientTool) Object.entries(tools).forEach(([n,f]) => conv.registerClientTool(n,f));
+    else if (conv.clientTools) Object.assign(conv.clientTools, tools);
+    const b = document.getElementById('vision-badge');
+    if (b) { b.textContent = 'live'; b.classList.add('active'); }
+    ulog('vision', 'client tools registered');
+  });
+}
+
+const _pollWidget = setInterval(() => {
+  if (customElements.get('elevenlabs-convai')) {
+    clearInterval(_pollWidget);
+    setTimeout(initVisionWidget, 500);
+  }
+}, 400);
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+connect();
+ulog('init', 'Vision UI ready');
+</script>
+</body>
+</html>
