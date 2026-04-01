@@ -1725,7 +1725,7 @@ async def _llm_stream_openai(user_text: str):
     full   = ""
     actions_taken: list[str] = []
 
-    MAX_TOOL_ROUNDS = 4
+    MAX_TOOL_ROUNDS = 20
     tool_rounds     = 0
 
     while True:
