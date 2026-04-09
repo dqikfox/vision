@@ -1,0 +1,36 @@
+port: 3000
+defaults:
+  runtime: process
+  agent: claude-code
+  workspace: worktree
+  notifiers:
+    - desktop
+    - openclaw
+
+openclaw:
+  url: http://localhost:8765/webhook/agent-orchestrator
+
+projects:
+  vision:
+    name: vision
+    repo: dqikfox/vision
+    path: C:\project\vision
+    defaultBranch: main
+    sessionPrefix: vis
+    scm:
+      plugin: github
+    tracker:
+      plugin: github
+
+reactions:
+  ci-failed:
+    auto: true
+    action: send-to-agent
+    retries: 2
+  changes-requested:
+    auto: true
+    action: send-to-agent
+    escalateAfter: 30m
+  approved-and-green:
+    auto: false
+    action: notify

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 VISION Voice CLI Bridge  v2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -80,6 +81,7 @@ _eleven_client   = None
 _eleven_ok       = False
 _last_transcript = ""
 _lock            = threading.Lock()
+_vu_stop_event: threading.Event | None = None
 
 # ── ElevenLabs ─────────────────────────────────────
 def _setup_eleven() -> bool:
@@ -264,15 +266,18 @@ def _stop_and_process():
 
 # ── Hotkeys ────────────────────────────────────────
 def _on_rctrl(ev):
+    global _vu_stop_event
     if ev.event_type == keyboard.KEY_DOWN and not _recording:
         _start_rec()
-        # Start VU in background
+        _vu_stop_event = threading.Event()
         threading.Thread(
             target=_draw_vu,
-            args=(_audio_frames, _stop_event := threading.Event()),
+            args=(_audio_frames, _vu_stop_event),
             daemon=True
         ).start()
     elif ev.event_type == keyboard.KEY_UP and _recording:
+        if _vu_stop_event is not None:
+            _vu_stop_event.set()
         threading.Thread(target=_stop_and_process, daemon=True).start()
 
 def _on_f2():

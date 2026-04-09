@@ -1,0 +1,15 @@
+{
+  "user": {
+    "name": null,
+    "preferences": []
+  },
+  "facts": [],
+  "session_count": 2,
+  "last_session": "2026-04-10T03:00:15.735809",
+  "task_history": [
+    {
+      "task": "test",
+      "ts": "2026-04-10T03:01:33.330249"
+    }
+  ]
+}
