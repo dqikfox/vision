@@ -5,12 +5,12 @@ Intelligent fallback chains, retry logic with exponential backoff, provider heal
 """
 
 import asyncio
-import time
 import json
-from enum import Enum
-from typing import Callable, TypeVar, Generic, Any
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any, Callable, Generic, TypeVar
 
 T = TypeVar("T")
 

@@ -4,12 +4,13 @@ elite_metrics.py — Observability, metrics, profiling
 Real-time performance tracking, latency histograms, token usage analytics.
 """
 
-import time
 import json
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
+import time
 from collections import defaultdict, deque
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import Optional
+
 
 @dataclass
 class Metric:

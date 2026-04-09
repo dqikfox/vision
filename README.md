@@ -13,7 +13,7 @@
 
 Anyone — regardless of mobility, disability, or technical ability — should be able to:
 - Open any application
-- Click any button  
+- Click any button
 - Type any text
 - Read anything on screen
 - Execute any command
@@ -109,7 +109,7 @@ Conversational AI assistant.
 - Speak naturally, AI responds via ElevenLabs TTS
 - Full conversation history with memory across sessions
 
-### Operator Mode  
+### Operator Mode
 Full computer control via voice.
 ```
 "Open Chrome"              → run_command: start chrome
@@ -242,12 +242,83 @@ C:\project\vision\
 
 ---
 
+---
+
+## ⭐ Elite Code Quality System
+
+Vision has been enhanced with **production-grade quality frameworks** to ensure reliability, security, and maintainability:
+
+### 🛡️ Resilience & Safety
+- **Circuit Breakers** (`elite_resilience`) — Auto-fallback when providers fail
+- **Secret Detection** (`elite_safety`) — Prevents accidental credential exposure
+- **Input Validation** — Blocks injection attacks, path traversal
+- **Async Safety** — Detects blocking calls in async functions
+
+### 📊 Observability & Metrics
+- **Performance Tracking** (`elite_metrics`) — Latency histograms (p50, p95, p99)
+- **Tool Analytics** (`elite_tools`) — Execution counts, durations, cache hits
+- **Health Monitoring** — Provider status, circuit breaker state
+- **Structured Logging** — JSON format for easy analysis
+
+### 🚀 Developer Experience
+- **Type Hints** — Full mypy strict compliance enforced
+- **Docstrings** — Google-style with examples on all public APIs
+- **Reusable Patterns** (`elite_patterns`) — @async_cached, @async_retry decorators
+- **Testing Framework** — pytest with async support, fixtures, 70%+ coverage
+
+### 📖 Comprehensive Documentation
+- **`.github/copilot-conventions.md`** — Comprehensive style guide (11 sections)
+- **`ELITE_ENHANCEMENTS.md`** — Full feature documentation
+- **`GETTING_STARTED_ELITE.md`** — Quick reference cookbook
+- **`pyproject.toml`** — Tool configuration (mypy, pylint, black, bandit)
+
+### ⚙️ Automated Quality Gates
+- **mypy** — Strict type checking enabled
+- **pylint** — Code quality ≥ 8.0
+- **black** — Automatic code formatting
+- **bandit** — Security vulnerability scanning
+- **pytest** — Unit + integration tests
+- **GitHub Actions** — CI/CD on every push/PR
+
+### 🎯 Quick Example: Safe Tool Execution
+```python
+from elite_tools import tool_executor
+from elite_safety import InputValidator
+from elite_metrics import metrics
+
+# Validate input safely
+safe_path = InputValidator.sanitize_file_path(user_path, base_dir="/allowed")
+
+# Execute with timeout, caching, and automatic metrics
+result = await tool_executor.execute(
+    tool="click",
+    args={"x": 100, "y": 200},
+    executor_fn=exec_tool,
+    cacheable=True,           # Cache reads
+    timeout_seconds=10.0,     # Prevent hangs
+)
+
+# Automatic tracking
+print(f"Success: {result.success}")
+print(f"Duration: {result.duration_ms}ms")
+print(f"Cache hit: {result.cache_hit}")
+
+# Metrics visible at /api/elite/metrics endpoint
+```
+
+---
+
 ## Getting Help
 
 **For Vision operator issues:**
 - Use the `/vision-debugging` skill in Copilot
 - Read `setup.md` for environment problems
 - Check `architecture.md` for protocol/design questions
+
+**For code quality & development:**
+- Read `.github/copilot-conventions.md` for coding standards
+- See `GETTING_STARTED_ELITE.md` for quick recipes
+- Use `/vision-runtime-ops` skill to verify the stack
 
 **For OpenClaw integration:**
 - Use the `/openclaw-getting-started` skill

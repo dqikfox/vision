@@ -3,10 +3,25 @@ live_chat_app.py — Universal Accessibility Operator
 ====================================================
 Multi-provider AI backend with voice, vision, memory, and computer control.
 
-Providers: Ollama (local) | OpenAI | GitHub Copilot (GitHub Models API)
+Providers:
+  Ollama (local) | OpenAI | GitHub Models | DeepSeek | Groq | Mistral | Gemini
 """
 
-import asyncio, base64, io, json, os, sys, tempfile, warnings, webbrowser
+import asyncio
+import base64
+import fnmatch
+import io
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+import time
+import threading
+import urllib.parse
+import warnings
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -518,7 +533,7 @@ async def api_health():
 
 @app.get("/screenshot")
 async def screenshot_ep():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _snap():
         img = pyautogui.screenshot()
         buf = io.BytesIO()
@@ -871,7 +886,6 @@ _faster_whisper_model = None       # lazy-loaded once
 
 async def transcribe(frames: list[np.ndarray]) -> str:
     global _stt_failure_until, _faster_whisper_model
-    import time
 
     # If all providers recently failed, skip until cooldown expires
     if time.time() < _stt_failure_until:
@@ -882,7 +896,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         wavfile.write(f.name, SR, audio)
         path = f.name
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     async def _try_elevenlabs():
         api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
@@ -1014,10 +1028,7 @@ TOOLS = [
     {"type":"function","function":{"name":"focus_window","description":"Bring a window to the foreground by its title (partial match ok).","parameters":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}}},
     # ── Shell
     {"type":"function","function":{"name":"run_command","description":"Run a Windows shell command and return output. Use to open apps (start chrome), manage files, query system info.","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}},
-    # ── File system
-    {"type":"function","function":{"name":"read_file","description":"Read the contents of a file.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
-    {"type":"function","function":{"name":"write_file","description":"Write content to a file (creates or overwrites).","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
-    {"type":"function","function":{"name":"list_files","description":"List files and folders in a directory.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Directory path, defaults to Desktop"}},"required":[]}}},
+    # ── File system (consolidated later in Web & files section)
     # ── Browser (Playwright)
     {"type":"function","function":{"name":"browser_open","description":"Open a URL in the controlled Chromium browser.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}}},
     {"type":"function","function":{"name":"browser_click","description":"Click an element in the browser by CSS selector or text.","parameters":{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector, XPath, or visible text to click"}},"required":["selector"]}}},
@@ -1056,9 +1067,8 @@ TOOLS = [
     {"type":"function","function":{"name":"read_file","description":"Read the contents of a file on disk. Returns text content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path"]}}},
     {"type":"function","function":{"name":"write_file","description":"Write or overwrite a file on disk with the given content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"content":{"type":"string","description":"Content to write"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path","content"]}}},
     {"type":"function","function":{"name":"list_files","description":"List files and directories at a path. Returns names, sizes, and types.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Directory path, default current directory"},"pattern":{"type":"string","description":"Glob pattern filter, e.g. '*.py'"}},"required":[]}}},
-    {"type":"function","function":{"name":"clipboard_get","description":"Get the current clipboard contents as text.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"clipboard_set","description":"Set the clipboard to the given text.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to copy to clipboard"}},"required":["text"]}}},
-    {"type":"function","function":{"name":"screenshot_region","description":"Take a screenshot of a specific screen region and return it. Useful for focusing on one part of the screen.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]}}},
+    # (clipboard_get/clipboard_set consolidated to get_clipboard/set_clipboard above)
+    # (screenshot_region consolidated to earlier full-featured version above)
     {"type":"function","function":{"name":"ocr_region","description":"OCR a specific screen region and return the text found. More accurate than full-screen OCR when targeting a specific area.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]}}},
     # ── Power tools
     {"type":"function","function":{"name":"execute_python","description":"Execute arbitrary Python code and return stdout/result. Perfect for data analysis, math calculations, automation scripts, file processing, or any task that needs custom logic. Code runs in the server process with full library access.","parameters":{"type":"object","properties":{"code":{"type":"string","description":"Python code to execute"},"timeout":{"type":"integer","description":"Timeout in seconds, default 30"}},"required":["code"]}}},
@@ -1123,9 +1133,14 @@ def _make_vision_tool_result(text: str, tool_call_id: str) -> dict:
     return {"role": "tool", "tool_call_id": tool_call_id, "content": text}
 
 
+def _tool_err(action: str, e: Exception) -> str:
+    """Standardised one-line error string for exec_tool handlers."""
+    return f"{action} error: {e}"
+
+
 async def exec_tool(name: str, args: dict) -> str:
     global _last_screenshot_b64, _last_screenshot_time, _pw_page
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # ── Screen & vision ────────────────────────────────────────────────────────
     if name in ("read_screen", "screenshot"):
@@ -1140,7 +1155,7 @@ async def exec_tool(name: str, args: dict) -> str:
             return b64_hq, b64_ui, img
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
         _last_screenshot_b64  = snap_b64
-        _last_screenshot_time = asyncio.get_event_loop().time()
+        _last_screenshot_time = asyncio.get_running_loop().time()
         await broadcast({"type": "screenshot", "data": snap_ui_b64})
         if name == "screenshot":
             return "(screenshot captured)"
@@ -1172,7 +1187,7 @@ async def exec_tool(name: str, args: dict) -> str:
                    base64.b64encode(buf_ui.getvalue()).decode(), im
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap_r)
         _last_screenshot_b64  = snap_b64
-        _last_screenshot_time = asyncio.get_event_loop().time()
+        _last_screenshot_time = asyncio.get_running_loop().time()
         await broadcast({"type": "screenshot", "data": snap_ui_b64})
         if HAS_OCR:
             def _ocr_r(im):
@@ -1422,7 +1437,6 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception as e:
             return f"Error: {e}"
     elif name == "find_files":
-        import fnmatch
         directory = args.get("directory", "") or str(Path.home())
         pattern   = args.get("pattern", "*")
         try:
@@ -1617,7 +1631,6 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception:
             pass
         # Fallback: DuckDuckGo instant answer API
-        import urllib.parse
         params = {"q": query, "format": "json", "no_redirect": "1", "no_html": "1"}
         headers = {"User-Agent": "VISION-Operator/1.0"}
         try:
@@ -1648,7 +1661,6 @@ async def exec_tool(name: str, args: dict) -> str:
                     from markdownify import markdownify as md
                     text = md(text, heading_style="ATX", strip=["script","style","nav","footer"])
                 except ImportError:
-                    import re
                     text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', text, flags=re.DOTALL|re.I)
                     text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'\n## \1\n', text, flags=re.DOTALL|re.I)
                     text = re.sub(r'<p[^>]*>(.*?)</p>', r'\n\1\n', text, flags=re.DOTALL|re.I)
@@ -1665,7 +1677,6 @@ async def exec_tool(name: str, args: dict) -> str:
         fpath = args.get("path", "")
         enc = args.get("encoding", "utf-8")
         try:
-            from pathlib import Path
             content = Path(fpath).read_text(encoding=enc)
             return content[:8000] + (f"\n[truncated — {len(content)} chars]" if len(content) > 8000 else "")
         except Exception as e:
@@ -1676,7 +1687,6 @@ async def exec_tool(name: str, args: dict) -> str:
         content = args.get("content", "")
         enc = args.get("encoding", "utf-8")
         try:
-            from pathlib import Path
             p = Path(fpath)
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding=enc)
@@ -1688,8 +1698,6 @@ async def exec_tool(name: str, args: dict) -> str:
         fpath = args.get("path", ".") or "."
         pattern = args.get("pattern", "*")
         try:
-            from pathlib import Path
-            import fnmatch
             p = Path(fpath)
             entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
             lines = []
@@ -1705,20 +1713,7 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception as e:
             return f"Error listing {fpath}: {e}"
 
-    elif name == "clipboard_get":
-        def _get():
-            import pyperclip
-            return pyperclip.paste()
-        text = await loop.run_in_executor(None, _get)
-        return f"Clipboard: {text[:2000]}" if text else "(clipboard empty)"
-
-    elif name == "clipboard_set":
-        text = args.get("text", "")
-        def _set():
-            import pyperclip
-            pyperclip.copy(text)
-        await loop.run_in_executor(None, _set)
-        return f"Clipboard set to: {text[:100]}{'...' if len(text)>100 else ''}"
+    # (clipboard_get/clipboard_set handlers removed - use get_clipboard/set_clipboard instead)
 
     elif name == "screenshot_region":
         x, y = int(args.get("x", 0)), int(args.get("y", 0))
@@ -1732,7 +1727,7 @@ async def exec_tool(name: str, args: dict) -> str:
             return b64_hq, b64_ui, img
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
         _last_screenshot_b64  = snap_b64
-        _last_screenshot_time = asyncio.get_event_loop().time()
+        _last_screenshot_time = asyncio.get_running_loop().time()
         await broadcast({"type": "screenshot", "data": snap_ui_b64})
         return f"(region screenshot {w}×{h} at ({x},{y}) captured)"
 
@@ -1875,7 +1870,6 @@ async def exec_tool(name: str, args: dict) -> str:
             return f"Download error: {e}"
 
     elif name == "move_file":
-        import shutil
         src, dst = args.get("src", ""), args.get("dst", "")
         try:
             shutil.move(src, dst)
@@ -1884,12 +1878,11 @@ async def exec_tool(name: str, args: dict) -> str:
             return f"Move error: {e}"
 
     elif name == "delete_file":
-        import os as _os
         fpath = args.get("path", "")
         try:
             p = Path(fpath)
             if p.is_dir():
-                import shutil; shutil.rmtree(fpath)
+                shutil.rmtree(fpath)
             else:
                 p.unlink()
             return f"Deleted {fpath}"
@@ -1897,7 +1890,6 @@ async def exec_tool(name: str, args: dict) -> str:
             return f"Delete error: {e}"
 
     elif name == "copy_file":
-        import shutil
         src, dst = args.get("src", ""), args.get("dst", "")
         try:
             shutil.copy2(src, dst)
@@ -1908,8 +1900,7 @@ async def exec_tool(name: str, args: dict) -> str:
     elif name == "open_file":
         fpath = args.get("path", "")
         try:
-            import os as _os
-            _os.startfile(fpath)
+            os.startfile(fpath)
             return f"Opened {fpath}"
         except Exception as e:
             return f"Open error: {e}"
@@ -1919,7 +1910,6 @@ async def exec_tool(name: str, args: dict) -> str:
         pattern = args.get("pattern", "")
         file_pattern = args.get("file_pattern", "*")
         try:
-            import re as _re2, fnmatch as _fn
             matches = []
             root = Path(directory)
             for fp in root.rglob(file_pattern):
@@ -1927,7 +1917,7 @@ async def exec_tool(name: str, args: dict) -> str:
                     continue
                 try:
                     for i, line in enumerate(fp.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
-                        if _re2.search(pattern, line, _re2.IGNORECASE):
+                        if re.search(pattern, line, re.IGNORECASE):
                             matches.append(f"{fp}:{i}: {line.strip()}")
                             if len(matches) >= 50:
                                 break
@@ -2200,7 +2190,7 @@ def _use_responses_api() -> bool:
 
 async def _take_screenshot_b64() -> str:
     """Take a desktop screenshot and return base64 JPEG."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _snap():
         img = pyautogui.screenshot()
         buf = io.BytesIO()
@@ -2213,7 +2203,7 @@ async def _take_screenshot_b64() -> str:
 
 async def _execute_computer_action(action) -> dict:
     """Execute a computer_call action and return the screenshot output dict."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     action_type = getattr(action, "type", "screenshot")
 
     if action_type == "screenshot":
@@ -2950,10 +2940,9 @@ async def llm_stream(user_text: str):
 
 async def speak(text_gen):
     """Stream LLM tokens to ElevenLabs in real-time for minimal latency."""
-    import time as _time
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     collected: list[str] = []
-    tts_start = _time.monotonic()
+    tts_start = time.monotonic()
 
     async def _pyttsx3_tts(text: str) -> bool:
         try:
@@ -3151,7 +3140,7 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
     global _tts_silence_until
     # Suppress VAD for the TTS audio duration + 3s room reverb tail (min 5s)
     silence_window = max(tts_duration_secs * 0.6 + 0.4, 1.0)  # min 1s (was 2s)
-    _tts_silence_until = asyncio.get_event_loop().time() + silence_window
+    _tts_silence_until = asyncio.get_running_loop().time() + silence_window
     await asyncio.sleep(0.4)
     if audio_q:
         while not audio_q.empty():
@@ -3164,7 +3153,7 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
 async def voice_loop() -> None:
     global audio_q, speak_task, _input_busy, _tts_silence_until
     audio_q = asyncio.Queue()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     barge = 0
 
     def cb(indata, _f, _t, _s):
@@ -3196,7 +3185,7 @@ async def voice_loop() -> None:
                 else:
                     barge = 0
                 # Post-TTS echo suppression: skip VAD during silence window
-                if asyncio.get_event_loop().time() < _tts_silence_until:
+                if asyncio.get_running_loop().time() < _tts_silence_until:
                     continue
                 ev, data = vad.feed(frame)
                 if ev == "start":
@@ -3257,7 +3246,7 @@ _EL_TOOL_NAMES = [
     "read_screen", "screenshot", "screenshot_region", "ocr_region",
     "click", "double_click", "right_click", "move_mouse", "drag", "scroll",
     "type_text", "press_key", "hotkey",
-    "clipboard_get", "clipboard_set", "get_clipboard", "set_clipboard",
+    "get_clipboard", "set_clipboard",
     "list_windows", "focus_window",
     "run_command", "read_file", "write_file", "list_files",
     "web_search", "fetch_url",
@@ -3306,7 +3295,6 @@ async def _start_el_agent() -> None:
             asyncio.run_coroutine_threadsafe(add_transcript("user", text), _main_loop),
     )
 
-    import threading
     def _run():
         global _el_active
         _el_active = True
@@ -3346,7 +3334,7 @@ async def _stop_el_agent() -> None:
 @app.on_event("startup")
 async def startup():
     global _main_loop
-    _main_loop = asyncio.get_event_loop()
+    _main_loop = asyncio.get_running_loop()
     if not API_11:
         print("WARNING: ELEVENLABS_API_KEY not set — voice STT/TTS will use fallbacks")
     ollama_models = await fetch_ollama_models()

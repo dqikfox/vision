@@ -31,16 +31,20 @@ Keys live in `.env` (gitignored). Never print or log key values.
 
 ---
 
-## All 41 Tools (exec_tool)
+## All 65+ Tools (exec_tool)
 
-**Vision**: `read_screen`, `screenshot`
+**Vision**: `read_screen`, `screenshot`, `find_on_screen`
 **Mouse**: `click`, `double_click`, `right_click`, `move_mouse`, `drag`, `scroll`
 **Keyboard**: `type_text`, `press_key`
 **Clipboard**: `get_clipboard`, `set_clipboard`
-**Windows**: `list_windows`, `focus_window`
-**Shell**: `run_command`
-**Files**: `read_file`, `write_file`, `list_files`
-**Browser (Playwright)**: `browser_open`, `browser_click`, `browser_fill`, `browser_extract`, `browser_screenshot`, `browser_press`
+**Windows**: `list_windows`, `focus_window`, `get_active_window`
+**Shell**: `run_command`, `execute_python`
+**Files**: `read_file`, `write_file`, `list_files`, `append_to_file`, `find_files`, `move_file`, `copy_file`, `delete_file`, `open_file`, `search_file_content`, `download_file`
+**Browser (Playwright)**: `browser_open`, `browser_click`, `browser_fill`, `browser_extract`, `browser_screenshot`, `browser_press`, `browser_back`, `browser_forward`, `browser_refresh`, `browser_new_tab`, `browser_close_tab`
+**Web**: `web_search`, `fetch_url`
+**System**: `list_processes`, `kill_process`, `color_at`, `send_notification`, `speak`
+**Memory**: `add_fact`, `del_fact`, `get_facts`
+**OCR**: `ocr_region`
 
 Test any tool directly:
 ```powershell
@@ -174,7 +178,63 @@ python test_vision.py   # full integration tests
 4. Never change VAD/barge-in thresholds without explicit instruction
 5. Never print, log, or expose API key values
 6. Always use `await loop.run_in_executor(None, fn)` for blocking calls in async context
-7. New tools require 3 changes: `TOOLS` schema + `exec_tool` handler + `_EL_TOOL_NAMES`
+7. **New tools require 3 changes**: `TOOLS` schema + `exec_tool` handler + `_EL_TOOL_NAMES` — missing any one silently breaks ElevenLabs ConvAI
 8. WebSocket contract changes require coordinated backend + frontend update
 9. Prefer surgical edits — no broad rewrites unless explicitly requested
 10. After any backend change: verify with `GET /api/health` and a tool execute test
+
+---
+
+## Coding Conventions
+
+### Python style
+- **Line length**: 120 characters (Ruff enforced)
+- **Formatter**: Ruff (`ruff format`) — not Black
+- **Imports**: all standard-library and third-party imports at module top-level; never inside functions
+- **`asyncio.get_running_loop()`** — never `get_event_loop()` (deprecated in 3.10+)
+- **Type hints**: all new functions should have parameter and return type annotations
+- **Docstrings**: one-line docstring for all public functions; omit trivial helpers
+
+### Anti-patterns to avoid
+```python
+# ❌ inline import inside function
+elif name == "move_file":
+    import shutil
+    shutil.move(src, dst)
+
+# ✅ import at module top; use directly
+shutil.move(src, dst)
+
+# ❌ asyncio.get_event_loop()
+loop = asyncio.get_event_loop()
+
+# ✅
+loop = asyncio.get_running_loop()
+
+# ❌ repeated error string
+except Exception as e:
+    return f"Error: {e}"
+
+# ✅ use the _tool_err helper
+except Exception as e:
+    return _tool_err("move", e)
+```
+
+### Tool handler pattern
+```python
+elif name == "my_tool":
+    param = args.get("param", "default")
+    try:
+        result = await loop.run_in_executor(None, lambda: _blocking_op(param))
+        return f"Success: {result}"
+    except Exception as e:
+        return _tool_err("my_tool", e)
+```
+
+### `broadcast()` pattern
+Always snapshot the clients set to avoid RuntimeError on disconnect:
+```python
+for ws in list(clients):   # ✅ snapshot
+    await ws.send_json(...)
+```
+
