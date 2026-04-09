@@ -1,10 +1,13 @@
 # Setup Guide
 
-## 1. Python Dependencies
+## Option A: Vision Standalone (Local WebSocket)
+
+### 1. Python Dependencies
 
 ```bash
 pip install fastapi uvicorn websockets sounddevice numpy scipy
 pip install pyautogui pytesseract elevenlabs openai httpx pillow
+ollama --version  # Check Ollama is installed
 ```
 
 Tesseract OCR (for read_screen tool):
@@ -32,17 +35,102 @@ OPENAI_API_KEY=sk-...                        # Optional: OpenAI provider
 GITHUB_TOKEN=ghp_...                         # Optional: GitHub Copilot provider
 ```
 
-## 4. Launch
+## 4. Launch Vision
 
 ```bash
-cd C:\Users\msiul\.copilot
+cd C:\project\vision
 set ELEVENLABS_API_KEY=sk_...
 python live_chat_app.py
 ```
 
 Or double-click **Live Chat** on desktop.
 
-## 5. First Run Checklist
+Browser opens at `http://localhost:8765`.
+
+---
+
+## Option B: Vision with OpenClaw Gateway (Recommended)
+
+OpenClaw provides a unified control plane for agents, channels (Slack, Teams, WhatsApp, etc.), and multi-agent orchestration.
+
+### 1. Install OpenClaw (Node.js + CLI)
+
+**Windows (PowerShell)**
+```powershell
+iwr -useb https://openclaw.ai/install.ps1 | iex
+```
+
+**macOS / Linux / WSL2**
+```bash
+curl -fsSL https://openclaw.ai/install.sh | bash
+```
+
+Verify:
+```bash
+node --version          # Should be 24+ or 22.14+
+openclaw --version      # Should be 2026.4.9 or later
+```
+
+### 2. Configure OpenClaw (Interactive)
+
+```bash
+openclaw onboard --install-daemon
+```
+
+The wizard walks you through:
+1. Model provider selection (Anthropic, OpenAI, Google, etc.)
+2. API key configuration
+3. Gateway settings (port 18789 is default)
+4. Daemon/service install (Windows: Scheduled Task + Startup folder)
+
+### 2b. Configure OpenClaw (Non-Interactive / Automation)
+
+```bash
+openclaw onboard --non-interactive --accept-risk --install-daemon
+```
+
+Note: Requires an API key env var to be pre-set (e.g., `OPENAI_API_KEY=sk-...`).
+
+### 3. Verify Gateway is Running
+
+```bash
+openclaw gateway status
+```
+
+You should see:
+```
+Service: Scheduled Task (registered)
+Listening: 127.0.0.1:18789
+Dashboard: http://127.0.0.1:18789/
+RPC probe: ok
+```
+
+### 4. Open OpenClaw Dashboard
+
+```bash
+openclaw dashboard
+```
+
+This opens the Control UI where you can:
+- Chat with the configured agent
+- Set up additional channels (Slack, Telegram, etc.)
+- Configure tools and plugins
+
+### 5. Launch Vision with OpenClaw Active
+
+With the OpenClaw gateway running in the background, start Vision normally:
+
+```bash
+cd C:\project\vision
+python live_chat_app.py
+```
+
+Vision will now:
+- Integrate with OpenClaw's tool ecosystem
+- Participate in multi-agent workflows
+- Use OpenClaw's authentication and channel routing (if configured)
+
+## Option A — First Run Checklist
 
 - [ ] Microphone is set as default recording device
 - [ ] Speakers/headphones connected (preferably headphones to avoid echo)
@@ -75,6 +163,20 @@ Or double-click **Live Chat** on desktop.
 - Check: `curl http://localhost:11434/api/tags`
 - Click ⟳ Refresh in model picker
 
-**OpenAI/GitHub not working:**
-- Enter API key in model picker → Save
-- Or set environment variable before launching
+## Option B — Troubleshooting OpenClaw
+
+**Gateway won't start:**
+```bash
+openclaw doctor                        # Full diagnostics
+openclaw gateway status --json         # JSON output for scripting
+```
+
+**Service installation issues (native Windows):**
+- On native Windows, if Scheduled Task creation is blocked, OpenClaw falls back to a Startup-folder login item
+- Check: `C:\Users\{username}\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\OpenClaw Gateway.cmd`
+
+**WSL2 + Windows combo issues:**
+- For best stability, install and run OpenClaw inside WSL2
+- See: `https://docs.openclaw.ai/platforms/windows` for WSL2 setup
+
+**Use the `/openclaw-getting-started` Copilot skill** for guided setup.

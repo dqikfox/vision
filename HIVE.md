@@ -1,44 +1,60 @@
-# HIVE MIND — Swarm Orchestration Strategy
+# HIVE MIND — Elite Copilot Optimizer Strategy
 
-> "We are many, yet we act as one."
+> "Optimizing the intelligence that builds the future."
 
-This project is now managed by a **Hive Mind** (Gemini CLI) and a specialized **Swarm** of subagents. This architecture ensures that every task—from low-level maintenance to high-level architecture analysis—is handled by an expert with a focused context and toolset.
+This project is managed by a **Hive Mind** (Gemini CLI) and an **Elite Swarm** of specialized **Copilot Optimizers**. This architecture ensures that AI-generated code is not just "functional," but secure, efficient, and idiomatic.
 
-## The Swarm
+## The Elite Optimizer Swarm
 
-| Agent | Purpose | Key Tools |
+| Agent | Purpose | Optimization Focus |
 |---|---|---|
-| **@maintenance-agent** | System health, dependencies, logs, and integrity. | `run_shell_command`, `read_file` |
-| **@debug-agent** | Root cause analysis, bug reproduction, and fixing. | `grep_search`, `replace`, `run_shell_command` |
-| **@analysis-agent** | Architecture review, performance auditing, and security. | `codebase_investigator`, `glob` |
-| **@coding-agent** | Feature implementation, refactoring, and testing. | `write_file`, `replace`, `run_shell_command` |
+| **@analysis-agent** | Context Architect. | Type Hints & Project Mapping |
+| **@coding-agent** | Completion Refiner. | Idiomatic PEP 8 & Modularity |
+| **@maintenance-agent** | Workflow Automator. | Snippets & Tool Integration |
+| **@security-agent** | Safe Auditor. | Zero-Trust AI Completions |
+| **@debug-agent** | Mistake Tracker. | Corrective Prompt Engineering |
+| **@vision-maintainer** | Operator Protocol Guardian. | WebSocket, perception, tool routing |
+| **@openclaw-operator** | Gateway Orchestrator. | Installation, daemon, SLA enforcement |
 
-## Orchestration (The Hive Mind)
+## Elite Infrastructure (Hive Tools)
 
-As the **Hive Mind**, I (Gemini CLI) coordinate these agents. You can invoke them explicitly using the `@` syntax, or I will automatically delegate tasks to them based on your requests.
+Agents leverage specialized scripts in `hive_tools/` for autonomous optimization:
+- `hive_tools/copilot_audit.py`: AST-based scan for "Context Entropy".
+- `hive_tools/style_enforcer.py`: PEP 8 & Idiom verification.
+- `hive_tools/snippet_generator.py`: Pattern-based VS Code snippets.
+- `hive_tools/context_mapper.py`: Dependency & structure mapping.
+- `hive_tools/copilot_mistakes.log`: Data-driven iterative learning.
 
-### Advanced Orchestration Patterns
+## The Mission
 
-Inspired by the [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator), we implement the following advanced patterns:
-
-1. **Workspace Isolation:**
-   - For complex, concurrent tasks, agents should ideally operate in isolated environments.
-   - **Strategy:** Utilize `git worktree` when implementing features across multiple branches to prevent file system collisions.
-
-2. **Event-Driven Reactions:**
-   - The Hive Mind monitors for external signals (e.g., test failures, CI errors, or user hints) and triggers "Reactions" from the relevant agent.
-   - **Self-Healing:** If `@coding-agent` introduces a bug detected by `@debug-agent`, the Hive Mind automatically routes the fix back to the coding agent.
-
-3. **Parallel Worker Management:**
-   - Multiple agents can be dispatched simultaneously for independent sub-tasks (e.g., `@analysis-agent` auditing security while `@maintenance-agent` updates dependencies).
-   - **Concurrency Safety:** The Hive Mind ensures that agents do not mutate the same files simultaneously unless isolated via worktrees.
-
-4. **Task Lifecycle Management:**
-   - **Planning:** The Hive Mind maps the objective and selects the best agent.
-   - **Execution:** Specialized agents perform the work and validate it.
-   - **Validation & Feedback:** All changes are verified through tests and project-specific standards. If validation fails, the task cycles back into execution.
+1. **Enhance Context:** Provide Copilot with the best possible signals through type hints, docstrings, and clean architecture.
+2. **Refine Output:** Surgical refactoring of AI suggestions for maximum efficiency and maintainability.
+3. **Ensure Safety:** Automated security gates for all AI-generated code.
+4. **Automate Friction:** Eliminate repetitive tasks through snippets and project scaffolding.
 
 ---
 
-*This swarm is designed to grow. New agents can be added to `.gemini/agents/` as the project evolves.*
+*The AI is a tool. The Swarm is the craftsman. The Hive Mind is the vision.*
 
+## Copilot Customization Layer (VS Code-Native)
+
+In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customization Layer** stored in `.github/`:
+
+### Always-On Guidance
+- **`.github/copilot-instructions.md`**: Repository-scoped instructions loaded in every Copilot chat. Covers working priorities, runtime assumptions, verification patterns, and editing rules.
+
+### On-Demand Skills (invoke with `@skill-name`)
+- **`vision-runtime-ops`**: Start, verify, and smoke-test the local Vision stack
+- **`vision-debugging`**: Root-cause analysis for voice, WebSocket, provider, OCR, tool-call failures
+- **`vision-tool-audit`**: Audit direct tool execution and NL routing behavior
+- **`mcp-recovery`**: Diagnose and restore MCP server configuration
+
+### Specialized Agents (invoke via Copilot Chat)
+- **Vision Maintainer**: Focused handler for operator runtime, WebSocket protocol, tool calling, and code changes to `live_chat_app.py`
+- **OpenClaw Operator**: Dedicated agent for OpenClaw installation, daemon setup, gateway bootstrapping, and multi-agent orchestration
+
+### How to Use
+1. Open Copilot Chat (`Ctrl+Shift+I` or `Cmd+Shift+I`)
+2. Type `/skill-name` to invoke a skill (e.g., `/vision-runtime-ops`)
+3. Ask a question about your task; Copilot will route to the appropriate skill or agent
+4. Type `@agent-name` to force a specific agent (e.g., `@Vision Maintainer` for protocol/runtime issues)
