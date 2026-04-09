@@ -2691,7 +2691,7 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
 # ── Voice loop ────────────────────────────────────────────────────────────────
 
 async def voice_loop() -> None:
-    global audio_q, speak_task, _input_busy
+    global audio_q, speak_task, _input_busy, _tts_silence_until
     audio_q = asyncio.Queue()
     loop = asyncio.get_event_loop()
     barge = 0
