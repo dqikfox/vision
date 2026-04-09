@@ -17,20 +17,28 @@ This project is now managed by a **Hive Mind** (Gemini CLI) and a specialized **
 
 As the **Hive Mind**, I (Gemini CLI) coordinate these agents. You can invoke them explicitly using the `@` syntax, or I will automatically delegate tasks to them based on your requests.
 
-### Usage Examples
+### Advanced Orchestration Patterns
 
-- **Maintenance:** `@maintenance-agent Check for outdated dependencies and verify the environment.`
-- **Debug:** `@debug-agent Analyze the logs for any recent failures in the TTS pipeline.`
-- **Analysis:** `@analysis-agent Perform a security audit of the credential management in keys.py.`
-- **Coding:** `@coding-agent Implement a new tool for taking multi-monitor screenshots.`
+Inspired by the [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator), we implement the following advanced patterns:
 
-## Command Protocol
+1. **Workspace Isolation:**
+   - For complex, concurrent tasks, agents should ideally operate in isolated environments.
+   - **Strategy:** Utilize `git worktree` when implementing features across multiple branches to prevent file system collisions.
 
-1. **Research:** The Hive Mind maps the objective and selects the best agent for the task.
-2. **Delegation:** The task is handed off to the specialized agent.
-3. **Execution:** The agent performs the work, validates it, and reports back.
-4. **Synthesis:** The Hive Mind reviews the agent's work and presents the final outcome.
+2. **Event-Driven Reactions:**
+   - The Hive Mind monitors for external signals (e.g., test failures, CI errors, or user hints) and triggers "Reactions" from the relevant agent.
+   - **Self-Healing:** If `@coding-agent` introduces a bug detected by `@debug-agent`, the Hive Mind automatically routes the fix back to the coding agent.
+
+3. **Parallel Worker Management:**
+   - Multiple agents can be dispatched simultaneously for independent sub-tasks (e.g., `@analysis-agent` auditing security while `@maintenance-agent` updates dependencies).
+   - **Concurrency Safety:** The Hive Mind ensures that agents do not mutate the same files simultaneously unless isolated via worktrees.
+
+4. **Task Lifecycle Management:**
+   - **Planning:** The Hive Mind maps the objective and selects the best agent.
+   - **Execution:** Specialized agents perform the work and validate it.
+   - **Validation & Feedback:** All changes are verified through tests and project-specific standards. If validation fails, the task cycles back into execution.
 
 ---
 
 *This swarm is designed to grow. New agents can be added to `.gemini/agents/` as the project evolves.*
+

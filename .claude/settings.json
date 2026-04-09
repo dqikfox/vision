@@ -1,4 +1,69 @@
 {
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/project/vision"],
+      "description": "Read/write files in the vision project"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GH_TOKEN}" },
+      "description": "GitHub API — issues, PRs, code search"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "description": "Fetch any URL and return content as markdown"
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "description": "Persistent knowledge graph memory across sessions"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Structured multi-step reasoning for complex problems"
+    },
+    "everything": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everything"],
+      "description": "Search, fetch, and filesystem tools combined"
+    },
+    "pdf": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-pdf"],
+      "description": "Read and extract text from PDF files"
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+      "description": "Browser automation via Puppeteer"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__read_file",
+      "mcp__filesystem__write_file",
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__search_files",
+      "mcp__github__search_repositories",
+      "mcp__github__get_file_contents",
+      "mcp__github__list_issues",
+      "mcp__github__create_issue",
+      "mcp__github__create_pull_request",
+      "mcp__fetch__fetch",
+      "mcp__memory__create_entities",
+      "mcp__memory__search_nodes",
+      "mcp__memory__add_observations",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__pdf__read_pdf"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {

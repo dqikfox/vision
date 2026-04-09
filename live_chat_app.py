@@ -1039,6 +1039,16 @@ TOOLS = [
     {"type":"function","function":{"name":"ao_status","description":"Get the current status of Agent Orchestrator — active agents, running sessions, recent events.","parameters":{"type":"object","properties":{},"required":[]}}},
     {"type":"function","function":{"name":"ao_stop","description":"Stop the Agent Orchestrator and all managed agent sessions.","parameters":{"type":"object","properties":{},"required":[]}}},
     {"type":"function","function":{"name":"ao_command","description":"Run any 'ao' CLI command directly (e.g. 'ao list', 'ao logs', 'ao kill <session>'). For advanced orchestrator control.","parameters":{"type":"object","properties":{"args":{"type":"string","description":"Arguments to pass to 'ao', e.g. 'list' or 'logs my-session'"}},"required":["args"]}}},
+    # ── Web & files
+    {"type":"function","function":{"name":"web_search","description":"Search the web using DuckDuckGo and return the top results with titles, URLs, and snippets. Use for current information, news, documentation lookups.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Max results to return, default 5"}},"required":["query"]}}},
+    {"type":"function","function":{"name":"fetch_url","description":"Fetch a URL and return its content as plain text/markdown. Use to read web pages, docs, APIs, or any HTTP resource.","parameters":{"type":"object","properties":{"url":{"type":"string","description":"URL to fetch"},"as_markdown":{"type":"boolean","description":"Convert HTML to markdown (default true)"}},"required":["url"]}}},
+    {"type":"function","function":{"name":"read_file","description":"Read the contents of a file on disk. Returns text content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path"]}}},
+    {"type":"function","function":{"name":"write_file","description":"Write or overwrite a file on disk with the given content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"content":{"type":"string","description":"Content to write"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path","content"]}}},
+    {"type":"function","function":{"name":"list_files","description":"List files and directories at a path. Returns names, sizes, and types.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Directory path, default current directory"},"pattern":{"type":"string","description":"Glob pattern filter, e.g. '*.py'"}},"required":[]}}},
+    {"type":"function","function":{"name":"clipboard_get","description":"Get the current clipboard contents as text.","parameters":{"type":"object","properties":{},"required":[]}}},
+    {"type":"function","function":{"name":"clipboard_set","description":"Set the clipboard to the given text.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to copy to clipboard"}},"required":["text"]}}},
+    {"type":"function","function":{"name":"screenshot_region","description":"Take a screenshot of a specific screen region and return it. Useful for focusing on one part of the screen.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]}}},
+    {"type":"function","function":{"name":"ocr_region","description":"OCR a specific screen region and return the text found. More accurate than full-screen OCR when targeting a specific area.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]}}},
 ]
 
 # Tool name → description map for Ollama prompt injection
@@ -1555,6 +1565,161 @@ async def exec_tool(name: str, args: dict) -> str:
             return f"Command '{cmd}' timed out"
         except Exception as e:
             return f"Error: {e}"
+
+    elif name == "web_search":
+        query = args.get("query", "")
+        max_results = int(args.get("max_results", 5))
+        import urllib.parse, httpx
+        params = {"q": query, "format": "json", "no_redirect": "1", "no_html": "1"}
+        headers = {"User-Agent": "VISION-Operator/1.0"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get("https://api.duckduckgo.com/", params=params, headers=headers)
+                data = r.json()
+            lines = []
+            # Abstract (instant answer)
+            if data.get("Abstract"):
+                lines.append(f"**{data['AbstractTitle']}**: {data['Abstract']}\n{data.get('AbstractURL','')}")
+            # Related topics
+            for item in data.get("RelatedTopics", [])[:max_results]:
+                if isinstance(item, dict) and item.get("Text"):
+                    url = item.get("FirstURL", "")
+                    lines.append(f"• {item['Text']}\n  {url}")
+            if not lines:
+                # Fallback: HTML search via DuckDuckGo lite
+                r2 = await (httpx.AsyncClient(timeout=10, follow_redirects=True)).__aenter__()
+                r2resp = await r2.get(f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query)}", headers=headers)
+                await r2.__aexit__(None, None, None)
+                from html.parser import HTMLParser
+                class _P(HTMLParser):
+                    def __init__(self): super().__init__(); self.results=[]; self._cur=""
+                    def handle_data(self, d): self._cur += d
+                    def handle_endtag(self, t):
+                        if t in ("a","td") and self._cur.strip(): self.results.append(self._cur.strip()); self._cur=""
+                p = _P(); p.feed(r2resp.text)
+                lines = [r for r in p.results if len(r) > 20][:max_results*2]
+            return "\n\n".join(lines[:max_results*2]) or f"No results found for: {query}"
+        except Exception as e:
+            return f"Search error: {e}"
+
+    elif name == "fetch_url":
+        url = args.get("url", "")
+        as_markdown = args.get("as_markdown", True)
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                r = await client.get(url, headers={"User-Agent": "VISION-Operator/1.0"})
+                r.raise_for_status()
+                content_type = r.headers.get("content-type", "")
+                text = r.text
+            if as_markdown and "html" in content_type:
+                try:
+                    import re
+                    # Strip scripts/styles
+                    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', text, flags=re.DOTALL|re.I)
+                    # Convert common tags
+                    text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'\n## \1\n', text, flags=re.DOTALL|re.I)
+                    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\n\1\n', text, flags=re.DOTALL|re.I)
+                    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
+                    text = re.sub(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r'\2 (\1)', text, flags=re.DOTALL|re.I)
+                    text = re.sub(r'<[^>]+>', '', text)
+                    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+                except Exception:
+                    pass
+            return text[:5000] + (f"\n\n[truncated — {len(text)} chars total]" if len(text) > 5000 else "")
+        except Exception as e:
+            return f"Fetch error: {e}"
+
+    elif name == "read_file":
+        fpath = args.get("path", "")
+        enc = args.get("encoding", "utf-8")
+        try:
+            from pathlib import Path
+            content = Path(fpath).read_text(encoding=enc)
+            return content[:8000] + (f"\n[truncated — {len(content)} chars]" if len(content) > 8000 else "")
+        except Exception as e:
+            return f"Error reading {fpath}: {e}"
+
+    elif name == "write_file":
+        fpath = args.get("path", "")
+        content = args.get("content", "")
+        enc = args.get("encoding", "utf-8")
+        try:
+            from pathlib import Path
+            p = Path(fpath)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding=enc)
+            return f"Written {len(content)} chars to {fpath}"
+        except Exception as e:
+            return f"Error writing {fpath}: {e}"
+
+    elif name == "list_files":
+        fpath = args.get("path", ".") or "."
+        pattern = args.get("pattern", "*")
+        try:
+            from pathlib import Path
+            import fnmatch
+            p = Path(fpath)
+            entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
+            lines = []
+            for entry in entries:
+                if fnmatch.fnmatch(entry.name, pattern):
+                    if entry.is_dir():
+                        lines.append(f"📁 {entry.name}/")
+                    else:
+                        size = entry.stat().st_size
+                        sz = f"{size}B" if size < 1024 else f"{size//1024}KB" if size < 1048576 else f"{size//1048576}MB"
+                        lines.append(f"📄 {entry.name} ({sz})")
+            return "\n".join(lines[:100]) or "(empty)"
+        except Exception as e:
+            return f"Error listing {fpath}: {e}"
+
+    elif name == "clipboard_get":
+        def _get():
+            import pyperclip
+            return pyperclip.paste()
+        text = await loop.run_in_executor(None, _get)
+        return f"Clipboard: {text[:2000]}" if text else "(clipboard empty)"
+
+    elif name == "clipboard_set":
+        text = args.get("text", "")
+        def _set():
+            import pyperclip
+            pyperclip.copy(text)
+        await loop.run_in_executor(None, _set)
+        return f"Clipboard set to: {text[:100]}{'...' if len(text)>100 else ''}"
+
+    elif name == "screenshot_region":
+        x, y = int(args.get("x", 0)), int(args.get("y", 0))
+        w, h = int(args.get("width", 400)), int(args.get("height", 300))
+        def _snap():
+            img = pyautogui.screenshot(region=(x, y, w, h))
+            buf_hq = io.BytesIO(); img.save(buf_hq, format="JPEG", quality=85)
+            b64_hq = base64.b64encode(buf_hq.getvalue()).decode()
+            buf_ui = io.BytesIO(); img.save(buf_ui, format="JPEG", quality=55)
+            b64_ui = base64.b64encode(buf_ui.getvalue()).decode()
+            return b64_hq, b64_ui, img
+        snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
+        _last_screenshot_b64  = snap_b64
+        _last_screenshot_time = asyncio.get_event_loop().time()
+        await broadcast({"type": "screenshot", "data": snap_ui_b64})
+        return f"(region screenshot {w}×{h} at ({x},{y}) captured)"
+
+    elif name == "ocr_region":
+        x, y = int(args.get("x", 0)), int(args.get("y", 0))
+        w, h = int(args.get("width", 400)), int(args.get("height", 300))
+        def _ocr_region():
+            img = pyautogui.screenshot(region=(x, y, w, h))
+            if HAS_OCR:
+                from PIL import ImageOps, ImageFilter, Image as _Image
+                g = img.convert("L")
+                g = ImageOps.autocontrast(g, cutoff=2)
+                g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
+                g = g.filter(ImageFilter.SHARPEN)
+                return pytesseract.image_to_string(g, config="--psm 6 --oem 3").strip()
+            return "(OCR not available)"
+        text = await loop.run_in_executor(None, _ocr_region)
+        return text or "(no text detected in region)"
 
     return f"Unknown tool: {name}"
 
@@ -2783,15 +2948,19 @@ def _make_tool_handler(tool_name: str):
 
 
 _EL_TOOL_NAMES = [
-    "read_screen", "screenshot", "screenshot_region", "click", "double_click", "right_click",
-    "move_mouse", "drag", "scroll", "type_text", "press_key",
-    "get_clipboard", "set_clipboard", "list_windows", "focus_window",
-    "run_command", "read_file", "write_file", "append_to_file", "list_files", "find_files",
+    "read_screen", "screenshot", "screenshot_region", "ocr_region",
+    "click", "double_click", "right_click", "move_mouse", "drag", "scroll",
+    "type_text", "press_key", "hotkey",
+    "clipboard_get", "clipboard_set", "get_clipboard", "set_clipboard",
+    "list_windows", "focus_window",
+    "run_command", "read_file", "write_file", "list_files",
+    "web_search", "fetch_url",
     "browser_open", "browser_click", "browser_fill", "browser_extract",
     "browser_screenshot", "browser_press", "browser_scroll", "browser_eval",
     "browser_get_url", "browser_wait",
-    "get_system_info", "get_screen_size", "get_mouse_position",
-    "wait", "remember", "forget", "window_resize", "window_move",
+    "get_screen_size", "get_mouse_position",
+    "wait", "remember", "recall", "forget",
+    "window_resize", "window_move",
     "ao_start", "ao_status", "ao_stop", "ao_command",
 ]
 
