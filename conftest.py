@@ -4,15 +4,16 @@ conftest.py — Pytest configuration and fixtures for Vision tests
 Shared fixtures for async tests, mocks, and integration setup.
 """
 
-import pytest
 import asyncio
 import tempfile
 from pathlib import Path
-from typing import AsyncGenerator
+
+import pytest
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Event Loop Management
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def event_loop():
@@ -21,15 +22,18 @@ def event_loop():
     yield loop
     loop.close()
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Temporary Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def tmp_project_dir() -> Path:
     """Create temporary project directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
+
 
 @pytest.fixture
 def tmp_config_file(tmp_project_dir: Path) -> Path:
@@ -38,9 +42,11 @@ def tmp_config_file(tmp_project_dir: Path) -> Path:
     config_file.write_text("{}")
     return config_file
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Mock Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_http_client():
@@ -51,8 +57,8 @@ def mock_http_client():
             self.text = text
 
         async def json(self):
-            import json
-            return json.loads(self.text)
+            import json as _json
+            return _json.loads(self.text)
 
     class MockClient:
         async def get(self, url: str, **kwargs):
@@ -62,6 +68,7 @@ def mock_http_client():
             return MockResponse()
 
     return MockClient()
+
 
 @pytest.fixture
 def mock_llm_response():
@@ -84,15 +91,15 @@ def mock_llm_response():
 
     return mock_stream()
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def caplog_with_json(caplog):
     """Capture and parse JSON logs."""
-    import json
-
     class JsonLogCapture:
         def __init__(self, caplog):
             self.caplog = caplog
@@ -109,9 +116,11 @@ def caplog_with_json(caplog):
 
     return JsonLogCapture(caplog)
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Integration Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 async def elite_metrics_clean():
@@ -119,11 +128,13 @@ async def elite_metrics_clean():
     from elite_metrics import MetricsCollector
     return MetricsCollector()
 
+
 @pytest.fixture
 async def elite_tool_executor_clean():
     """Fresh tool executor for each test."""
     from elite_tools import SafeToolExecutor, ToolCache
     return SafeToolExecutor(cache=ToolCache())
+
 
 @pytest.fixture
 def monkeypatch_env(monkeypatch):
@@ -132,9 +143,11 @@ def monkeypatch_env(monkeypatch):
         monkeypatch.setenv(key, value)
     return patch_env
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Marker-based Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def slow_test_warning(request):
@@ -142,9 +155,11 @@ def slow_test_warning(request):
     if "slow" in request.keywords:
         print("\n[SLOW TEST] This test may take several seconds")
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Performance Monitoring
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def benchmark_async():
@@ -163,9 +178,11 @@ def benchmark_async():
 
     return AsyncBenchmark()
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Cleanup & Teardown
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def cleanup_tasks():

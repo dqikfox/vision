@@ -17,8 +17,17 @@ def get_env_info():
     }
 
 def check_keys():
+    # Load .env file manually if python-dotenv isn't installed
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ[k.strip()] = v.strip()
+
     # Elite check: don't log the values, just presence
-    keys = ["OPENAI_API_KEY", "GITHUB_TOKEN", "ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
+    keys = ["OPENAI_API_KEY", "GITHUB_TOKEN", "ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY"]
     status = {}
     for key in keys:
         status[key] = "SET" if os.environ.get(key) else "MISSING"

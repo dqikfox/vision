@@ -1064,6 +1064,8 @@ TOOLS = [
     {"type":"function","function":{"name":"browser_press","description":"Press a key in the browser (e.g. Enter, Tab, Escape).","parameters":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}},
     # ── System info
     {"type":"function","function":{"name":"get_system_info","description":"Get real-time system stats: CPU, RAM, disk, GPU usage, uptime, and running processes.","parameters":{"type":"object","properties":{},"required":[]}}},
+    {"type":"function","function":{"name":"get_time","description":"Get the current date and time.","parameters":{"type":"object","properties":{"timezone":{"type":"string","description":"Optional timezone name, e.g. 'US/Eastern'. Defaults to local system time."}},"required":[]}}},
+    {"type":"function","function":{"name":"get_date","description":"Get the current date (year, month, day, weekday).","parameters":{"type":"object","properties":{},"required":[]}}},
     # ── Extended file ops
     {"type":"function","function":{"name":"append_to_file","description":"Append content to an existing file (creates it if missing).","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
     {"type":"function","function":{"name":"find_files","description":"Search for files by name pattern in a directory tree.","parameters":{"type":"object","properties":{"directory":{"type":"string","description":"Root directory to search (defaults to user home)"},"pattern":{"type":"string","description":"Filename pattern, e.g. '*.py', 'report*.txt'"}},"required":["pattern"]}}},
@@ -1178,7 +1180,16 @@ _RETRYABLE_TOOLS = {
 }
 
 async def exec_tool(name: str, args: dict) -> str:
-    """Execute a tool with automatic timing and retry on transient failure."""
+    """
+    Execute a tool with automatic timing and exponential backoff retry on transient failure.
+    
+    Args:
+        name: The unique identifier of the tool to execute.
+        args: A dictionary of arguments for the tool.
+        
+    Returns:
+        The result of the tool execution as a string, or a formatted error message.
+    """
     t0 = time.monotonic()
     last_err: Exception | None = None
     max_attempts = 3 if name in _RETRYABLE_TOOLS else 1
@@ -1191,12 +1202,27 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception as exc:
             last_err = exc
             if attempt < max_attempts - 1:
-                await asyncio.sleep(0.5 * (attempt + 1))  # exponential backoff
+                # Use exponential backoff: 0.5s, 1.0s, etc.
+                await asyncio.sleep(0.5 * (attempt + 1))
+    
     _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
-    return _tool_err(name, last_err)  # type: ignore[arg-type]
-
+    # Provide the last error back to the LLM to help it self-correct
+    return _tool_err(name, last_err) if last_err else f"{name} failed with unknown error"
 
 async def _exec_tool_impl(name: str, args: dict) -> str:
+    """
+    Core implementation of tool logic.
+    
+    Args:
+        name: The tool name.
+        args: The tool arguments.
+        
+    Returns:
+        The tool's textual output.
+        
+    Raises:
+        Exception: Any error encountered during execution.
+    """
     global _last_screenshot_b64, _last_screenshot_time, _pw_page
     loop = asyncio.get_running_loop()
 
@@ -1428,6 +1454,22 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return f"Browser pressed: {key}"
 
     # ── System info ────────────────────────────────────────────────────────────
+    elif name in ("get_time", "get_date"):
+        from datetime import datetime as _dt
+        tz_name = args.get("timezone", "")
+        try:
+            if tz_name:
+                import zoneinfo
+                tz = zoneinfo.ZoneInfo(tz_name)
+                now = _dt.now(tz)
+            else:
+                now = _dt.now()
+            if name == "get_date":
+                return now.strftime("%A, %B %d %Y")
+            return now.strftime("%A, %B %d %Y  %I:%M:%S %p") + (f" ({tz_name})" if tz_name else "")
+        except Exception as e:
+            return _dt.now().strftime("%Y-%m-%d %H:%M:%S") + f" (tz error: {e})"
+
     elif name == "get_system_info":
         lines: list[str] = []
         if HAS_PSUTIL:
@@ -2971,12 +3013,30 @@ async def _llm_stream_anthropic(user_text: str):
 _CONTEXT_TOKEN_LIMIT = 12_000   # ~48K chars before compressing
 _CONTEXT_KEEP_RECENT = 6        # keep last N message pairs (user+assistant) verbatim
 
-def _estimate_tokens(msgs: list[dict]) -> int:
-    """Rough token estimate for a message list."""
+from typing import AsyncGenerator, Any
+
+def _estimate_tokens(history_list: list[dict]) -> int:
+    """
+    Roughly estimate token count of message history for context management.
+    
+    Args:
+        history_list: List of message dictionaries.
+        
+    Returns:
+        Estimated token count.
+    """
     total = 0
-    for m in msgs:
-        c = m.get("content", "")
-        total += len(c) // 4 if isinstance(c, str) else 100
+    for m in history_list:
+        content = m.get("content", "")
+        if isinstance(content, str):
+            total += len(content) // 4
+        elif isinstance(content, list):
+            # Estimate for complex content (text + image)
+            for part in content:
+                if part.get("type") == "text":
+                    total += len(part.get("text", "")) // 4
+                elif part.get("type") == "image_url":
+                    total += 500  # constant high-detail image estimate
     return total
 
 async def _compress_history_if_needed() -> None:
@@ -3027,14 +3087,15 @@ async def _compress_history_if_needed() -> None:
         write_log("context", f"compression failed: {e}")
 
 
-async def llm_stream(user_text: str):
+async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     """
-    Route to the right LLM backend with local-first cascade:
-      ollama                       → _llm_stream_ollama (native SDK, streaming)
-                                     → auto-falls back to _llm_stream_openai on failure
-      openai + Responses API model → _llm_stream_responses_api
-      anthropic                    → _llm_stream_anthropic (native SDK)
-      all other providers          → _llm_stream_openai  (streaming Chat Completions)
+    Route to the right LLM backend with local-first cascade.
+    
+    Args:
+        user_text: The user's natural language input.
+        
+    Yields:
+        Streaming chunks of text tokens from the provider.
     """
     history.append({"role": "user", "content": user_text})
     await _compress_history_if_needed()
@@ -3430,7 +3491,7 @@ _EL_TOOL_NAMES = [
     "browser_get_url", "browser_wait",
     "browser_back", "browser_forward", "browser_refresh",
     "browser_new_tab", "browser_close_tab",
-    "get_screen_size", "get_mouse_position",
+    "get_screen_size", "get_mouse_position", "get_time", "get_date",
     "wait", "remember", "recall", "forget",
     "window_resize", "window_move",
     "ao_start", "ao_status", "ao_stop", "ao_command",

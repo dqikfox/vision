@@ -20,7 +20,7 @@ async def register_elite_endpoints(app: FastAPI):
         return JSONResponse(metrics.snapshot())
     
     @app.get("/api/elite/health")
-        async def get_health_report():
+    async def get_health_report():
         """Provider health and circuit breaker status."""
         # Will be populated when providers register their breakers
         return JSONResponse({
