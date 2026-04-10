@@ -88,6 +88,16 @@ if _ENV_FILE.exists():
 
 # ── Load API keys: env var → keyring → .env (already loaded above) ───────────
 def _load_key(name: str, env_var: str) -> str:
+    """
+    Load an API key from environment variables, system keyring, or .env file.
+
+    Args:
+        name: Human-readable name of the provider (e.g., 'openai').
+        env_var: The environment variable name (e.g., 'OPENAI_API_KEY').
+
+    Returns:
+        The API key string or an empty string if not found.
+    """
     val = os.environ.get(env_var, "")
     if val:
         return val
@@ -101,7 +111,13 @@ def _load_key(name: str, env_var: str) -> str:
     return ""
 
 def _save_key(env_var: str, value: str) -> None:
-    """Persist key to both os.environ and keyring for immediate + future use."""
+    """
+    Persist an API key to os.environ, system keyring, and the local .env file.
+
+    Args:
+        env_var: The environment variable name.
+        value: The API key value to persist.
+    """
     os.environ[env_var] = value
     try:
         import keyring
@@ -3252,9 +3268,17 @@ async def speak(text_gen):
 
             success = await _patched_eleven()
             if not success:
+                # _eleven_gen was already consuming text_gen — continue draining
+                # it rather than creating a new _broadcasting_gen() which would
+                # try to iterate text_gen from a second coroutine and crash.
                 if not collected:
-                    async for _ in _broadcasting_gen():
-                        pass
+                    async for chunk in _eleven_gen:
+                        collected.append(chunk)
+                        if chunk.strip():
+                            if not stream_started:
+                                await broadcast({"type": "stream_start"})
+                                stream_started = True
+                            await broadcast({"type": "token", "text": chunk})
                 if collected:
                     await _fallback_tts("".join(collected))
     except asyncio.CancelledError:
@@ -3528,6 +3552,7 @@ async def _prewarm_playwright():
     except Exception as e:
         print(f"[playwright] pre-warm skipped: {e}")
     webbrowser.open(f"http://localhost:{PORT}")
+
 
 if __name__ == "__main__":
     uvicorn.run("live_chat_app:app", host="0.0.0.0", port=PORT, log_level="warning")
