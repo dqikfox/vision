@@ -649,9 +649,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="hud">
   <div class="hud-item"><div class="hud-dot" id="wsHudDot"></div><span id="wsHudLbl">OFFLINE</span></div>
   <div style="width:1px;height:14px;background:rgba(29,78,216,.12)"></div>
+  <div class="hud-item">CORE <span id="activeCore">LOADING...</span></div>
   <div class="hud-item">STT <span id="hudSTT">AUTO</span></div>
   <div class="hud-item">TTS <span id="hudTTS">AUTO</span></div>
-  <div class="hud-item">SESSION <span id="hudSession">1</span></div>
 </div>
 
 <!-- ═══ COMPONENT STATUS ═══ -->
@@ -1623,6 +1623,29 @@ function launchApp(app) {
 /* ═══════════════════════════════════════
    MODEL BADGE + PICKER
 ═══════════════════════════════════════ */
+let continuousEnabled = false;
+
+function updateActiveCoreDisplay() {
+  const el = document.getElementById('activeCore');
+  if (el) el.textContent = `${currentProvider.toUpperCase()} / ${currentModel.toUpperCase()}`;
+}
+
+function toggleContinuous() {
+  continuousEnabled = !continuousEnabled;
+  send({ type: 'set_continuous', enabled: continuousEnabled });
+  toast(continuousEnabled ? 'Continuous Sync ON' : 'Continuous Sync OFF', continuousEnabled ? 'green' : 'cyan');
+}
+
+function updateContinuousUI(enabled) {
+  continuousEnabled = enabled;
+  const btn = document.getElementById('btnContinuous');
+  if (btn) {
+    btn.classList.toggle('active', enabled);
+    btn.style.color = enabled ? 'var(--g2)' : 'var(--tx2)';
+    btn.style.borderColor = enabled ? 'var(--g)' : 'rgba(29,78,216,.2)';
+  }
+}
+
 function updateModelBadge() {
   const b = document.getElementById('modelBadge');
   b.textContent = currentModel ? `⬡ ${currentProvider.toUpperCase()} / ${currentModel}` : '⬡ SELECT MODEL';
@@ -1983,6 +2006,17 @@ function toast(msg, type) {
 }
 
 /* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+updateModelBadge();
+buildKeysList();
+</script>
+</body>
+</html>
+
+
+
+════════
    INIT
 ═══════════════════════════════════════ */
 updateModelBadge();

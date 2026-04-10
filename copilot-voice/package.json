@@ -1,0 +1,56 @@
+{
+  "name": "copilot-voice-input",
+  "displayName": "Copilot Voice Input",
+  "description": "Voice input for GitHub Copilot Chat via Groq Whisper API",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:copilotVoice.toggleRecording"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "copilotVoice.toggleRecording",
+        "title": "Copilot Voice: Toggle Recording"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "copilotVoice.toggleRecording",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      }
+    ],
+    "configuration": {
+      "title": "Copilot Voice",
+      "properties": {
+        "copilotVoice.groqApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Groq API key used for Whisper transcription requests."
+        },
+        "copilotVoice.language": {
+          "type": "string",
+          "default": "en",
+          "markdownDescription": "Recognition language code (for example: en, ru)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.8.3"
+  }
+}
