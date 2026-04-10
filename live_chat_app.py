@@ -3146,10 +3146,39 @@ async def speak(text_gen):
                 yield chunk
 
         if preferred_tts == "local":
-            async for _ in _broadcasting_gen():
-                pass
-            if collected:
-                await _fallback_tts("".join(collected))
+            # Overlapped pipeline: speak sentence N while LLM generates sentence N+1.
+            # Sentence boundary = '.', '?', '!', '\n'. Buffer until boundary, then
+            # fire TTS for that sentence and immediately continue collecting next.
+            sentence_q: asyncio.Queue[str | None] = asyncio.Queue()
+
+            async def _collect_sentences():
+                """Tokenize stream into sentences, push to sentence_q."""
+                buf = ""
+                async for chunk in _broadcasting_gen():
+                    buf += chunk
+                    while True:
+                        idx = max(buf.rfind("."), buf.rfind("?"),
+                                  buf.rfind("!"), buf.rfind("\n"))
+                        if idx < 0:
+                            break
+                        sentence = buf[:idx + 1].strip()
+                        buf = buf[idx + 1:]
+                        if sentence:
+                            await sentence_q.put(sentence)
+                if buf.strip():
+                    await sentence_q.put(buf.strip())
+                await sentence_q.put(None)  # sentinel
+
+            async def _speak_sentences():
+                """Consume sentence_q and speak each in sequence."""
+                while True:
+                    sentence = await sentence_q.get()
+                    if sentence is None:
+                        break
+                    await _fallback_tts(sentence)
+
+            # Run both concurrently: collector produces, speaker consumes
+            await asyncio.gather(_collect_sentences(), _speak_sentences())
         else:
             _eleven_gen = _broadcasting_gen()
             async def _patched_eleven() -> bool:
