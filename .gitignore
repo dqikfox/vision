@@ -33,3 +33,10 @@ Thumbs.db
 # IDE
 .vscode/settings.json
 *.lock
+
+# Playwright persistent browser profile
+.pw_profile/
+
+# VISION runtime artifacts
+vision_launch.log
+vision_error.log

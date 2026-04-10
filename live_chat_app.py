@@ -15,11 +15,9 @@ import json
 import os
 import re
 import shutil
-import sys
 import tempfile
 import time
 import threading
-import urllib.parse
 import warnings
 import webbrowser
 from datetime import datetime
@@ -39,7 +37,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import openai
 from openai import AsyncOpenAI
-import ollama as _ollama_sdk
 from ollama import AsyncClient as OllamaAsyncClient, ResponseError as OllamaResponseError, Options as OllamaOptions
 from elevenlabs.client import ElevenLabs
 try:
@@ -327,6 +324,8 @@ VISUAL TASKS (games, UI automation, anything requiring sight):
 • Loop: read_screen → plan → act → wait → read_screen → verify → continue until done.
 • screenshot_region(x,y,w,h) to zoom in on game boards, dialogs, text fields.
 • color_at(x,y) to check pixel state (button active/inactive, card color).
+• wait_for_text("OK", timeout=10) → block until text appears on screen. Use after opening apps, dialogs, installers.
+• wait_for_pixel(x,y, change_from="#rrggbb") → block until pixel changes color. Use to detect loading complete.
 • find_on_screen(template) to locate UI elements by image matching.
 • get_screen_size() first if you need to know exact screen dimensions.
 
@@ -842,9 +841,12 @@ async def add_transcript(role: str, text: str) -> None:
 async def broadcast_volume(lvl: float) -> None:
     await broadcast({"type": "volume", "level": round(min(lvl, 1.0), 3)})
 
-async def broadcast_action(action: str, params: dict, result: str) -> None:
-    write_log("action", f"{action} → {result[:80]}")
-    await broadcast({"type": "action", "action": action, "params": params, "result": result})
+async def broadcast_action(action: str, params: dict, result: str, elapsed_ms: float | None = None) -> None:
+    write_log("action", f"{action} ({elapsed_ms:.0f}ms) → {result[:80]}" if elapsed_ms else f"{action} → {result[:80]}")
+    msg: dict = {"type": "action", "action": action, "params": params, "result": result}
+    if elapsed_ms is not None:
+        msg["elapsed_ms"] = round(elapsed_ms, 1)
+    await broadcast(msg)
 
 # ── VAD ───────────────────────────────────────────────────────────────────────
 
@@ -989,17 +991,25 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 # Playwright browser singleton
 _pw_browser = None
 _pw_page    = None
+_PW_PROFILE = str(BASE / ".pw_profile")  # persistent user data dir (cookies, logins, etc.)
 
 async def get_browser_page():
-    """Lazy-init a persistent Playwright Chromium browser page."""
+    """Lazy-init a persistent Playwright Chromium browser with saved profile."""
     global _pw_browser, _pw_page
     try:
         from playwright.async_api import async_playwright
         if _pw_browser is None:
             _pw = await async_playwright().start()
-            _pw_browser = await _pw.chromium.launch(headless=False, args=["--start-maximized"])
+            os.makedirs(_PW_PROFILE, exist_ok=True)
+            _pw_browser = await _pw.chromium.launch_persistent_context(
+                _PW_PROFILE,
+                headless=False,
+                args=["--start-maximized"],
+                no_viewport=True,
+            )
         if _pw_page is None or _pw_page.is_closed():
-            _pw_page = await _pw_browser.new_page()
+            pages = _pw_browser.pages
+            _pw_page = pages[0] if pages else await _pw_browser.new_page()
         return _pw_page
     except Exception as e:
         print(f"[playwright] {e}")
@@ -1090,6 +1100,9 @@ TOOLS = [
     {"type":"function","function":{"name":"browser_refresh","description":"Refresh/reload the current browser page.","parameters":{"type":"object","properties":{},"required":[]}}},
     {"type":"function","function":{"name":"browser_new_tab","description":"Open a new browser tab, optionally navigating to a URL.","parameters":{"type":"object","properties":{"url":{"type":"string","description":"URL to open in the new tab (optional)"}},"required":[]}}},
     {"type":"function","function":{"name":"browser_close_tab","description":"Close the current browser tab.","parameters":{"type":"object","properties":{},"required":[]}}},
+    # ── Wait / polling tools
+    {"type":"function","function":{"name":"wait_for_text","description":"Poll the screen using OCR until specified text appears (or timeout). Use before clicking UI elements that appear asynchronously — e.g. after opening an app, before a game board loads, after a button click triggers a dialog. Returns the (x,y) center of the text when found.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to wait for on screen (case-insensitive partial match)"},"timeout":{"type":"number","description":"Max seconds to wait, default 15"},"region":{"type":"object","description":"Optional screen region {x,y,width,height} to restrict search","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}},"required":["text"]}}},
+    {"type":"function","function":{"name":"wait_for_pixel","description":"Wait until a screen pixel matches (or changes from) an expected color. Use to detect loading spinners disappearing, buttons becoming active, or any pixel-level state change.","parameters":{"type":"object","properties":{"x":{"type":"integer","description":"Pixel X coordinate"},"y":{"type":"integer","description":"Pixel Y coordinate"},"color":{"type":"string","description":"Expected hex color to wait FOR, e.g. '#00ff00'. Or use change_from to wait for any change."},"change_from":{"type":"string","description":"Current hex color — wait until pixel is no longer this color"},"timeout":{"type":"number","description":"Max seconds, default 10"}},"required":["x","y"]}}},
 ]
 
 # Tool name → description map for Ollama prompt injection
@@ -1100,6 +1113,7 @@ TOOL_DESCRIPTIONS = "\n".join(
 
 _last_screenshot_b64: str | None = None   # shared between exec_tool and LLM streams
 _last_screenshot_time: float = 0.0
+_tool_last_elapsed_ms: dict[str, float] = {}  # tool_name → last elapsed ms (set by exec_tool)
 
 # ── Vision capability detection ───────────────────────────────────────────────
 
@@ -1138,7 +1152,35 @@ def _tool_err(action: str, e: Exception) -> str:
     return f"{action} error: {e}"
 
 
+# Tools that are safe to automatically retry on transient failure
+_RETRYABLE_TOOLS = {
+    "read_screen", "screenshot", "ocr_region", "find_on_screen",
+    "browser_open", "browser_click", "browser_fill", "browser_extract",
+    "browser_screenshot", "browser_wait",
+    "web_search", "fetch_url",
+    "click", "double_click", "right_click",
+}
+
 async def exec_tool(name: str, args: dict) -> str:
+    """Execute a tool with automatic timing and retry on transient failure."""
+    t0 = time.monotonic()
+    last_err: Exception | None = None
+    max_attempts = 3 if name in _RETRYABLE_TOOLS else 1
+    for attempt in range(max_attempts):
+        try:
+            result = await _exec_tool_impl(name, args)
+            # Store timing so broadcast_action callers can retrieve it
+            _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
+            return result
+        except Exception as exc:
+            last_err = exc
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))  # exponential backoff
+    _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
+    return _tool_err(name, last_err)  # type: ignore[arg-type]
+
+
+async def _exec_tool_impl(name: str, args: dict) -> str:
     global _last_screenshot_b64, _last_screenshot_time, _pw_page
     loop = asyncio.get_running_loop()
 
@@ -1311,38 +1353,7 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception as e:
             return f"Error: {e}"
 
-    # ── File system ────────────────────────────────────────────────────────────
-    elif name == "read_file":
-        path = args.get("path", "")
-        try:
-            content = Path(path).read_text(encoding="utf-8", errors="replace")
-            return content[:3000] if content else "(empty file)"
-        except Exception as e:
-            return f"Error reading file: {e}"
-    elif name == "write_file":
-        path, content = args.get("path", ""), args.get("content", "")
-        try:
-            Path(path).write_text(content, encoding="utf-8")
-            return f"Written {len(content)} chars to {path}"
-        except Exception as e:
-            return f"Error writing file: {e}"
-    elif name == "list_files":
-        raw = args.get("path", "")
-        if not raw:
-            # Resolve real Desktop path (works with OneDrive-redirected desktops)
-            try:
-                import winreg
-                _k = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
-                raw, _ = winreg.QueryValueEx(_k, "Desktop")
-            except Exception:
-                raw = str(Path.home() / "Desktop")
-        try:
-            items = list(Path(raw).iterdir())
-            lines = [f"{'[DIR] ' if i.is_dir() else '      '}{i.name}" for i in sorted(items)[:50]]
-            return "\n".join(lines) if lines else "(empty directory)"
-        except Exception as e:
-            return f"Error: {e}"
+    # ── File system (handled later with full encoding/pattern support) ────────
 
     # ── Browser (Playwright) ───────────────────────────────────────────────────
     elif name == "browser_open":
@@ -1714,22 +1725,7 @@ async def exec_tool(name: str, args: dict) -> str:
             return f"Error listing {fpath}: {e}"
 
     # (clipboard_get/clipboard_set handlers removed - use get_clipboard/set_clipboard instead)
-
-    elif name == "screenshot_region":
-        x, y = int(args.get("x", 0)), int(args.get("y", 0))
-        w, h = int(args.get("width", 400)), int(args.get("height", 300))
-        def _snap():
-            img = pyautogui.screenshot(region=(x, y, w, h))
-            buf_hq = io.BytesIO(); img.save(buf_hq, format="JPEG", quality=85)
-            b64_hq = base64.b64encode(buf_hq.getvalue()).decode()
-            buf_ui = io.BytesIO(); img.save(buf_ui, format="JPEG", quality=55)
-            b64_ui = base64.b64encode(buf_ui.getvalue()).decode()
-            return b64_hq, b64_ui, img
-        snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
-        _last_screenshot_b64  = snap_b64
-        _last_screenshot_time = asyncio.get_running_loop().time()
-        await broadcast({"type": "screenshot", "data": snap_ui_b64})
-        return f"(region screenshot {w}×{h} at ({x},{y}) captured)"
+    # (screenshot_region duplicate removed - handled earlier with OCR support)
 
     elif name == "ocr_region":
         x, y = int(args.get("x", 0)), int(args.get("y", 0))
@@ -2017,6 +2013,70 @@ async def exec_tool(name: str, args: dict) -> str:
         except Exception as e:
             return f"Error: {e}"
 
+    # ── Polling / wait tools ───────────────────────────────────────────────────
+    elif name == "wait_for_text":
+        target = args.get("text", "").lower()
+        timeout = float(args.get("timeout", 15))
+        region = args.get("region")
+        if not target:
+            return "Error: 'text' argument required"
+        if not HAS_OCR:
+            return "Error: pytesseract not installed"
+        deadline = time.monotonic() + timeout
+        interval = 0.5
+        while time.monotonic() < deadline:
+            def _ocr_poll(r=region):
+                try:
+                    if r:
+                        img = pyautogui.screenshot(region=(r["x"], r["y"], r["width"], r["height"]))
+                        offset_x, offset_y = r["x"], r["y"]
+                    else:
+                        img = pyautogui.screenshot()
+                        offset_x, offset_y = 0, 0
+                    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+                    for i, word in enumerate(data["text"]):
+                        if target in word.lower():
+                            x = offset_x + data["left"][i] + data["width"][i] // 2
+                            y = offset_y + data["top"][i] + data["height"][i] // 2
+                            return (x, y, word)
+                    return None
+                except Exception:
+                    return None
+            found = await loop.run_in_executor(None, _ocr_poll)
+            if found:
+                return f"Found '{found[2]}' at ({found[0]}, {found[1]})"
+            await asyncio.sleep(interval)
+        return f"Timeout: '{target}' not found on screen after {timeout}s"
+
+    elif name == "wait_for_pixel":
+        x, y = int(args.get("x", 0)), int(args.get("y", 0))
+        target_hex = (args.get("color", "") or "").lstrip("#").lower()
+        change_from_hex = (args.get("change_from", "") or "").lstrip("#").lower()
+        timeout = float(args.get("timeout", 10))
+        if not target_hex and not change_from_hex:
+            return "Error: provide 'color' or 'change_from'"
+
+        def _hex_to_rgb(h: str):
+            try:
+                return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+            except Exception:
+                return None
+
+        target_rgb = _hex_to_rgb(target_hex) if target_hex else None
+        initial_rgb = _hex_to_rgb(change_from_hex) if change_from_hex else None
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            def _pixel():
+                img = pyautogui.screenshot(region=(x, y, 1, 1))
+                return img.getpixel((0, 0))[:3]
+            rgb = await loop.run_in_executor(None, _pixel)
+            if target_rgb and rgb == target_rgb:
+                return f"Pixel ({x},{y}) matched #{target_hex} after {timeout - (deadline - time.monotonic()):.1f}s"
+            if initial_rgb and rgb != initial_rgb:
+                return f"Pixel ({x},{y}) changed from #{change_from_hex} to #{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+            await asyncio.sleep(0.2)
+        return f"Timeout: pixel ({x},{y}) did not change after {timeout}s"
+
     return f"Unknown tool: {name}"
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
@@ -2165,7 +2225,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             for tname, targs in tool_calls:
                 await set_state("thinking")
                 result = await exec_tool(tname, targs)
-                await broadcast_action(tname, targs, result)
+                await broadcast_action(tname, targs, result, _tool_last_elapsed_ms.get(tname))
                 action_summary.append(f"{tname}: {result[:80]}")
                 tool_results.append(f"[{tname}] → {result}")
             messages.append({"role": "user", "content": "Tool results:\n" + "\n".join(tool_results) + "\n\nNow give a brief spoken reply summarizing what you did."})
@@ -2890,6 +2950,67 @@ async def _llm_stream_anthropic(user_text: str):
     write_log("llm/anthropic", full[:150])
 
 
+# ── Context compression ───────────────────────────────────────────────────────
+# Rough token estimate: ~4 chars per token. Compress when history exceeds limit.
+_CONTEXT_TOKEN_LIMIT = 12_000   # ~48K chars before compressing
+_CONTEXT_KEEP_RECENT = 6        # keep last N message pairs (user+assistant) verbatim
+
+def _estimate_tokens(msgs: list[dict]) -> int:
+    """Rough token estimate for a message list."""
+    total = 0
+    for m in msgs:
+        c = m.get("content", "")
+        total += len(c) // 4 if isinstance(c, str) else 100
+    return total
+
+async def _compress_history_if_needed() -> None:
+    """Summarise old history turns when the context grows too large."""
+    global history
+    if _estimate_tokens(history) < _CONTEXT_TOKEN_LIMIT:
+        return
+    # Separate system-like messages from conversation turns
+    # Keep the last N user+assistant exchanges verbatim; summarise the rest
+    keep_n = _CONTEXT_KEEP_RECENT * 2  # each pair = 2 messages
+    if len(history) <= keep_n + 2:
+        return  # not enough history to compress
+    old_msgs = history[:-keep_n]
+    recent_msgs = history[-keep_n:]
+    # Build a summary via the current LLM (non-streaming, one-shot)
+    summary_prompt = (
+        "Summarize the following conversation history in 3-5 concise bullet points, "
+        "focusing on tasks completed, key facts learned, and important context. "
+        "Be brief — this will be prepended to the next prompt.\n\n"
+        + "\n".join(
+            f"{m['role'].upper()}: {m['content'][:300]}"
+            for m in old_msgs
+            if isinstance(m.get("content"), str)
+        )
+    )
+    try:
+        api_key = _load_key("openai", "OPENAI_API_KEY")
+        if api_key:
+            client = AsyncOpenAI(api_key=api_key)
+            resp = await client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=300,
+            )
+            summary_text = resp.choices[0].message.content or ""
+        else:
+            # Fallback: extract key lines from old messages
+            lines = []
+            for m in old_msgs:
+                if isinstance(m.get("content"), str) and m["role"] in ("user", "assistant"):
+                    lines.append(f"• [{m['role']}] {m['content'][:100]}")
+            summary_text = "\n".join(lines[:10])
+        compressed = [{"role": "system", "content": f"[Conversation summary]\n{summary_text}"}]
+        history = compressed + list(recent_msgs)
+        write_log("context", f"compressed {len(old_msgs)} msgs → summary ({len(summary_text)} chars)")
+        await broadcast({"type": "state", "state": "context_compressed"})
+    except Exception as e:
+        write_log("context", f"compression failed: {e}")
+
+
 async def llm_stream(user_text: str):
     """
     Route to the right LLM backend with local-first cascade:
@@ -2900,6 +3021,7 @@ async def llm_stream(user_text: str):
       all other providers          → _llm_stream_openai  (streaming Chat Completions)
     """
     history.append({"role": "user", "content": user_text})
+    await _compress_history_if_needed()
 
     if _use_responses_api():
         async for chunk in _llm_stream_responses_api(user_text):
@@ -3264,6 +3386,8 @@ _EL_TOOL_NAMES = [
     "list_processes", "kill_process",
     "download_file", "move_file", "delete_file", "copy_file", "open_file",
     "search_file_content", "color_at", "get_active_window", "speak",
+    # Polling / wait
+    "wait_for_text", "wait_for_pixel",
 ]
 
 
