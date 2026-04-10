@@ -786,6 +786,11 @@ async def ws_ep(websocket: WebSocket):
                 write_log("mute", str(muted))
                 if muted and speak_task and not speak_task.done():
                     speak_task.cancel()
+            elif t == "set_continuous":
+                global continuous_listening
+                continuous_listening = bool(msg.get("enabled", False))
+                write_log("continuous", str(continuous_listening))
+                await broadcast({"type": "continuous_state", "enabled": continuous_listening})
             elif t == "set_mode":
                 mode = msg.get("mode", "chat")
                 history.clear()
@@ -868,8 +873,14 @@ async def broadcast(msg: dict) -> None:
     clients.difference_update(dead)
 
 async def set_state(s: str) -> None:
+    """Broadcast state + current active provider/model for UI indicators."""
     write_log("state", s)
-    await broadcast({"type": "state", "state": s})
+    await broadcast({
+        "type": "state", 
+        "state": s,
+        "provider": current_provider,
+        "model": current_model
+    })
 
 async def add_transcript(role: str, text: str) -> None:
     await broadcast({"type": "transcript", "role": role, "text": text})
@@ -3149,53 +3160,88 @@ async def _compress_history_if_needed() -> None:
         write_log("context", f"compression failed: {e}")
 
 
+async def _always_learn_step(user_text: str, assistant_text: str) -> None:
+    """
+    Elite 'Always Learning' mechanism. 
+    Analyses the interaction to extract new facts or user preferences.
+    """
+    if not user_text or not assistant_text:
+        return
+
+    prompt = (
+        "As an elite memory-architect, extract any new permanent facts about the user "
+        "or their environment from this exchange. Format as single-sentence facts. "
+        "If nothing new is learned, return 'NONE'.\n\n"
+        f"USER: {user_text}\n"
+        f"ASSISTANT: {assistant_text}"
+    )
+    try:
+        api_key = _load_key("openai", "OPENAI_API_KEY")
+        if not api_key: return
+        client = AsyncOpenAI(api_key=api_key)
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini", # Use a fast model for learning
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+        )
+        fact = resp.choices[0].message.content or "NONE"
+        if "NONE" not in fact.upper():
+            for f in fact.split("\n"):
+                f = f.strip("•- ").strip()
+                if f:
+                    memory.add_fact(f)
+            await broadcast({"type": "memory_updated", "memory": memory.get_all()})
+            write_log("memory", f"Learned: {fact[:100]}")
+    except Exception as e:
+        write_log("memory_err", str(e))
+
 async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     """
     Route to the right LLM backend with local-first cascade.
-    
-    Args:
-        user_text: The user's natural language input.
-        
-    Yields:
-        Streaming chunks of text tokens from the provider.
+    Always learning: triggers a memory update after the stream completes.
     """
     history.append({"role": "user", "content": user_text})
     await _compress_history_if_needed()
 
+    full_response = []
+
+    async def _handle_and_learn(generator):
+        async for chunk in generator:
+            full_response.append(chunk)
+            yield chunk
+        # Trigger learning in background
+        asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+
     if _use_responses_api():
-        async for chunk in _llm_stream_responses_api(user_text):
+        async for chunk in _handle_and_learn(_llm_stream_responses_api(user_text)):
             yield chunk
         return
 
     if current_provider == "anthropic":
-        async for chunk in _llm_stream_anthropic(user_text):
+        async for chunk in _handle_and_learn(_llm_stream_anthropic(user_text)):
             yield chunk
         return
 
     if current_provider == "ollama":
-        # Local-first cascade: run Ollama, fall back to OpenAI if it errors.
-        # Collect output; if the only thing emitted is an error prefix, escalate.
         collected_chunks: list[str] = []
         errored = False
         async for chunk in _llm_stream_ollama(user_text):
             collected_chunks.append(chunk)
-            # Ollama yields "Ollama error: …" or "Error: …" on failure
-            if len(collected_chunks) == 1 and (
-                chunk.startswith("Ollama error:") or chunk.startswith("Error:")
-            ):
-                errored = True
-                break
+            if len(collected_chunks) == 1 and (chunk.startswith("Ollama error:") or chunk.startswith("Error:")):
+                errored = True; break
             yield chunk
+            full_response.append(chunk)
 
         if errored and PROVIDERS["openai"].get("api_key"):
-            print(f"[llm] Ollama failed ({collected_chunks[0].strip()}) — cascading to OpenAI")
-            async for chunk in _llm_stream_openai(user_text):
+            print(f"[llm] Ollama failed — cascading to OpenAI")
+            async for chunk in _handle_and_learn(_llm_stream_openai(user_text)):
                 yield chunk
+        else:
+            asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
         return
 
-    async for chunk in _llm_stream_openai(user_text):
+    async for chunk in _handle_and_learn(_llm_stream_openai(user_text)):
         yield chunk
-
 
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
@@ -3413,7 +3459,7 @@ async def speak(text_gen):
         await broadcast({"type": "stream_finalize", "text": full_text})
         await add_transcript("assistant", full_text)
 
-    speak.last_duration = _time.monotonic() - tts_start
+    speak.last_duration = time.monotonic() - tts_start
 
 # ── Input handler ─────────────────────────────────────────────────────────────
 
