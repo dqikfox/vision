@@ -1136,7 +1136,12 @@ _tool_last_elapsed_ms: dict[str, float] = {}  # tool_name → last elapsed ms (s
 # ── Vision capability detection ───────────────────────────────────────────────
 
 _VISION_PROVIDERS = {"openai", "github", "anthropic", "gemini", "groq"}
-_OLLAMA_VISION_KEYWORDS = ("llava", "bakllava", "moondream", "minicpm", "vision", "llama3.2-vision")
+_OLLAMA_VISION_KEYWORDS = (
+    "llava", "bakllava", "moondream", "minicpm", "vision",
+    "llama3.2-vision", "qwen2.5vl", "qwen3-vl", "qwen2-vl",
+    "minicpm-v", "cogvlm", "phi3-vision", "phi-3-vision",
+    "internvl", "pixtral", "gemma3",  # gemma3 supports vision
+)
 
 def _model_supports_vision() -> bool:
     """True if the current provider/model can process screenshot images."""
@@ -2600,8 +2605,11 @@ async def _llm_stream_ollama(user_text: str):
 
     msgs: list[dict] = [{"role": "system", "content": system}, *history[-20:]]
     tools_to_use = TOOLS if mode == "operator" else []
+    _MAX_STEPS = 20
+    _last_tool_sig: str = ""   # detect repeated identical tool calls (infinite loop guard)
+    _repeat_count: int  = 0
 
-    for _round in range(40):
+    for _round in range(_MAX_STEPS):
         tool_calls_pending: list = []
         chunk_text = ""
         try:
@@ -2673,16 +2681,18 @@ async def _llm_stream_ollama(user_text: str):
                     result = await exec_tool(tool_name, args)
                     await broadcast_action(tool_name, args, result)
                     actions_taken.append(f"{tool_name}: {result[:60]}")
-                    # Inject screenshot image for Ollama vision models
-                    if tool_name in ("read_screen", "screenshot", "screenshot_region") and _last_screenshot_b64 and _model_supports_vision():
-                        b64 = _last_screenshot_b64
-                        msgs.append({"role": "tool", "content": result,
-                                     "images": [b64]})
-                        _last_screenshot_b64 = None
-                    else:
-                        msgs.append({"role": "tool", "content": result})
-                msgs.append({"role": "user",
-                             "content": "Tool done. One short sentence summary."})
+                    msgs.append({"role": "tool", "content": result})
+                # After all tool results, inject screenshot image in user follow-up
+                # (Ollama vision API: images go in user messages, not tool messages)
+                if _last_screenshot_b64 and _model_supports_vision():
+                    b64 = _last_screenshot_b64
+                    _last_screenshot_b64 = None
+                    msgs.append({"role": "user",
+                                 "content": "Here is the screenshot. What do you see?",
+                                 "images": [b64]})
+                else:
+                    msgs.append({"role": "user",
+                                 "content": "Tool done. One short sentence summary."})
                 continue  # go to next round for follow-up
 
         # In operator mode with no tool calls, flush buffered text now
@@ -2698,6 +2708,21 @@ async def _llm_stream_ollama(user_text: str):
         # Execute tool calls
         msgs.append({"role": "assistant", "content": chunk_text,
                      "tool_calls": tool_calls_pending})
+        # Detect repeated identical tool call (infinite-loop guard)
+        _sig = json.dumps(
+            [{"n": tc.function.name, "a": tc.function.arguments} for tc in tool_calls_pending],
+            sort_keys=True,
+        )
+        if _sig == _last_tool_sig:
+            _repeat_count += 1
+        else:
+            _repeat_count = 0
+        _last_tool_sig = _sig
+        if _repeat_count >= 2:
+            msgs.append({"role": "user",
+                         "content": "You've called the same tool repeatedly with no progress. "
+                                    "Stop and give a brief spoken summary of what you achieved."})
+            break
         for tc in tool_calls_pending:
             name = tc.function.name
             args = tc.function.arguments if isinstance(tc.function.arguments, dict) \
@@ -2706,14 +2731,17 @@ async def _llm_stream_ollama(user_text: str):
             result = await exec_tool(name, args)
             await broadcast_action(name, args, result)
             actions_taken.append(f"{name}: {result[:60]}")
-            if name in ("read_screen", "screenshot", "screenshot_region") and _last_screenshot_b64 and _model_supports_vision():
-                b64 = _last_screenshot_b64
-                msgs.append({"role": "tool", "content": result, "images": [b64]})
-                _last_screenshot_b64 = None
-            else:
-                msgs.append({"role": "tool", "content": result})
-        msgs.append({"role": "user",
-                     "content": "Tools executed. Give a brief spoken summary."})
+            msgs.append({"role": "tool", "content": result})
+        # Inject screenshot in follow-up user turn (correct Ollama vision format)
+        if _last_screenshot_b64 and _model_supports_vision():
+            b64 = _last_screenshot_b64
+            _last_screenshot_b64 = None
+            msgs.append({"role": "user",
+                         "content": "Here is the screenshot. Analyse it and respond.",
+                         "images": [b64]})
+        else:
+            msgs.append({"role": "user",
+                         "content": "Tools executed. Give a brief spoken summary."})
 
     if full.strip():
         history.append({"role": "assistant", "content": full.strip()})
@@ -2736,8 +2764,10 @@ async def _llm_stream_openai(user_text: str):
     full   = ""
     actions_taken: list[str] = []
 
-    MAX_TOOL_ROUNDS = 40
+    MAX_TOOL_ROUNDS = 20
     tool_rounds     = 0
+    _last_tool_sig_oai: str = ""
+    _repeat_count_oai: int  = 0
 
     while True:
         force_text = tool_rounds >= MAX_TOOL_ROUNDS
@@ -2814,6 +2844,18 @@ async def _llm_stream_openai(user_text: str):
         if finish_reason == "tool_calls" and not force_text:
             tool_rounds += 1
             tcs = list(tool_calls_acc.values())
+            # Repeated-tool infinite-loop guard
+            _sig_oai = json.dumps([{"n": tc["name"], "a": tc["arguments"]} for tc in tcs], sort_keys=True)
+            if _sig_oai == _last_tool_sig_oai:
+                _repeat_count_oai += 1
+            else:
+                _repeat_count_oai = 0
+            _last_tool_sig_oai = _sig_oai
+            if _repeat_count_oai >= 2:
+                history.append({"role": "user",
+                                 "content": "You've called the same tool repeatedly with no progress. "
+                                            "Stop and give a brief spoken summary."})
+                continue
             history.append({
                 "role": "assistant", "content": None,
                 "tool_calls": [
