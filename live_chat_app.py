@@ -150,6 +150,7 @@ START_FRAMES = 3     # 3 loud frames (~90ms) before recording starts — faster 
 END_FRAMES   = 20    # ~600ms silence → stop recording (was 33 = ~1s)
 BARGE_RMS    = 1100
 BARGE_FRAMES = 4
+WAKE_PHRASES = ["hey vision", "ok vision", "vision wake", "hey computer"]
 
 # ── Provider registry ─────────────────────────────────────────────────────────
 PROVIDERS = {
@@ -226,6 +227,7 @@ mode:       str                  = "operator"
 speak_task: asyncio.Task | None  = None
 _tts_silence_until: float        = 0.0   # ignore VAD input until this timestamp
 _input_busy: bool                = False  # True while handle_input is running (gate voice loop)
+wake_word_active: bool           = False  # True = wake-word mode; requires trigger phrase
 
 # ── Voice provider preferences (user-configurable at runtime) ─────────────────
 preferred_stt: str = "auto"   # "auto" | "elevenlabs" | "groq" | "local"
@@ -705,10 +707,17 @@ async def api_el_agent_stop():
     asyncio.create_task(_stop_el_agent())
     return JSONResponse({"ok": True})
 
+@app.post("/api/wake-word")
+async def api_wake_word(body: dict):
+    global wake_word_active
+    wake_word_active = bool(body.get("enabled", False))
+    return JSONResponse({"ok": True, "enabled": wake_word_active})
+
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
     global muted, mode, speak_task, current_provider, current_model
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
+    global wake_word_active
     await websocket.accept()
     clients.add(websocket)
     write_log("ws", "connected")
@@ -719,6 +728,7 @@ async def ws_ep(websocket: WebSocket):
         "model":    current_model,
         "mode":     mode,
         "memory":   memory.get_all(),
+        "wake_word": wake_word_active,
         "voice": {
             "preferred_stt": preferred_stt,
             "preferred_tts": preferred_tts,
@@ -833,6 +843,16 @@ async def ws_ep(websocket: WebSocket):
                 asyncio.create_task(_start_el_agent())
             elif t == "el_agent_stop":
                 asyncio.create_task(_stop_el_agent())
+            elif t == "set_wake_word":
+                wake_word_active = bool(msg.get("enabled", False))
+                write_log("wake_word", str(wake_word_active))
+                await broadcast({"type": "wake_word_state", "enabled": wake_word_active})
+                if wake_word_active:
+                    await broadcast({"type": "transcript", "role": "system",
+                                     "text": f"🔒 Wake-word mode ON — say one of: {', '.join(WAKE_PHRASES)}"})
+                else:
+                    await broadcast({"type": "transcript", "role": "system",
+                                     "text": "🔓 Wake-word mode OFF — always listening"})
     except WebSocketDisconnect:
         clients.discard(websocket)
 
@@ -3482,6 +3502,32 @@ async def voice_loop() -> None:
                     if not text or len(text) < 3:
                         await set_state("listening"); vad.reset(); continue
                     print(f"[operator] 🎙 {text}")
+                    # ── Wake-word gate ──────────────────────────────────────
+                    if wake_word_active:
+                        txt_lo = text.lower().strip()
+                        matched = any(p in txt_lo for p in WAKE_PHRASES)
+                        if matched:
+                            # Strip the wake phrase so it isn't sent to the LLM
+                            for p in WAKE_PHRASES:
+                                txt_lo = txt_lo.replace(p, "").strip()
+                            text = txt_lo or ""
+                            winsound.Beep(1000, 80)
+                            await broadcast({"type": "transcript", "role": "system",
+                                             "text": "🔓 Wake word detected"})
+                            if not text:
+                                # Just a bare wake phrase — acknowledge and wait
+                                gen_wake = (w for w in ["Yes?"])
+                                async def _ack():
+                                    for w in ["Yes? "]:
+                                        yield w
+                                await set_state("speaking")
+                                speak_task = asyncio.create_task(speak(_ack()))
+                                await speak_task
+                                vad.reset(); continue
+                        else:
+                            # Not a wake phrase — silently discard
+                            await set_state("listening"); vad.reset(); continue
+                    # ── Normal processing ────────────────────────────────────
                     await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
                     await add_transcript("user", text)
                     memory.add_task(text)

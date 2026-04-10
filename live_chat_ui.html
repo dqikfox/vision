@@ -941,6 +941,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
+  <div class="corner-label-group">
+    <button class="corner-btn" id="wakeBtn" onclick="toggleWakeWord()" title="Toggle wake-word mode">🔒</button>
+    <div class="corner-btn-lbl" id="wakeLbl">WAKE</div>
+  </div>
 </div>
 
 <!-- ═══ ELEVENLABS WIDGET (standalone — kept for fallback; main widget in AGENT tab) ═══ -->
@@ -977,6 +981,7 @@ const WS_URL  = 'ws://localhost:8765/ws';
 
 let ws, wsRetry = 0, wsTimer;
 let state = 'idle', muted = false, currentMode = 'chat';
+let wakeWordEnabled = false;
 let currentProvider = '', currentModel = '';
 let voiceSettings = { preferred_stt:'auto', preferred_tts:'auto', tts_rate:175, tts_voice_idx:0 };
 let typingEl = null;
@@ -1256,8 +1261,21 @@ function handleMsg(msg) {
       updateModelBadge();
       if (msg.memory) renderMemory(msg.memory);
       if (msg.voice)  applyVoiceSettings(msg.voice);
+      if (msg.wake_word !== undefined) {
+        wakeWordEnabled = !!msg.wake_word;
+        const wBtn = document.getElementById('wakeBtn');
+        const wLbl = document.getElementById('wakeLbl');
+        if (wBtn) { wBtn.textContent = wakeWordEnabled ? '🔒' : '🔓'; wBtn.style.color = wakeWordEnabled ? 'var(--gold)' : 'var(--tx2)'; }
+        if (wLbl) wLbl.textContent = wakeWordEnabled ? 'WAKE ON' : 'WAKE';
+      }
       document.getElementById('hudSession').textContent = msg.memory?.session_count || 1;
       buildKeysList();
+      break;
+    case 'wake_word_state':
+      wakeWordEnabled = !!msg.enabled;
+      { const wBtn = document.getElementById('wakeBtn'); const wLbl = document.getElementById('wakeLbl');
+        if (wBtn) { wBtn.textContent = wakeWordEnabled ? '🔒' : '🔓'; wBtn.style.color = wakeWordEnabled ? 'var(--gold)' : 'var(--tx2)'; }
+        if (wLbl) wLbl.textContent = wakeWordEnabled ? 'WAKE ON' : 'WAKE'; }
       break;
     case 'state':
       setState(msg.state);
@@ -1543,6 +1561,16 @@ function toggleMute() {
   btn.style.color = muted ? 'var(--r)' : 'var(--tx2)';
   setOrbState(muted ? 'muted' : 'idle');
   toast(muted ? 'Mic muted' : 'Mic active');
+}
+function toggleWakeWord() {
+  wakeWordEnabled = !wakeWordEnabled;
+  send({ type:'set_wake_word', enabled: wakeWordEnabled });
+  const btn = document.getElementById('wakeBtn');
+  const lbl = document.getElementById('wakeLbl');
+  btn.textContent = wakeWordEnabled ? '🔒' : '🔓';
+  btn.style.color = wakeWordEnabled ? 'var(--gold)' : 'var(--tx2)';
+  lbl.textContent = wakeWordEnabled ? 'WAKE ON' : 'WAKE';
+  toast(wakeWordEnabled ? '🔒 Wake-word ON — say "hey vision"' : '🔓 Wake-word OFF');
 }
 const modes = ['chat','operator'];
 const modeIcons = { chat:'💬', operator:'🖥' };
