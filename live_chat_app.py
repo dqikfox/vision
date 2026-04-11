@@ -2745,7 +2745,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             wins = [w.title for w in gw.getAllWindows() if w.title.strip()]
             return "\n".join(wins[:30]) if wins else "(no windows found)"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("list_windows", e)
     elif name == "focus_window":
         title = args.get("title", "")
         try:
@@ -2758,7 +2758,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 return f"Focused: {wins[0].title}"
             return f"No window matching '{title}' found"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("focus_window", e)
 
     # ── Shell ──────────────────────────────────────────────────────────────────
     elif name == "run_command":
@@ -2779,7 +2779,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     pass
                 return f"Command timed out after {timeout}s. Use a shorter command or run in background."
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("run_command", e)
 
     # ── File system (handled later with full encoding/pattern support) ────────
 
@@ -2898,7 +2898,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 fh.write(content)
             return f"Appended {len(content)} chars to {path_s}"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("append_to_file", e)
     elif name == "find_files":
         directory = args.get("directory", "") or str(Path.home())
         pattern = args.get("pattern", "*")
@@ -2916,7 +2916,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 return f"No files matching '{pattern}' found in {directory}"
             return "\n".join(matches[:50])
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("find_files", e)
 
     # ── New general-purpose tools ──────────────────────────────────────────────
     elif name == "wait":
@@ -2968,7 +2968,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             wins[0].resizeTo(w, h)
             return f"Resized '{wins[0].title}' to {w}×{h}"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("window_resize", e)
 
     elif name == "window_move":
         title = args.get("title", "")
@@ -2982,7 +2982,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             wins[0].moveTo(x, y)
             return f"Moved '{wins[0].title}' to ({x},{y})"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("window_move", e)
 
     elif name == "browser_scroll":
         direction = args.get("direction", "down")
@@ -3098,7 +3098,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         except TimeoutError:
             return f"Command '{cmd}' timed out"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("ao_command", e)
 
     elif name == "web_search":
         query = args.get("query", "")
@@ -3459,7 +3459,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     pass
             return f"Active window: '{title}' (PID {pid}, {pname})"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("get_active_window", e)
 
     elif name == "speak":
         text = args.get("text", "")
@@ -3488,7 +3488,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             await page.go_back()
             return "Browser went back"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("browser_back", e)
 
     elif name == "browser_forward":
         try:
@@ -3496,7 +3496,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             await page.go_forward()
             return "Browser went forward"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("browser_forward", e)
 
     elif name == "browser_refresh":
         try:
@@ -3504,7 +3504,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             await page.reload()
             return "Browser refreshed"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("browser_refresh", e)
 
     elif name == "browser_new_tab":
         url = args.get("url", "")
@@ -3517,7 +3517,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             _pw_page = new_page
             return f"New tab opened{f': {url}' if url else ''}"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("browser_new_tab", e)
 
     elif name == "browser_close_tab":
         try:
@@ -3528,7 +3528,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             _pw_page = pages[-1] if pages else None
             return "Tab closed"
         except Exception as e:
-            return f"Error: {e}"
+            return _tool_err("browser_close_tab", e)
 
     # ── Polling / wait tools ───────────────────────────────────────────────────
     elif name == "wait_for_text":

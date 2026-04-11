@@ -126,5 +126,15 @@ def vision_wake_word(enabled: bool) -> dict[str, Any]:
     return _vision_request("POST", "/api/wake-word", payload={"enabled": enabled})
 
 
+@mcp.tool()
+def vision_recall(query: str = "") -> dict[str, Any]:
+    """Search Vision memory facts. Pass an optional query to filter results."""
+    return _vision_request(
+        "POST",
+        "/api/tool/execute",
+        payload={"name": "recall", "parameters": {"query": query} if query else {}},
+    )
+
+
 if __name__ == "__main__":
     mcp.run()
