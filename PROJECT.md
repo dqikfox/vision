@@ -57,7 +57,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - Voice responsiveness: median STT -> first token <= 1.5s
 - Tool reliability: >= 98% successful tool execution for non-destructive actions
 - Recovery speed: median time to recover from provider/tool failure <= 2 minutes
-- Documentation freshness: 0 known runtime/doc drift items open > 14 days
+- Documentation freshness: <= 1 known runtime/doc drift item open > 14 days until automated doc consistency checks are live
 
 ## Active Iteration Board
 
@@ -65,6 +65,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - [ ] Add runtime preflight checks for keys, OCR binary, browser availability, and audio devices
 - [ ] Add structured stage timing for STT, LLM, tool-call loop, and TTS
 - [ ] Add weekly home-ops maintenance workflow and summary output
+- [ ] Add automated doc consistency checks for key runtime contracts
 
 ### Next (Planned)
 - [ ] Add high-risk action confirmations with explicit user intent capture
@@ -73,7 +74,6 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 
 ### Later (Queued)
 - [ ] Add latency benchmark baselines per model/provider combination
-- [ ] Add automated doc consistency checks for key runtime contracts
 - [ ] Add onboarding validator that runs setup and smoke checks end-to-end
 
 ## Iteration Cadence
@@ -85,8 +85,14 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 ## Risks and Mitigations
 - Provider instability
 	- Mitigation: strengthen fallback routing and expose clearer provider health state
+- WebSocket contract breaking changes
+	- Mitigation: use versioned message contracts, keep schemas backward-compatible, coordinate deploys, and run automated integration tests
 - Local environment drift
 	- Mitigation: preflight checks and one-command runtime validation
+- Credential leakage
+	- Mitigation: enforce secret scanning, log redaction, environment variable policies, and pre-commit hooks that block committing secrets
+- Network/authentication failures
+	- Mitigation: add retry/backoff logic, token refresh and rotation policies, health checks/synthetic monitoring, and clearer auth/timeout error surfaces
 - Tool safety regressions
 	- Mitigation: enforce confirmations for high-risk actions and add regression tests
 - Documentation drift

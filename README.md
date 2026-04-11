@@ -81,7 +81,7 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 - **vision-runtime-ops** — Start the app, verify endpoints, check provider readiness
 - **vision-debugging** — Debug voice, WebSocket, provider, OCR, and tool-call issues
 - **vision-tool-audit** — Audit direct tool execution and natural-language tool routing
-- **vision-context-ops** — Improve Copilot repo awareness, context refresh, and memory workflow
+- **vision-context-ops** — Improve Copilot repo awareness, context refresh, and memory workflow (`.github/skills/vision-context-ops/SKILL.md`)
 - **vision-home-ops** — Apply Vision to home PC administration, networking, security, backups, and automation
 - **vision-documentation-ops** — Keep docs, skills, agents, and runtime notes aligned
 - **vision-mcp-builder** — Expand repo-local MCP servers and customization wiring
@@ -90,7 +90,7 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 
 ### Repo Instructions
 - **Copilot Instructions** — Global guidelines for working in this repo (`.github/copilot-instructions.md`)
-- **Local LM Studio RAG Context** — Copilot can now inspect the user's LM Studio plugin workspace at `F:\rag-v1` through workspace MCP when LM Studio or local retrieval tasks are relevant
+- **Local LM Studio RAG Context** — Copilot can inspect the workspace defined by `RAG_PLUGIN_WORKSPACE` (example: `F:\rag-v1` on Windows, `/home/user/rag-v1` on Linux/macOS) through workspace MCP when LM Studio or local retrieval tasks are relevant
 - **Documentation Index** — Start with `DOCUMENTATION_INDEX.md` for the current doc map
 
 Type `/` in any Copilot chat to browse available skills.
@@ -352,7 +352,7 @@ print(f"Cache hit: {result.cache_hit}")
 - Use the `/vision-context-ops` skill
 - Invoke the `@Context Steward` agent
 - Update `.github/copilot-instructions.md` when the improvement should be always-on
-- Pull in `F:\rag-v1` as local context when the task involves LM Studio or RAG
+- Pull in the path from `RAG_PLUGIN_WORKSPACE` as local context when the task involves LM Studio or RAG
 
 **For documentation maintenance:**
 - Start with `DOCUMENTATION_INDEX.md`

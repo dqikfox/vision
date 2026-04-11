@@ -16,51 +16,61 @@ import os
 import re
 import shutil
 import tempfile
-import time
 import threading
+import time
 import warnings
 import webbrowser
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import httpx  # noqa: E402
-import numpy as np  # noqa: E402
-import pyautogui  # noqa: E402
-import sounddevice as sd  # noqa: E402
-import uvicorn  # noqa: E402
-import websockets as ws_lib  # noqa: E402
-import winsound  # noqa: E402
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request  # noqa: E402
-from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-import openai  # noqa: E402
-from openai import AsyncOpenAI  # noqa: E402
-from ollama import AsyncClient as OllamaAsyncClient, ResponseError as OllamaResponseError, Options as OllamaOptions  # noqa: E402
-from elevenlabs.client import ElevenLabs  # noqa: E402
+import winsound
+
+import httpx
+import numpy as np
+import openai
+import pyautogui
+import sounddevice as sd
+import uvicorn
+import websockets as ws_lib
+from elevenlabs.client import ElevenLabs
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from ollama import AsyncClient as OllamaAsyncClient
+from ollama import Options as OllamaOptions
+from ollama import ResponseError as OllamaResponseError
+from openai import AsyncOpenAI
+
 try:
-    from elevenlabs.conversational_ai.conversation import Conversation, ClientTools
+    from elevenlabs.conversational_ai.conversation import ClientTools, Conversation
     from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
+
     HAS_CONVAI = True
 except ImportError:
     HAS_CONVAI = False
-from scipy.io import wavfile  # noqa: E402
+from scipy.io import wavfile
 
 try:
     import pytesseract
+
     HAS_OCR = True
 except ImportError:
     HAS_OCR = False
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
 
 try:
     import pynvml
+
     pynvml.nvmlInit()
     _GPU_HANDLE = pynvml.nvmlDeviceGetHandleByIndex(0)
     HAS_GPU = True
@@ -69,11 +79,11 @@ except Exception:
 
 # ── Paths & constants ─────────────────────────────────────────────────────────
 
-BASE        = Path(__file__).parent
-UI_FILE     = BASE / "live_chat_ui.html"
-LOG_FILE    = BASE / "chat_events.log"
+BASE = Path(__file__).parent
+UI_FILE = BASE / "live_chat_ui.html"
+LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
-PORT        = 8765
+PORT = 8765
 
 # ── Auto-load .env file into environment ─────────────────────────────────────
 _ENV_FILE = BASE / ".env"
@@ -83,8 +93,9 @@ if _ENV_FILE.exists():
         if _line and not _line.startswith("#") and "=" in _line:
             _k, _, _v = _line.partition("=")
             _k = _k.strip()
-            if _k and _k not in os.environ:   # don't override shell env
+            if _k and _k not in os.environ:  # don't override shell env
                 os.environ[_k] = _v.strip()
+
 
 # ── Load API keys: env var → keyring → .env (already loaded above) ───────────
 def _load_key(name: str, env_var: str) -> str:
@@ -103,12 +114,14 @@ def _load_key(name: str, env_var: str) -> str:
         return val
     try:
         import keyring
+
         v = keyring.get_password("operator", env_var)
         if v:
             return v
     except Exception:
         pass
     return ""
+
 
 def _save_key(env_var: str, value: str) -> None:
     """
@@ -121,6 +134,7 @@ def _save_key(env_var: str, value: str) -> None:
     os.environ[env_var] = value
     try:
         import keyring
+
         keyring.set_password("operator", env_var, value)
     except Exception:
         pass
@@ -139,136 +153,181 @@ def _save_key(env_var: str, value: str) -> None:
     except Exception:
         pass
 
-API_11    = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
-VOICE_ID  = "0iuMR9ISp6Q7mg6H70yo"
+
+API_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
+VOICE_ID = "0iuMR9ISp6Q7mg6H70yo"
 TTS_MODEL = "eleven_flash_v2_5"
 
-SR           = 16_000
-FRAME        = 480
-RMS_THRESH   = 500   # raised from 250 — reduces ambient noise false triggers
-START_FRAMES = 3     # 3 loud frames (~90ms) before recording starts — faster detection
-END_FRAMES   = 20    # ~600ms silence → stop recording (was 33 = ~1s)
-BARGE_RMS    = 1100
+SR = 16_000
+FRAME = 480
+RMS_THRESH = 500  # raised from 250 — reduces ambient noise false triggers
+START_FRAMES = 3  # 3 loud frames (~90ms) before recording starts — faster detection
+END_FRAMES = 20  # ~600ms silence → stop recording (was 33 = ~1s)
+BARGE_RMS = 1100
 BARGE_FRAMES = 4
 WAKE_PHRASES = ["hey vision", "ok vision", "vision wake", "hey computer"]
 
 # ── Provider registry ─────────────────────────────────────────────────────────
 PROVIDERS = {
     "ollama": {
-        "label":    "Ollama (Local)",
+        "label": "Ollama (Local)",
         "base_url": "http://localhost:11434/v1",
-        "api_key":  "ollama",
-        "models":   [],            # populated at startup by querying Ollama
+        "api_key": "ollama",
+        "models": [],  # populated at startup by querying Ollama
     },
     "openai": {
-        "label":    "OpenAI",
+        "label": "OpenAI",
         "base_url": "https://api.openai.com/v1",
-        "api_key":  _load_key("openai", "OPENAI_API_KEY"),
-        "models":   ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-4o", "gpt-4o-mini", "o4-mini", "o3", "o3-mini", "computer-use-preview"],
+        "api_key": _load_key("openai", "OPENAI_API_KEY"),
+        "models": [
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "o4-mini",
+            "o3",
+            "o3-mini",
+            "computer-use-preview",
+        ],
     },
     "github": {
-        "label":    "GitHub Copilot",
+        "label": "GitHub Copilot",
         "base_url": "https://models.inference.ai.azure.com",
-        "api_key":  _load_key("github", "GITHUB_TOKEN"),
-        "models":   ["gpt-4.1", "gpt-4o", "gpt-4o-mini", "o3", "o4-mini", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet", "claude-3-5-haiku", "Meta-Llama-3.3-70B-Instruct", "Mistral-large-2411"],
+        "api_key": _load_key("github", "GITHUB_TOKEN"),
+        "models": [
+            "gpt-4.1",
+            "gpt-4o",
+            "gpt-4o-mini",
+            "o3",
+            "o4-mini",
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet",
+            "claude-3-5-haiku",
+            "Meta-Llama-3.3-70B-Instruct",
+            "Mistral-large-2411",
+        ],
     },
     "anthropic": {
-        "label":    "Anthropic",
-        "base_url": "anthropic",           # sentinel — handled by _llm_stream_anthropic
-        "api_key":  _load_key("anthropic", "ANTHROPIC_API_KEY"),
-        "models":   ["claude-opus-4-5", "claude-sonnet-4-5", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+        "label": "Anthropic",
+        "base_url": "anthropic",  # sentinel — handled by _llm_stream_anthropic
+        "api_key": _load_key("anthropic", "ANTHROPIC_API_KEY"),
+        "models": [
+            "claude-opus-4-5",
+            "claude-sonnet-4-5",
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229",
+        ],
     },
     "deepseek": {
-        "label":    "DeepSeek",
+        "label": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
-        "api_key":  _load_key("deepseek", "DEEPSEEK_API_KEY"),
-        "models":   ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
+        "api_key": _load_key("deepseek", "DEEPSEEK_API_KEY"),
+        "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
     },
     "groq": {
-        "label":    "Groq",
+        "label": "Groq",
         "base_url": "https://api.groq.com/openai/v1",
-        "api_key":  _load_key("groq", "GROQ_API_KEY"),
-        "models":   ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b", "qwen-qwq-32b", "gemma2-9b-it"],
+        "api_key": _load_key("groq", "GROQ_API_KEY"),
+        "models": [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "deepseek-r1-distill-llama-70b",
+            "qwen-qwq-32b",
+            "gemma2-9b-it",
+        ],
     },
     "mistral": {
-        "label":    "Mistral AI",
+        "label": "Mistral AI",
         "base_url": "https://api.mistral.ai/v1",
-        "api_key":  _load_key("mistral", "MISTRAL_API_KEY"),
-        "models":   ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "pixtral-large-latest", "codestral-latest"],
+        "api_key": _load_key("mistral", "MISTRAL_API_KEY"),
+        "models": [
+            "mistral-large-latest",
+            "mistral-medium-latest",
+            "mistral-small-latest",
+            "pixtral-large-latest",
+            "codestral-latest",
+        ],
     },
     "gemini": {
-        "label":    "Google Gemini",
+        "label": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "api_key":  _load_key("gemini", "GEMINI_API_KEY"),
-        "models":   ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"],
+        "api_key": _load_key("gemini", "GEMINI_API_KEY"),
+        "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"],
     },
     "xai": {
-        "label":    "xAI Grok",
+        "label": "xAI Grok",
         "base_url": "https://api.x.ai/v1",
-        "api_key":  _load_key("xai", "XAI_API_KEY"),
-        "models":   ["grok-3", "grok-3-mini", "grok-2-vision-1212", "grok-2-1212"],
+        "api_key": _load_key("xai", "XAI_API_KEY"),
+        "models": ["grok-3", "grok-3-mini", "grok-2-vision-1212", "grok-2-1212"],
     },
 }
 
 # ── Mutable state ─────────────────────────────────────────────────────────────
 
 current_provider = "ollama"
-current_model    = "llama3.2:latest"
+current_model = "llama3.2:latest"
 
-app      = FastAPI()
+app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 clients: set[WebSocket] = set()
-history: list[dict]     = []
+history: list[dict] = []
 
-audio_q:    asyncio.Queue | None = None
-muted:      bool                 = False
-mode:       str                  = "operator"
-speak_task: asyncio.Task | None  = None
-_tts_silence_until: float        = 0.0   # ignore VAD input until this timestamp
-_input_busy: bool                = False  # True while handle_input is running (gate voice loop)
-wake_word_active: bool           = False  # True = wake-word mode; requires trigger phrase
-continuous_listening: bool       = True   # False = press-to-talk mode
-_response_lock: asyncio.Lock | None = None
-runtime_state: str               = "idle"
-_voice_capture_active: bool      = False
-_mic_hold_until: float           = 0.0
+audio_q: asyncio.Queue | None = None
+muted: bool = False
+mode: str = "operator"
+speak_task: asyncio.Task | None = None
+_tts_silence_until: float = 0.0  # ignore VAD input until this timestamp
+_input_busy: bool = False  # True while handle_input is running (gate voice loop)
+wake_word_active: bool = False  # True = wake-word mode; requires trigger phrase
+continuous_listening: bool = True  # False = press-to-talk mode
+_response_lock: asyncio.Lock = asyncio.Lock()
+runtime_state: str = "idle"
+_voice_capture_active: bool = False
+_mic_hold_until: float = 0.0
 
 # ── Voice provider preferences (user-configurable at runtime) ─────────────────
-preferred_stt: str = "auto"   # "auto" | "elevenlabs" | "groq" | "local"
-preferred_tts: str = "auto"   # "auto" | "elevenlabs" | "local"
-last_stt_provider: str = ""   # last STT provider that succeeded
-last_tts_provider: str = ""   # last TTS provider that succeeded
-tts_rate:      int = 175      # pyttsx3 words-per-minute
-tts_voice_idx: int = 0        # 0=first/David, 1=second/Zira; 100+ = OneCore neural
+preferred_stt: str = "auto"  # "auto" | "elevenlabs" | "groq" | "local"
+preferred_tts: str = "auto"  # "auto" | "elevenlabs" | "local"
+last_stt_provider: str = ""  # last STT provider that succeeded
+last_tts_provider: str = ""  # last TTS provider that succeeded
+tts_rate: int = 175  # pyttsx3 words-per-minute
+tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
-AGENT_ID      = "agent_7201kmxc5trte9tarb626ed8dgt1"
+AGENT_ID = "agent_7201kmxc5trte9tarb626ed8dgt1"
 _main_loop: asyncio.AbstractEventLoop | None = None
-_el_conv:   "Conversation | None"            = None
-_el_thread  = None
-_el_active: bool                             = False
+_el_conv: "Conversation | None" = None
+_el_thread = None
+_el_active: bool = False
 
 # ── Logging ───────────────────────────────────────────────────────────────────
+
 
 def write_log(event: str, detail: str) -> None:
     ts = datetime.now().isoformat(timespec="milliseconds")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
+
 # ── Memory ────────────────────────────────────────────────────────────────────
+
 
 class Memory:
     """Persistent JSON-backed long-term memory."""
 
     _default = lambda _: {
-        "user":          {"name": None, "preferences": []},
-        "facts":         [],
+        "user": {"name": None, "preferences": []},
+        "facts": [],
         "context_summary": "",
         "session_count": 0,
-        "last_session":  None,
-        "task_history":  [],
+        "last_session": None,
+        "task_history": [],
     }
 
     def __init__(self):
@@ -296,7 +355,11 @@ class Memory:
         data["user"].setdefault("name", None)
         data["user"].setdefault("preferences", [])
         data["user"]["preferences"] = self._dedupe(
-            [p for p in (self._clean_text(x, 100) for x in data["user"]["preferences"]) if self._is_memorable_preference(p)]
+            [
+                p
+                for p in (self._clean_text(x, 100) for x in data["user"]["preferences"])
+                if self._is_memorable_preference(p)
+            ]
         )[-20:]
         data["facts"] = self._dedupe(
             [f for f in (self._clean_text(x, 160) for x in data["facts"]) if self._is_memorable_fact(f)]
@@ -341,6 +404,20 @@ class Memory:
         lowered = text.casefold()
         if lowered in {"none", "null", "okay", "ok", "thanks", "thank you", "yes", "no", "uh huh", "uh-huh"}:
             return True
+        technical_patterns = (
+            r"(?i)\b(?:https?://|www\.)\S+",
+            r"(?i)\b[a-z]:\\(?:[^\\\n]+\\?)*",
+            r"(?<!\w)/(?:[^/\s]+/)*[^/\s]*",
+            r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+            r"(?i)\b(?:[0-9a-f]{1,4}:){2,7}[0-9a-f]{1,4}\b",
+            r"(?i)\bv?\d+\.\d+(?:\.\d+){0,2}(?:[-+][a-z0-9_.-]+)?\b",
+            r"\b[\w.-]+\.[A-Za-z0-9]{1,8}\b",
+            r"\b(?:0x)?[A-Fa-f0-9]{8,}\b",
+            r"^\s*(?:\{.*\}|\[.*\])\s*$",
+            r"(?m)\b--?[A-Za-z][\w-]*\b",
+        )
+        if any(re.search(pattern, text) for pattern in technical_patterns):
+            return False
         alpha = sum(ch.isalpha() for ch in text)
         if alpha and alpha / max(len(text), 1) < 0.45:
             return True
@@ -372,9 +449,7 @@ class Memory:
         return any(token in lowered for token in ("prefer", "likes", "uses", "wants", "always", "default"))
 
     def save(self) -> None:
-        MEMORY_FILE.write_text(
-            json.dumps(self.data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        MEMORY_FILE.write_text(json.dumps(self.data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def add_fact(self, fact: str) -> None:
         fact = self._clean_text(fact, 160)
@@ -391,10 +466,12 @@ class Memory:
             return
         if self.data["task_history"] and self.data["task_history"][-1]["task"].casefold() == task.casefold():
             return
-        self.data["task_history"].append({
-            "task": task[:120],
-            "ts": datetime.now().isoformat(),
-        })
+        self.data["task_history"].append(
+            {
+                "task": task[:120],
+                "ts": datetime.now().isoformat(),
+            }
+        )
         self.data["task_history"] = self.data["task_history"][-50:]
         self.save()
 
@@ -531,6 +608,7 @@ SAFETY:
 
 You are VISION. You are in a persistent agent loop. Tools fire in sequence until the task is DONE."""
 
+
 def build_system_prompt() -> str:
     ctx = memory.get_context_block()
     if ctx:
@@ -538,10 +616,10 @@ def build_system_prompt() -> str:
     return IDENTITY_CORE
 
 
-
 # ── Persistent SDK clients (cached per provider+key to avoid re-creating) ─────
 
 _oai_client_cache: dict[str, AsyncOpenAI] = {}
+
 
 def get_oai_client() -> AsyncOpenAI:
     """Return a cached AsyncOpenAI client for the current provider.
@@ -551,7 +629,7 @@ def get_oai_client() -> AsyncOpenAI:
     - Granular httpx.Timeout (connect / read / write / pool separately)
     - max_retries=2 with automatic exponential back-off (openai-python default)
     """
-    p   = PROVIDERS[current_provider]
+    p = PROVIDERS[current_provider]
     key = p.get("api_key") or "none"
     cache_key = f"{current_provider}:{key}"
     if cache_key not in _oai_client_cache:
@@ -569,6 +647,7 @@ def get_oai_client() -> AsyncOpenAI:
 
 
 _ollama_client_cache: OllamaAsyncClient | None = None
+
 
 def get_ollama_client() -> OllamaAsyncClient:
     """Return a cached ollama.AsyncClient pointing at the local Ollama server."""
@@ -638,8 +717,8 @@ def _no_provider_message() -> str:
     )
 
 
-
 # ── Ollama model discovery ────────────────────────────────────────────────────
+
 
 async def fetch_ollama_models() -> list[str]:
     """Use native ollama.AsyncClient instead of raw httpx."""
@@ -653,39 +732,45 @@ async def fetch_ollama_models() -> list[str]:
     except Exception:
         return []
 
+
 # ── HTTP routes ───────────────────────────────────────────────────────────────
+
 
 @app.get("/")
 async def index():
     return FileResponse(UI_FILE)
 
+
 @app.get("/api/models")
 async def api_models():
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
-    return JSONResponse({
-        "current_provider": current_provider,
-        "current_model":    current_model,
-        "providers": {
-            k: {
-                "label":   v["label"],
-                "models":  v["models"],
-                "has_key": bool(v.get("api_key") and v["api_key"] not in ("none","ollama",""))
-            }
-            for k, v in PROVIDERS.items()
-        },
-    })
+    return JSONResponse(
+        {
+            "current_provider": current_provider,
+            "current_model": current_model,
+            "providers": {
+                k: {
+                    "label": v["label"],
+                    "models": v["models"],
+                    "has_key": bool(v.get("api_key") and v["api_key"] not in ("none", "ollama", "")),
+                }
+                for k, v in PROVIDERS.items()
+            },
+        }
+    )
+
 
 @app.post("/api/model")
 async def api_set_model(payload: dict):
     global current_provider, current_model
     current_provider = payload.get("provider", current_provider)
-    current_model    = payload.get("model",    current_model)
+    current_model = payload.get("model", current_model)
     history.clear()
     write_log("model", f"{current_provider}/{current_model}")
-    await broadcast({"type": "model_changed",
-                     "provider": current_provider, "model": current_model})
+    await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
     return JSONResponse({"ok": True})
+
 
 @app.post("/api/memory/fact")
 async def api_add_fact(payload: dict):
@@ -693,6 +778,7 @@ async def api_add_fact(payload: dict):
     if fact:
         memory.add_fact(fact)
     return JSONResponse({"facts": memory.data["facts"]})
+
 
 @app.delete("/api/memory/fact")
 async def api_del_fact(payload: dict):
@@ -702,36 +788,39 @@ async def api_del_fact(payload: dict):
         memory.save()
     return JSONResponse({"facts": memory.data["facts"]})
 
+
 @app.get("/api/memory")
 async def api_memory():
     return JSONResponse(memory.get_all())
+
 
 @app.get("/api/metrics")
 async def api_metrics():
     """Return real-time system metrics: CPU, RAM, disk, GPU."""
     data: dict = {}
     if HAS_PSUTIL:
-        data["cpu"]           = round(psutil.cpu_percent(interval=None), 1)
+        data["cpu"] = round(psutil.cpu_percent(interval=None), 1)
         vm = psutil.virtual_memory()
-        data["ram"]           = round(vm.percent, 1)
-        data["ram_used_gb"]   = round(vm.used / 1e9, 2)
-        data["ram_total_gb"]  = round(vm.total / 1e9, 2)
+        data["ram"] = round(vm.percent, 1)
+        data["ram_used_gb"] = round(vm.used / 1e9, 2)
+        data["ram_total_gb"] = round(vm.total / 1e9, 2)
         du = psutil.disk_usage("/")
-        data["disk"]          = round(du.percent, 1)
-        data["disk_used_gb"]  = round(du.used / 1e9, 1)
+        data["disk"] = round(du.percent, 1)
+        data["disk_used_gb"] = round(du.used / 1e9, 1)
         data["disk_total_gb"] = round(du.total / 1e9, 1)
     if HAS_GPU:
         try:
             util = pynvml.nvmlDeviceGetUtilizationRates(_GPU_HANDLE)
-            mem  = pynvml.nvmlDeviceGetMemoryInfo(_GPU_HANDLE)
-            data["gpu"]         = round(util.gpu, 1)
-            data["gpu_mem"]     = round(mem.used / mem.total * 100, 1)
-            data["gpu_mem_gb"]  = round(mem.used / 1e9, 2)
-            data["gpu_total_gb"]= round(mem.total / 1e9, 2)
-            data["gpu_name"]    = pynvml.nvmlDeviceGetName(_GPU_HANDLE)
+            mem = pynvml.nvmlDeviceGetMemoryInfo(_GPU_HANDLE)
+            data["gpu"] = round(util.gpu, 1)
+            data["gpu_mem"] = round(mem.used / mem.total * 100, 1)
+            data["gpu_mem_gb"] = round(mem.used / 1e9, 2)
+            data["gpu_total_gb"] = round(mem.total / 1e9, 2)
+            data["gpu_name"] = pynvml.nvmlDeviceGetName(_GPU_HANDLE)
         except Exception:
             data["gpu"] = None
     return JSONResponse(data)
+
 
 @app.get("/api/health")
 async def api_health():
@@ -756,18 +845,21 @@ async def api_health():
     result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
     return JSONResponse(result)
 
+
 @app.get("/screenshot")
 async def screenshot_ep():
     loop = asyncio.get_running_loop()
+
     def _snap():
         img = pyautogui.screenshot()
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=55)
         return base64.b64encode(buf.getvalue()).decode()
+
     return JSONResponse({"data": await loop.run_in_executor(None, _snap)})
 
-# ── WebSocket ─────────────────────────────────────────────────────────────────
 
+# ── WebSocket ─────────────────────────────────────────────────────────────────
 
 
 @app.post("/api/tool/execute")
@@ -783,17 +875,18 @@ async def tool_execute(request: Request):
 # ── Agent Orchestrator (Composio) webhook — openclaw notifier ─────────────────
 
 _AO_EVENT_ICONS = {
-    "ci-failed":          "❌",
-    "ci-passed":          "✅",
-    "pr-opened":          "🔀",
-    "pr-merged":          "🟣",
-    "changes-requested":  "📝",
-    "approved":           "✅",
-    "agent-stuck":        "🤖⚠️",
-    "agent-done":         "🤖✅",
-    "task-started":       "▶️",
-    "task-completed":     "🏁",
+    "ci-failed": "❌",
+    "ci-passed": "✅",
+    "pr-opened": "🔀",
+    "pr-merged": "🟣",
+    "changes-requested": "📝",
+    "approved": "✅",
+    "agent-stuck": "🤖⚠️",
+    "agent-done": "🤖✅",
+    "task-started": "▶️",
+    "task-completed": "🏁",
 }
+
 
 @app.post("/webhook/agent-orchestrator")
 async def agent_orchestrator_webhook(request: Request):
@@ -806,13 +899,13 @@ async def agent_orchestrator_webhook(request: Request):
     except Exception:
         payload = {}
 
-    event   = payload.get("event", "notification")
+    event = payload.get("event", "notification")
     project = payload.get("project", "")
-    title   = payload.get("title") or payload.get("message") or event
-    detail  = payload.get("detail") or payload.get("body") or ""
-    pr_url  = payload.get("pr_url") or payload.get("url") or ""
-    agent   = payload.get("agent") or payload.get("worker") or ""
-    icon    = _AO_EVENT_ICONS.get(event, "🤖")
+    title = payload.get("title") or payload.get("message") or event
+    detail = payload.get("detail") or payload.get("body") or ""
+    pr_url = payload.get("pr_url") or payload.get("url") or ""
+    agent = payload.get("agent") or payload.get("worker") or ""
+    icon = _AO_EVENT_ICONS.get(event, "🤖")
 
     summary = f"{icon} [{project}] {title}"
     if detail:
@@ -821,17 +914,19 @@ async def agent_orchestrator_webhook(request: Request):
     write_log("ao_webhook", f"{event} project={project} {title[:80]}")
 
     # Broadcast to UI
-    await broadcast({
-        "type":    "agent_orchestrator",
-        "event":   event,
-        "project": project,
-        "title":   title,
-        "detail":  detail,
-        "pr_url":  pr_url,
-        "agent":   agent,
-        "icon":    icon,
-        "summary": summary,
-    })
+    await broadcast(
+        {
+            "type": "agent_orchestrator",
+            "event": event,
+            "project": project,
+            "title": title,
+            "detail": detail,
+            "pr_url": pr_url,
+            "agent": agent,
+            "icon": icon,
+            "summary": summary,
+        }
+    )
 
     # Speak important events (CI failure, agent stuck, PR approved)
     _spoken_events = {"ci-failed", "agent-stuck", "approved", "changes-requested", "agent-done"}
@@ -841,14 +936,17 @@ async def agent_orchestrator_webhook(request: Request):
 
     return JSONResponse({"ok": True, "received": event})
 
+
 @app.get("/api/voices")
 async def api_voices():
     """List all available TTS voices: pyttsx3 SAPI + Windows OneCore neural."""
     global _onecore_voices
     import winreg
+
     voices: list[dict] = []
     try:
         import pyttsx3
+
         eng = pyttsx3.init()
         for i, v in enumerate(eng.getProperty("voices") or []):
             voices.append({"id": v.id, "name": v.name, "index": i, "type": "sapi"})
@@ -857,7 +955,7 @@ async def api_voices():
         pass
     hives = [
         (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens"),
-        (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Speech_OneCore\Voices\Tokens"),
     ]
     lang_map = {"409": "US", "c09": "AU", "809": "UK", "411": "JP", "407": "DE", "40c": "FR"}
     oc_idx = 100
@@ -887,15 +985,17 @@ async def api_voices():
                                 parts = token_key.split("_")
                                 if len(parts) >= 4:
                                     locale_str = parts[2]  # e.g. enUS, enAU
-                                    voice_n    = parts[3].rstrip("MFmf")  # remove gender suffix
+                                    voice_n = parts[3].rstrip("MFmf")  # remove gender suffix
                                     locale_code = locale_str[2:].upper()  # US, AU
                                     display_name = f"⚡ {voice_n} ({locale_code})"
-                            voices.append({
-                                "id":    token_key,   # registry key name for win32com matching
-                                "name":  display_name,
-                                "index": oc_idx,
-                                "type":  "onecore",
-                            })
+                            voices.append(
+                                {
+                                    "id": token_key,  # registry key name for win32com matching
+                                    "name": display_name,
+                                    "index": oc_idx,
+                                    "type": "onecore",
+                                }
+                            )
                             _onecore_voices[oc_idx] = token_key  # store key for token.Id matching
                             oc_idx += 1
                         i += 1
@@ -905,21 +1005,25 @@ async def api_voices():
             pass
     return JSONResponse({"voices": voices})
 
+
 @app.post("/api/el-agent/start")
 async def api_el_agent_start():
     asyncio.create_task(_start_el_agent())
     return JSONResponse({"ok": True, "status": "starting"})
+
 
 @app.post("/api/el-agent/stop")
 async def api_el_agent_stop():
     asyncio.create_task(_stop_el_agent())
     return JSONResponse({"ok": True})
 
+
 @app.post("/api/wake-word")
 async def api_wake_word(body: dict):
     global wake_word_active
     wake_word_active = bool(body.get("enabled", False))
     return JSONResponse({"ok": True, "enabled": wake_word_active})
+
 
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
@@ -930,22 +1034,26 @@ async def ws_ep(websocket: WebSocket):
     clients.add(websocket)
     write_log("ws", "connected")
     # Send current state on connect
-    await websocket.send_text(json.dumps({
-        "type":     "init",
-        "provider": current_provider,
-        "model":    current_model,
-        "mode":     mode,
-        "memory":   memory.get_all(),
-        "wake_word": wake_word_active,
-        "continuous_listening": continuous_listening,
-        "muted": muted,
-        "voice": {
-            "preferred_stt": preferred_stt,
-            "preferred_tts": preferred_tts,
-            "tts_rate":      tts_rate,
-            "tts_voice_idx": tts_voice_idx,
-        },
-    }))
+    await websocket.send_text(
+        json.dumps(
+            {
+                "type": "init",
+                "provider": current_provider,
+                "model": current_model,
+                "mode": mode,
+                "memory": memory.get_all(),
+                "wake_word": wake_word_active,
+                "continuous_listening": continuous_listening,
+                "muted": muted,
+                "voice": {
+                    "preferred_stt": preferred_stt,
+                    "preferred_tts": preferred_tts,
+                    "tts_rate": tts_rate,
+                    "tts_voice_idx": tts_voice_idx,
+                },
+            }
+        )
+    )
     try:
         while True:
             raw = await websocket.receive_text()
@@ -979,18 +1087,20 @@ async def ws_ep(websocket: WebSocket):
                 tool_name = msg.get("tool", "")
                 tool_args = msg.get("args", {})
                 if tool_name:
+
                     async def _run_tool(n, a):
                         await set_state("thinking")
                         result = await exec_tool(n, a)
                         await broadcast_action(n, a, result)
                         await set_state("idle")
+
                     asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
                 current_provider = msg.get("provider", current_provider)
-                current_model    = msg.get("model",    current_model)
+                current_model = msg.get("model", current_model)
                 history.clear()
                 write_log("model", f"{current_provider}/{current_model}")
-                await broadcast({"type":"model_changed","provider":current_provider,"model":current_model})
+                await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
             elif t == "set_mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
@@ -1010,7 +1120,11 @@ async def ws_ep(websocket: WebSocket):
                 await broadcast({"type": "continuous_state", "enabled": continuous_listening})
                 if not muted:
                     if continuous_listening or wake_word_active:
-                        if not (speak_task and not speak_task.done()) and not _input_busy and runtime_state != "listening":
+                        if (
+                            not (speak_task and not speak_task.done())
+                            and not _input_busy
+                            and runtime_state != "listening"
+                        ):
                             await set_state("listening")
                     elif runtime_state != "idle":
                         await set_state("idle")
@@ -1037,34 +1151,38 @@ async def ws_ep(websocket: WebSocket):
                     memory.save()
                 await broadcast({"type": "memory_updated", "memory": memory.get_all()})
             elif t == "get_state":
-                await websocket.send_text(json.dumps({
-                    "type":     "init",
-                    "provider": current_provider,
-                    "model":    current_model,
-                    "mode":     mode,
-                    "memory":   memory.get_all(),
-                    "wake_word": wake_word_active,
-                    "continuous_listening": continuous_listening,
-                    "muted": muted,
-                    "voice": {
-                        "preferred_stt": preferred_stt,
-                        "preferred_tts": preferred_tts,
-                        "tts_rate":      tts_rate,
-                        "tts_voice_idx": tts_voice_idx,
-                    },
-                }))
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "init",
+                            "provider": current_provider,
+                            "model": current_model,
+                            "mode": mode,
+                            "memory": memory.get_all(),
+                            "wake_word": wake_word_active,
+                            "continuous_listening": continuous_listening,
+                            "muted": muted,
+                            "voice": {
+                                "preferred_stt": preferred_stt,
+                                "preferred_tts": preferred_tts,
+                                "tts_rate": tts_rate,
+                                "tts_voice_idx": tts_voice_idx,
+                            },
+                        }
+                    )
+                )
             elif t == "set_api_key":
                 provider = msg.get("provider", "")
                 key = msg.get("key", "").strip()
                 env_map = {
-                    "openai":     "OPENAI_API_KEY",
-                    "github":     "GITHUB_TOKEN",
-                    "anthropic":  "ANTHROPIC_API_KEY",
-                    "deepseek":   "DEEPSEEK_API_KEY",
-                    "groq":       "GROQ_API_KEY",
-                    "mistral":    "MISTRAL_API_KEY",
-                    "gemini":     "GEMINI_API_KEY",
-                    "xai":        "XAI_API_KEY",
+                    "openai": "OPENAI_API_KEY",
+                    "github": "GITHUB_TOKEN",
+                    "anthropic": "ANTHROPIC_API_KEY",
+                    "deepseek": "DEEPSEEK_API_KEY",
+                    "groq": "GROQ_API_KEY",
+                    "mistral": "MISTRAL_API_KEY",
+                    "gemini": "GEMINI_API_KEY",
+                    "xai": "XAI_API_KEY",
                     "elevenlabs": "ELEVENLABS_API_KEY",
                 }
                 if key:
@@ -1072,18 +1190,24 @@ async def ws_ep(websocket: WebSocket):
                         PROVIDERS[provider]["api_key"] = key
                     env_name = env_map.get(provider, "")
                     if env_name:
-                        _save_key(env_name, key)   # → os.environ + keyring + .env
+                        _save_key(env_name, key)  # → os.environ + keyring + .env
                     write_log("key", f"Saved key for {provider}")
                     await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
-                preferred_stt  = msg.get("preferred_stt",  preferred_stt)
-                preferred_tts  = msg.get("preferred_tts",  preferred_tts)
-                tts_rate       = int(msg.get("tts_rate",   tts_rate))
-                tts_voice_idx  = int(msg.get("tts_voice_idx", tts_voice_idx))
+                preferred_stt = msg.get("preferred_stt", preferred_stt)
+                preferred_tts = msg.get("preferred_tts", preferred_tts)
+                tts_rate = int(msg.get("tts_rate", tts_rate))
+                tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
-                await broadcast({"type": "voice_settings", "preferred_stt": preferred_stt,
-                                 "preferred_tts": preferred_tts, "tts_rate": tts_rate,
-                                 "tts_voice_idx": tts_voice_idx})
+                await broadcast(
+                    {
+                        "type": "voice_settings",
+                        "preferred_stt": preferred_stt,
+                        "preferred_tts": preferred_tts,
+                        "tts_rate": tts_rate,
+                        "tts_voice_idx": tts_voice_idx,
+                    }
+                )
             elif t == "el_agent_start":
                 asyncio.create_task(_start_el_agent())
             elif t == "el_agent_stop":
@@ -1093,45 +1217,65 @@ async def ws_ep(websocket: WebSocket):
                 write_log("wake_word", str(wake_word_active))
                 await broadcast({"type": "wake_word_state", "enabled": wake_word_active})
                 if wake_word_active:
-                    await broadcast({"type": "transcript", "role": "system",
-                                     "text": f"🔒 Wake-word mode ON — say one of: {', '.join(WAKE_PHRASES)}"})
-                    if not muted and not (speak_task and not speak_task.done()) and not _input_busy and runtime_state != "listening":
+                    await broadcast(
+                        {
+                            "type": "transcript",
+                            "role": "system",
+                            "text": f"🔒 Wake-word mode ON — say one of: {', '.join(WAKE_PHRASES)}",
+                        }
+                    )
+                    if (
+                        not muted
+                        and not (speak_task and not speak_task.done())
+                        and not _input_busy
+                        and runtime_state != "listening"
+                    ):
                         await set_state("listening")
                 else:
-                    await broadcast({"type": "transcript", "role": "system",
-                                     "text": "🔓 Wake-word mode OFF — " + ("always listening" if continuous_listening else "voice standby")})
+                    await broadcast(
+                        {
+                            "type": "transcript",
+                            "role": "system",
+                            "text": "🔓 Wake-word mode OFF — "
+                            + ("always listening" if continuous_listening else "voice standby"),
+                        }
+                    )
                     if not muted:
                         target_state = "listening" if continuous_listening else "idle"
-                        if runtime_state != target_state and not (speak_task and not speak_task.done()) and not _input_busy:
+                        if (
+                            runtime_state != target_state
+                            and not (speak_task and not speak_task.done())
+                            and not _input_busy
+                        ):
                             await set_state(target_state)
     except WebSocketDisconnect:
         clients.discard(websocket)
 
+
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
+
 
 async def broadcast(msg: dict) -> None:
     dead = set()
-    for ws in list(clients):   # snapshot to avoid "Set changed size during iteration"
+    for ws in list(clients):  # snapshot to avoid "Set changed size during iteration"
         try:
             await ws.send_text(json.dumps(msg))
         except Exception:
             dead.add(ws)
     clients.difference_update(dead)
 
+
 async def set_state(s: str) -> None:
     """Broadcast state + current active provider/model for UI indicators."""
     global runtime_state
     runtime_state = s
     write_log("state", s)
-    await broadcast({
-        "type": "state",
-        "state": s,
-        "provider": current_provider,
-        "model": current_model
-    })
+    await broadcast({"type": "state", "state": s, "provider": current_provider, "model": current_model})
+
 
 async def add_transcript(role: str, text: str) -> None:
     await broadcast({"type": "transcript", "role": role, "text": text})
+
 
 async def broadcast_volume(lvl: float) -> None:
     await broadcast({"type": "volume", "level": round(min(lvl, 1.0), 3)})
@@ -1146,6 +1290,7 @@ async def _wait_for_quiet_input(max_wait: float = 1.2) -> None:
             break
         await asyncio.sleep(0.03)
 
+
 async def broadcast_action(action: str, params: dict, result: str, elapsed_ms: float | None = None) -> None:
     write_log("action", f"{action} ({elapsed_ms:.0f}ms) → {result[:80]}" if elapsed_ms else f"{action} → {result[:80]}")
     msg: dict = {"type": "action", "action": action, "params": params, "result": result}
@@ -1153,7 +1298,9 @@ async def broadcast_action(action: str, params: dict, result: str, elapsed_ms: f
         msg["elapsed_ms"] = round(elapsed_ms, 1)
     await broadcast(msg)
 
+
 # ── VAD ───────────────────────────────────────────────────────────────────────
+
 
 class VAD:
     def __init__(self):
@@ -1169,28 +1316,35 @@ class VAD:
     def feed(self, frame: np.ndarray):
         rms = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
         if rms > RMS_THRESH:
-            self._loud += 1; self._quiet = 0
+            self._loud += 1
+            self._quiet = 0
         else:
-            self._quiet += 1; self._loud = 0
+            self._quiet += 1
+            self._loud = 0
         if not self._active:
             if self._loud >= START_FRAMES:
-                self._active = True; self._buf = []
+                self._active = True
+                self._buf = []
                 return "start", rms
         else:
             self._buf.append(frame.copy())
             if self._quiet >= END_FRAMES:
-                frames = list(self._buf); self._buf = []; self._active = False
+                frames = list(self._buf)
+                self._buf = []
+                self._active = False
                 return "end", frames
             return "frame", rms
         return None, rms
 
-# ── STT ───────────────────────────────────────────────────────────────────────
 
 # ── STT ───────────────────────────────────────────────────────────────────────
 
-_stt_failure_until: float = 0.0   # cooldown timestamp after all providers fail
+# ── STT ───────────────────────────────────────────────────────────────────────
+
+_stt_failure_until: float = 0.0  # cooldown timestamp after all providers fail
 _stt_groq_failure_until: float = 0.0
-_faster_whisper_model = None       # lazy-loaded once
+_faster_whisper_model = None  # lazy-loaded once
+
 
 async def transcribe(frames: list[np.ndarray]) -> str:
     global _stt_failure_until, _stt_groq_failure_until, _faster_whisper_model
@@ -1208,15 +1362,20 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 
     async def _try_elevenlabs():
         api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
-        if not api_11: return None
+        if not api_11:
+            return None
         try:
             el = ElevenLabs(api_key=api_11)
+
             def _eleven():
                 with open(path, "rb") as fh:
                     return el.speech_to_text.convert(
-                        file=fh, model_id="scribe_v1",
-                        tag_audio_events=False, timestamps_granularity="none",
+                        file=fh,
+                        model_id="scribe_v1",
+                        tag_audio_events=False,
+                        timestamps_granularity="none",
                     ).text.strip()
+
             result = await loop.run_in_executor(None, _eleven)
             write_log("stt/elevenlabs", result[:150])
             return result
@@ -1229,15 +1388,17 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         if time.time() < _stt_groq_failure_until:
             return None
         groq_key = _load_key("groq", "GROQ_API_KEY")
-        if not groq_key: return None
+        if not groq_key:
+            return None
         try:
             import openai as _oai
+
             client = _oai.OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
+
             def _groq_stt():
                 with open(path, "rb") as fh:
-                    return client.audio.transcriptions.create(
-                        model="whisper-large-v3-turbo", file=fh
-                    ).text.strip()
+                    return client.audio.transcriptions.create(model="whisper-large-v3-turbo", file=fh).text.strip()
+
             result = await loop.run_in_executor(None, _groq_stt)
             write_log("stt/groq", result[:150])
             return result
@@ -1253,13 +1414,16 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         global _faster_whisper_model
         try:
             from faster_whisper import WhisperModel  # type: ignore
+
             if _faster_whisper_model is None:
                 print("[stt] Loading local faster-whisper tiny model…")
                 _faster_whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
             wm = _faster_whisper_model
+
             def _local():
                 segs, _ = wm.transcribe(path, beam_size=1, language="en")
                 return " ".join(s.text for s in segs).strip()
+
             result = await loop.run_in_executor(None, _local)
             write_log("stt/local", result[:150])
             return result
@@ -1285,15 +1449,19 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             cascade = ["local"]
             used_provider = "local"
         else:  # "auto" — full fallback chain
-            auto_chain = [
-                ("local", _try_local),
-                ("elevenlabs", _try_elevenlabs),
-                ("groq", _try_groq),
-            ] if continuous_listening else [
-                ("elevenlabs", _try_elevenlabs),
-                ("groq", _try_groq),
-                ("local", _try_local),
-            ]
+            auto_chain = (
+                [
+                    ("local", _try_local),
+                    ("elevenlabs", _try_elevenlabs),
+                    ("groq", _try_groq),
+                ]
+                if continuous_listening
+                else [
+                    ("elevenlabs", _try_elevenlabs),
+                    ("groq", _try_groq),
+                    ("local", _try_local),
+                ]
+            )
             cascade = []
             for provider_name, provider_fn in auto_chain:
                 result = await provider_fn()
@@ -1309,17 +1477,26 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         if result:
             global last_stt_provider
             last_stt_provider = used_provider
-            asyncio.create_task(broadcast({
-                "type": "stt_active",
-                "provider": used_provider,
-                "cascade": cascade,
-            }))
+            asyncio.create_task(
+                broadcast(
+                    {
+                        "type": "stt_active",
+                        "provider": used_provider,
+                        "cascade": cascade,
+                    }
+                )
+            )
             return result
 
         # All failed — impose 30s cooldown to prevent hammering
         print("[stt] All STT providers failed. Pausing voice input for 30s. Use text input instead.")
-        await broadcast({"type": "transcript", "role": "system",
-                         "text": "⚠️ Voice recognition failed (check mic/faster-whisper). Using text input."})
+        await broadcast(
+            {
+                "type": "transcript",
+                "role": "system",
+                "text": "⚠️ Voice recognition failed (check mic/faster-whisper). Using text input.",
+            }
+        )
         _stt_failure_until = time.time() + 30.0
         return ""
 
@@ -1329,18 +1506,21 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         except Exception:
             pass
 
+
 # ── Operator tools ────────────────────────────────────────────────────────────
 
 # Playwright browser singleton
 _pw_browser = None
-_pw_page    = None
+_pw_page = None
 _PW_PROFILE = str(BASE / ".pw_profile")  # persistent user data dir (cookies, logins, etc.)
+
 
 async def get_browser_page():
     """Lazy-init a persistent Playwright Chromium browser with saved profile."""
     global _pw_browser, _pw_page
     try:
         from playwright.async_api import async_playwright
+
         if _pw_browser is None:
             _pw = await async_playwright().start()
             os.makedirs(_PW_PROFILE, exist_ok=True)
@@ -1358,105 +1538,902 @@ async def get_browser_page():
         print(f"[playwright] {e}")
         return None
 
+
 TOOLS = [
     # ── Screen & vision
-    {"type":"function","function":{"name":"read_screen","description":"Take a full screenshot and OCR all visible text. The screenshot image is also sent directly to vision models so they can SEE the screen visually — use this before clicking to identify exact coordinates of buttons, cards, icons etc.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"screenshot","description":"Take a screenshot without OCR. Use to verify the current visual state of the screen.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"screenshot_region","description":"Take a cropped screenshot of a specific screen region for precise visual inspection. Use to zoom in on a game board, dialog, or specific UI area.","parameters":{"type":"object","properties":{"x":{"type":"integer","description":"Left edge pixel"},"y":{"type":"integer","description":"Top edge pixel"},"width":{"type":"integer","description":"Region width in pixels"},"height":{"type":"integer","description":"Region height in pixels"}},"required":["x","y","width","height"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "read_screen",
+            "description": "Take a full screenshot and OCR all visible text. The screenshot image is also sent directly to vision models so they can SEE the screen visually — use this before clicking to identify exact coordinates of buttons, cards, icons etc.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "screenshot",
+            "description": "Take a screenshot without OCR. Use to verify the current visual state of the screen.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "screenshot_region",
+            "description": "Take a cropped screenshot of a specific screen region for precise visual inspection. Use to zoom in on a game board, dialog, or specific UI area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Left edge pixel"},
+                    "y": {"type": "integer", "description": "Top edge pixel"},
+                    "width": {"type": "integer", "description": "Region width in pixels"},
+                    "height": {"type": "integer", "description": "Region height in pixels"},
+                },
+                "required": ["x", "y", "width", "height"],
+            },
+        },
+    },
     # ── Mouse control
-    {"type":"function","function":{"name":"click","description":"Click at pixel coordinates on screen.","parameters":{"type":"object","properties":{"x":{"type":"integer","description":"X pixel coordinate"},"y":{"type":"integer","description":"Y pixel coordinate"},"button":{"type":"string","enum":["left","right","middle"],"description":"Mouse button"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"double_click","description":"Double-click at pixel coordinates (e.g. to open files/apps).","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"right_click","description":"Right-click at coordinates to open context menus.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"move_mouse","description":"Move mouse to coordinates without clicking (hover).","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"drag","description":"Click and drag from one position to another.","parameters":{"type":"object","properties":{"x1":{"type":"integer"},"y1":{"type":"integer"},"x2":{"type":"integer"},"y2":{"type":"integer"}},"required":["x1","y1","x2","y2"]}}},
-    {"type":"function","function":{"name":"scroll","description":"Scroll mouse wheel at coordinates.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"direction":{"type":"string","enum":["up","down"]},"clicks":{"type":"integer","description":"Number of scroll clicks, default 3"}},"required":["x","y","direction"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "click",
+            "description": "Click at pixel coordinates on screen.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "X pixel coordinate"},
+                    "y": {"type": "integer", "description": "Y pixel coordinate"},
+                    "button": {"type": "string", "enum": ["left", "right", "middle"], "description": "Mouse button"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "double_click",
+            "description": "Double-click at pixel coordinates (e.g. to open files/apps).",
+            "parameters": {
+                "type": "object",
+                "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "right_click",
+            "description": "Right-click at coordinates to open context menus.",
+            "parameters": {
+                "type": "object",
+                "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_mouse",
+            "description": "Move mouse to coordinates without clicking (hover).",
+            "parameters": {
+                "type": "object",
+                "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drag",
+            "description": "Click and drag from one position to another.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x1": {"type": "integer"},
+                    "y1": {"type": "integer"},
+                    "x2": {"type": "integer"},
+                    "y2": {"type": "integer"},
+                },
+                "required": ["x1", "y1", "x2", "y2"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scroll",
+            "description": "Scroll mouse wheel at coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                    "direction": {"type": "string", "enum": ["up", "down"]},
+                    "clicks": {"type": "integer", "description": "Number of scroll clicks, default 3"},
+                },
+                "required": ["x", "y", "direction"],
+            },
+        },
+    },
     # ── Keyboard
-    {"type":"function","function":{"name":"type_text","description":"Type text at current keyboard focus. Use for filling forms, search boxes, etc.","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}},
-    {"type":"function","function":{"name":"press_key","description":"Press a key or keyboard shortcut. Examples: 'enter', 'escape', 'ctrl+c', 'ctrl+v', 'alt+tab', 'win+r', 'ctrl+shift+t'.","parameters":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "type_text",
+            "description": "Type text at current keyboard focus. Use for filling forms, search boxes, etc.",
+            "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "press_key",
+            "description": "Press a key or keyboard shortcut. Examples: 'enter', 'escape', 'ctrl+c', 'ctrl+v', 'alt+tab', 'win+r', 'ctrl+shift+t'.",
+            "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+        },
+    },
     # ── Clipboard
-    {"type":"function","function":{"name":"get_clipboard","description":"Get text currently in the clipboard.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"set_clipboard","description":"Copy text to the clipboard.","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "get_clipboard",
+            "description": "Get text currently in the clipboard.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_clipboard",
+            "description": "Copy text to the clipboard.",
+            "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+        },
+    },
     # ── Windows
-    {"type":"function","function":{"name":"list_windows","description":"List all open application windows with their titles.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"focus_window","description":"Bring a window to the foreground by its title (partial match ok).","parameters":{"type":"object","properties":{"title":{"type":"string"}},"required":["title"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "list_windows",
+            "description": "List all open application windows with their titles.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "focus_window",
+            "description": "Bring a window to the foreground by its title (partial match ok).",
+            "parameters": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+        },
+    },
     # ── Shell
-    {"type":"function","function":{"name":"run_command","description":"Run a Windows shell command and return output. Use to open apps (start chrome), manage files, query system info.","parameters":{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "Run a Windows shell command and return output. Use to open apps (start chrome), manage files, query system info.",
+            "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]},
+        },
+    },
     # ── File system (consolidated later in Web & files section)
     # ── Browser (Playwright)
-    {"type":"function","function":{"name":"browser_open","description":"Open a URL in the controlled Chromium browser.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}}},
-    {"type":"function","function":{"name":"browser_click","description":"Click an element in the browser by CSS selector or text.","parameters":{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector, XPath, or visible text to click"}},"required":["selector"]}}},
-    {"type":"function","function":{"name":"browser_fill","description":"Fill a form field in the browser.","parameters":{"type":"object","properties":{"selector":{"type":"string"},"text":{"type":"string"}},"required":["selector","text"]}}},
-    {"type":"function","function":{"name":"browser_extract","description":"Extract visible text content from the browser page or a specific element.","parameters":{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector to extract from, or empty for full page"}},"required":[]}}},
-    {"type":"function","function":{"name":"browser_screenshot","description":"Take a screenshot of the current browser page.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"browser_press","description":"Press a key in the browser (e.g. Enter, Tab, Escape).","parameters":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_open",
+            "description": "Open a URL in the controlled Chromium browser.",
+            "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click",
+            "description": "Click an element in the browser by CSS selector or text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector, XPath, or visible text to click"}
+                },
+                "required": ["selector"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_fill",
+            "description": "Fill a form field in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {"selector": {"type": "string"}, "text": {"type": "string"}},
+                "required": ["selector", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_extract",
+            "description": "Extract visible text content from the browser page or a specific element.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector to extract from, or empty for full page",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_screenshot",
+            "description": "Take a screenshot of the current browser page.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_press",
+            "description": "Press a key in the browser (e.g. Enter, Tab, Escape).",
+            "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+        },
+    },
     # ── System info
-    {"type":"function","function":{"name":"get_system_info","description":"Get real-time system stats: CPU, RAM, disk, GPU usage, uptime, and running processes.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"get_time","description":"Get the current date and time.","parameters":{"type":"object","properties":{"timezone":{"type":"string","description":"Optional timezone name, e.g. 'US/Eastern'. Defaults to local system time."}},"required":[]}}},
-    {"type":"function","function":{"name":"get_date","description":"Get the current date (year, month, day, weekday).","parameters":{"type":"object","properties":{},"required":[]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "get_system_info",
+            "description": "Get real-time system stats: CPU, RAM, disk, GPU usage, uptime, and running processes.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "Get the current date and time.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "Optional timezone name, e.g. 'US/Eastern'. Defaults to local system time.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_date",
+            "description": "Get the current date (year, month, day, weekday).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
     # ── Extended file ops
-    {"type":"function","function":{"name":"append_to_file","description":"Append content to an existing file (creates it if missing).","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
-    {"type":"function","function":{"name":"find_files","description":"Search for files by name pattern in a directory tree.","parameters":{"type":"object","properties":{"directory":{"type":"string","description":"Root directory to search (defaults to user home)"},"pattern":{"type":"string","description":"Filename pattern, e.g. '*.py', 'report*.txt'"}},"required":["pattern"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "append_to_file",
+            "description": "Append content to an existing file (creates it if missing).",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_files",
+            "description": "Search for files by name pattern in a directory tree.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {"type": "string", "description": "Root directory to search (defaults to user home)"},
+                    "pattern": {"type": "string", "description": "Filename pattern, e.g. '*.py', 'report*.txt'"},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
     # ── Utility / control flow
-    {"type":"function","function":{"name":"wait","description":"Pause execution for a number of seconds. Use after opening apps, clicking buttons, or any action that needs time to take effect.","parameters":{"type":"object","properties":{"seconds":{"type":"number","description":"Seconds to wait (0.1–30)"}},"required":["seconds"]}}},
-    {"type":"function","function":{"name":"get_screen_size","description":"Get the screen resolution in pixels (width × height).","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"get_mouse_position","description":"Get the current mouse cursor position.","parameters":{"type":"object","properties":{},"required":[]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "wait",
+            "description": "Pause execution for a number of seconds. Use after opening apps, clicking buttons, or any action that needs time to take effect.",
+            "parameters": {
+                "type": "object",
+                "properties": {"seconds": {"type": "number", "description": "Seconds to wait (0.1–30)"}},
+                "required": ["seconds"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_screen_size",
+            "description": "Get the screen resolution in pixels (width × height).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_mouse_position",
+            "description": "Get the current mouse cursor position.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
     # ── Memory management
-    {"type":"function","function":{"name":"remember","description":"Store a persistent fact about the user, their preferences, or important context that should be recalled in future sessions.","parameters":{"type":"object","properties":{"fact":{"type":"string","description":"The fact to remember"}},"required":["fact"]}}},
-    {"type":"function","function":{"name":"forget","description":"Remove a previously remembered fact.","parameters":{"type":"object","properties":{"fact":{"type":"string","description":"Keyword or phrase to match against facts to remove"}},"required":["fact"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": "Store a persistent fact about the user, their preferences, or important context that should be recalled in future sessions.",
+            "parameters": {
+                "type": "object",
+                "properties": {"fact": {"type": "string", "description": "The fact to remember"}},
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget",
+            "description": "Remove a previously remembered fact.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {"type": "string", "description": "Keyword or phrase to match against facts to remove"}
+                },
+                "required": ["fact"],
+            },
+        },
+    },
     # ── Window management
-    {"type":"function","function":{"name":"window_resize","description":"Resize a window to specified dimensions.","parameters":{"type":"object","properties":{"title":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["title","width","height"]}}},
-    {"type":"function","function":{"name":"window_move","description":"Move a window to specified screen coordinates.","parameters":{"type":"object","properties":{"title":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"}},"required":["title","x","y"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "window_resize",
+            "description": "Resize a window to specified dimensions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "width": {"type": "integer"},
+                    "height": {"type": "integer"},
+                },
+                "required": ["title", "width", "height"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "window_move",
+            "description": "Move a window to specified screen coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}, "x": {"type": "integer"}, "y": {"type": "integer"}},
+                "required": ["title", "x", "y"],
+            },
+        },
+    },
     # ── Extended browser
-    {"type":"function","function":{"name":"browser_scroll","description":"Scroll the browser page up or down by a pixel amount.","parameters":{"type":"object","properties":{"direction":{"type":"string","enum":["up","down"]},"amount":{"type":"integer","description":"Pixels to scroll, default 300"}},"required":[]}}},
-    {"type":"function","function":{"name":"browser_eval","description":"Execute JavaScript in the browser and return the result. Powerful for extracting data, manipulating the DOM, or triggering actions that selectors can't reach.","parameters":{"type":"object","properties":{"js":{"type":"string","description":"JavaScript expression to evaluate"}},"required":["js"]}}},
-    {"type":"function","function":{"name":"browser_get_url","description":"Get the current URL of the browser.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"browser_wait","description":"Wait for a CSS selector to appear in the browser before continuing.","parameters":{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector to wait for"},"timeout":{"type":"integer","description":"Max wait in milliseconds, default 5000"}},"required":["selector"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_scroll",
+            "description": "Scroll the browser page up or down by a pixel amount.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "direction": {"type": "string", "enum": ["up", "down"]},
+                    "amount": {"type": "integer", "description": "Pixels to scroll, default 300"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_eval",
+            "description": "Execute JavaScript in the browser and return the result. Powerful for extracting data, manipulating the DOM, or triggering actions that selectors can't reach.",
+            "parameters": {
+                "type": "object",
+                "properties": {"js": {"type": "string", "description": "JavaScript expression to evaluate"}},
+                "required": ["js"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_get_url",
+            "description": "Get the current URL of the browser.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_wait",
+            "description": "Wait for a CSS selector to appear in the browser before continuing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "selector": {"type": "string", "description": "CSS selector to wait for"},
+                    "timeout": {"type": "integer", "description": "Max wait in milliseconds, default 5000"},
+                },
+                "required": ["selector"],
+            },
+        },
+    },
     # ── Agent Orchestrator (multi-agent coding)
-    {"type":"function","function":{"name":"ao_start","description":"Start Agent Orchestrator on a GitHub repo URL or local path. Spawns an orchestrator that manages parallel AI coding agents for issues/PRs.","parameters":{"type":"object","properties":{"repo":{"type":"string","description":"GitHub repo URL (https://github.com/owner/repo) or local path. Defaults to current directory."}},"required":[]}}},
-    {"type":"function","function":{"name":"ao_status","description":"Get the current status of Agent Orchestrator — active agents, running sessions, recent events.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"ao_stop","description":"Stop the Agent Orchestrator and all managed agent sessions.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"ao_command","description":"Run any 'ao' CLI command directly (e.g. 'ao list', 'ao logs', 'ao kill <session>'). For advanced orchestrator control.","parameters":{"type":"object","properties":{"args":{"type":"string","description":"Arguments to pass to 'ao', e.g. 'list' or 'logs my-session'"}},"required":["args"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "ao_start",
+            "description": "Start Agent Orchestrator on a GitHub repo URL or local path. Spawns an orchestrator that manages parallel AI coding agents for issues/PRs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "GitHub repo URL (https://github.com/owner/repo) or local path. Defaults to current directory.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ao_status",
+            "description": "Get the current status of Agent Orchestrator — active agents, running sessions, recent events.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ao_stop",
+            "description": "Stop the Agent Orchestrator and all managed agent sessions.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ao_command",
+            "description": "Run any 'ao' CLI command directly (e.g. 'ao list', 'ao logs', 'ao kill <session>'). For advanced orchestrator control.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "args": {
+                        "type": "string",
+                        "description": "Arguments to pass to 'ao', e.g. 'list' or 'logs my-session'",
+                    }
+                },
+                "required": ["args"],
+            },
+        },
+    },
     # ── Web & files
-    {"type":"function","function":{"name":"web_search","description":"Search the web using DuckDuckGo and return the top results with titles, URLs, and snippets. Use for current information, news, documentation lookups.","parameters":{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Max results to return, default 5"}},"required":["query"]}}},
-    {"type":"function","function":{"name":"fetch_url","description":"Fetch a URL and return its content as plain text/markdown. Use to read web pages, docs, APIs, or any HTTP resource.","parameters":{"type":"object","properties":{"url":{"type":"string","description":"URL to fetch"},"as_markdown":{"type":"boolean","description":"Convert HTML to markdown (default true)"}},"required":["url"]}}},
-    {"type":"function","function":{"name":"read_file","description":"Read the contents of a file on disk. Returns text content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path"]}}},
-    {"type":"function","function":{"name":"write_file","description":"Write or overwrite a file on disk with the given content.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Absolute or relative file path"},"content":{"type":"string","description":"Content to write"},"encoding":{"type":"string","description":"Encoding, default utf-8"}},"required":["path","content"]}}},
-    {"type":"function","function":{"name":"list_files","description":"List files and directories at a path. Returns names, sizes, and types.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Directory path, default current directory"},"pattern":{"type":"string","description":"Glob pattern filter, e.g. '*.py'"}},"required":[]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web using DuckDuckGo and return the top results with titles, URLs, and snippets. Use for current information, news, documentation lookups.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "max_results": {"type": "integer", "description": "Max results to return, default 5"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch a URL and return its content as plain text/markdown. Use to read web pages, docs, APIs, or any HTTP resource.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to fetch"},
+                    "as_markdown": {"type": "boolean", "description": "Convert HTML to markdown (default true)"},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read the contents of a file on disk. Returns text content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute or relative file path"},
+                    "encoding": {"type": "string", "description": "Encoding, default utf-8"},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Write or overwrite a file on disk with the given content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute or relative file path"},
+                    "content": {"type": "string", "description": "Content to write"},
+                    "encoding": {"type": "string", "description": "Encoding, default utf-8"},
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_files",
+            "description": "List files and directories at a path. Returns names, sizes, and types.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Directory path, default current directory"},
+                    "pattern": {"type": "string", "description": "Glob pattern filter, e.g. '*.py'"},
+                },
+                "required": [],
+            },
+        },
+    },
     # (clipboard_get/clipboard_set consolidated to get_clipboard/set_clipboard above)
     # (screenshot_region consolidated to earlier full-featured version above)
-    {"type":"function","function":{"name":"ocr_region","description":"OCR a specific screen region and return the text found. More accurate than full-screen OCR when targeting a specific area.","parameters":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["x","y","width","height"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "ocr_region",
+            "description": "OCR a specific screen region and return the text found. More accurate than full-screen OCR when targeting a specific area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                    "width": {"type": "integer"},
+                    "height": {"type": "integer"},
+                },
+                "required": ["x", "y", "width", "height"],
+            },
+        },
+    },
     # ── Power tools
-    {"type":"function","function":{"name":"execute_python","description":"Execute arbitrary Python code and return stdout/result. Perfect for data analysis, math calculations, automation scripts, file processing, or any task that needs custom logic. Code runs in the server process with full library access.","parameters":{"type":"object","properties":{"code":{"type":"string","description":"Python code to execute"},"timeout":{"type":"integer","description":"Timeout in seconds, default 30"}},"required":["code"]}}},
-    {"type":"function","function":{"name":"find_on_screen","description":"Find text or an image element on screen using template matching. Returns the (x,y) center coordinate of the match if found. Use to reliably locate buttons, icons, UI elements without guessing coordinates.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to locate on screen (uses OCR to find it)"},"confidence":{"type":"number","description":"Match confidence 0-1, default 0.8"}},"required":["text"]}}},
-    {"type":"function","function":{"name":"send_notification","description":"Show a Windows desktop toast notification.","parameters":{"type":"object","properties":{"title":{"type":"string","description":"Notification title"},"message":{"type":"string","description":"Notification body text"},"duration":{"type":"integer","description":"Duration in seconds, default 5"}},"required":["title","message"]}}},
-    {"type":"function","function":{"name":"list_processes","description":"List running processes with name, PID, CPU%, and memory usage. Use to check if apps are running or find PIDs.","parameters":{"type":"object","properties":{"filter":{"type":"string","description":"Optional: filter by process name substring"}},"required":[]}}},
-    {"type":"function","function":{"name":"kill_process","description":"Terminate a process by PID or name.","parameters":{"type":"object","properties":{"pid":{"type":"integer","description":"Process ID to kill"},"name":{"type":"string","description":"Process name to kill (kills all matching)"}},"required":[]}}},
-    {"type":"function","function":{"name":"download_file","description":"Download a file from a URL and save it to disk.","parameters":{"type":"object","properties":{"url":{"type":"string","description":"URL to download"},"path":{"type":"string","description":"Destination file path. Defaults to Downloads folder."}},"required":["url"]}}},
-    {"type":"function","function":{"name":"move_file","description":"Move or rename a file or folder.","parameters":{"type":"object","properties":{"src":{"type":"string","description":"Source path"},"dst":{"type":"string","description":"Destination path"}},"required":["src","dst"]}}},
-    {"type":"function","function":{"name":"delete_file","description":"Delete a file or empty directory.","parameters":{"type":"object","properties":{"path":{"type":"string","description":"Path to delete"}},"required":["path"]}}},
-    {"type":"function","function":{"name":"copy_file","description":"Copy a file to a new location.","parameters":{"type":"object","properties":{"src":{"type":"string","description":"Source path"},"dst":{"type":"string","description":"Destination path"}},"required":["src","dst"]}}},
-    {"type":"function","function":{"name":"open_file","description":"Open a file or folder with its default application (like double-clicking in Explorer).","parameters":{"type":"object","properties":{"path":{"type":"string","description":"File or folder path to open"}},"required":["path"]}}},
-    {"type":"function","function":{"name":"search_file_content","description":"Search for text patterns inside files in a directory tree (like grep). Returns matching file paths and lines.","parameters":{"type":"object","properties":{"directory":{"type":"string","description":"Directory to search"},"pattern":{"type":"string","description":"Text or regex to search for"},"file_pattern":{"type":"string","description":"File glob filter, e.g. '*.py', '*.txt'"}},"required":["directory","pattern"]}}},
-    {"type":"function","function":{"name":"color_at","description":"Get the RGB color of a pixel at screen coordinates. Use to check button states, card colors, or any pixel-level visual detection.","parameters":{"type":"object","properties":{"x":{"type":"integer","description":"X pixel coordinate"},"y":{"type":"integer","description":"Y pixel coordinate"}},"required":["x","y"]}}},
-    {"type":"function","function":{"name":"get_active_window","description":"Get the title and process name of the currently focused window.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"speak","description":"Speak text aloud using the VISION text-to-speech engine. Use for notifications, read-aloud, or any spoken output.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to speak"}},"required":["text"]}}},
-    {"type":"function","function":{"name":"browser_back","description":"Navigate the browser back one page.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"browser_forward","description":"Navigate the browser forward one page.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"browser_refresh","description":"Refresh/reload the current browser page.","parameters":{"type":"object","properties":{},"required":[]}}},
-    {"type":"function","function":{"name":"browser_new_tab","description":"Open a new browser tab, optionally navigating to a URL.","parameters":{"type":"object","properties":{"url":{"type":"string","description":"URL to open in the new tab (optional)"}},"required":[]}}},
-    {"type":"function","function":{"name":"browser_close_tab","description":"Close the current browser tab.","parameters":{"type":"object","properties":{},"required":[]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_python",
+            "description": "Execute arbitrary Python code and return stdout/result. Perfect for data analysis, math calculations, automation scripts, file processing, or any task that needs custom logic. Code runs in the server process with full library access.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Python code to execute"},
+                    "timeout": {"type": "integer", "description": "Timeout in seconds, default 30"},
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_on_screen",
+            "description": "Find text or an image element on screen using template matching. Returns the (x,y) center coordinate of the match if found. Use to reliably locate buttons, icons, UI elements without guessing coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "Text to locate on screen (uses OCR to find it)"},
+                    "confidence": {"type": "number", "description": "Match confidence 0-1, default 0.8"},
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_notification",
+            "description": "Show a Windows desktop toast notification.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Notification title"},
+                    "message": {"type": "string", "description": "Notification body text"},
+                    "duration": {"type": "integer", "description": "Duration in seconds, default 5"},
+                },
+                "required": ["title", "message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_processes",
+            "description": "List running processes with name, PID, CPU%, and memory usage. Use to check if apps are running or find PIDs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filter": {"type": "string", "description": "Optional: filter by process name substring"}
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "kill_process",
+            "description": "Terminate a process by PID or name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pid": {"type": "integer", "description": "Process ID to kill"},
+                    "name": {"type": "string", "description": "Process name to kill (kills all matching)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "download_file",
+            "description": "Download a file from a URL and save it to disk.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to download"},
+                    "path": {"type": "string", "description": "Destination file path. Defaults to Downloads folder."},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_file",
+            "description": "Move or rename a file or folder.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string", "description": "Source path"},
+                    "dst": {"type": "string", "description": "Destination path"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_file",
+            "description": "Delete a file or empty directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Path to delete"}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "copy_file",
+            "description": "Copy a file to a new location.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src": {"type": "string", "description": "Source path"},
+                    "dst": {"type": "string", "description": "Destination path"},
+                },
+                "required": ["src", "dst"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_file",
+            "description": "Open a file or folder with its default application (like double-clicking in Explorer).",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "File or folder path to open"}},
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_file_content",
+            "description": "Search for text patterns inside files in a directory tree (like grep). Returns matching file paths and lines.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "directory": {"type": "string", "description": "Directory to search"},
+                    "pattern": {"type": "string", "description": "Text or regex to search for"},
+                    "file_pattern": {"type": "string", "description": "File glob filter, e.g. '*.py', '*.txt'"},
+                },
+                "required": ["directory", "pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "color_at",
+            "description": "Get the RGB color of a pixel at screen coordinates. Use to check button states, card colors, or any pixel-level visual detection.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "X pixel coordinate"},
+                    "y": {"type": "integer", "description": "Y pixel coordinate"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_active_window",
+            "description": "Get the title and process name of the currently focused window.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "speak",
+            "description": "Speak text aloud using the VISION text-to-speech engine. Use for notifications, read-aloud, or any spoken output.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string", "description": "Text to speak"}},
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_back",
+            "description": "Navigate the browser back one page.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_forward",
+            "description": "Navigate the browser forward one page.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_refresh",
+            "description": "Refresh/reload the current browser page.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_new_tab",
+            "description": "Open a new browser tab, optionally navigating to a URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string", "description": "URL to open in the new tab (optional)"}},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_close_tab",
+            "description": "Close the current browser tab.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
     # ── Wait / polling tools
-    {"type":"function","function":{"name":"wait_for_text","description":"Poll the screen using OCR until specified text appears (or timeout). Use before clicking UI elements that appear asynchronously — e.g. after opening an app, before a game board loads, after a button click triggers a dialog. Returns the (x,y) center of the text when found.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to wait for on screen (case-insensitive partial match)"},"timeout":{"type":"number","description":"Max seconds to wait, default 15"},"region":{"type":"object","description":"Optional screen region {x,y,width,height} to restrict search","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}},"required":["text"]}}},
-    {"type":"function","function":{"name":"wait_for_pixel","description":"Wait until a screen pixel matches (or changes from) an expected color. Use to detect loading spinners disappearing, buttons becoming active, or any pixel-level state change.","parameters":{"type":"object","properties":{"x":{"type":"integer","description":"Pixel X coordinate"},"y":{"type":"integer","description":"Pixel Y coordinate"},"color":{"type":"string","description":"Expected hex color to wait FOR, e.g. '#00ff00'. Or use change_from to wait for any change."},"change_from":{"type":"string","description":"Current hex color — wait until pixel is no longer this color"},"timeout":{"type":"number","description":"Max seconds, default 10"}},"required":["x","y"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "wait_for_text",
+            "description": "Poll the screen using OCR until specified text appears (or timeout). Use before clicking UI elements that appear asynchronously — e.g. after opening an app, before a game board loads, after a button click triggers a dialog. Returns the (x,y) center of the text when found.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "Text to wait for on screen (case-insensitive partial match)",
+                    },
+                    "timeout": {"type": "number", "description": "Max seconds to wait, default 15"},
+                    "region": {
+                        "type": "object",
+                        "description": "Optional screen region {x,y,width,height} to restrict search",
+                        "properties": {
+                            "x": {"type": "integer"},
+                            "y": {"type": "integer"},
+                            "width": {"type": "integer"},
+                            "height": {"type": "integer"},
+                        },
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wait_for_pixel",
+            "description": "Wait until a screen pixel matches (or changes from) an expected color. Use to detect loading spinners disappearing, buttons becoming active, or any pixel-level state change.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer", "description": "Pixel X coordinate"},
+                    "y": {"type": "integer", "description": "Pixel Y coordinate"},
+                    "color": {
+                        "type": "string",
+                        "description": "Expected hex color to wait FOR, e.g. '#00ff00'. Or use change_from to wait for any change.",
+                    },
+                    "change_from": {
+                        "type": "string",
+                        "description": "Current hex color — wait until pixel is no longer this color",
+                    },
+                    "timeout": {"type": "number", "description": "Max seconds, default 10"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
 ]
 
 # Tool name → description map for Ollama prompt injection
-TOOL_DESCRIPTIONS = "\n".join(
-    f"  {t['function']['name']}: {t['function']['description']}"
-    for t in TOOLS
-)
+TOOL_DESCRIPTIONS = "\n".join(f"  {t['function']['name']}: {t['function']['description']}" for t in TOOLS)
 
-_last_screenshot_b64: str | None = None   # shared between exec_tool and LLM streams
+_last_screenshot_b64: str | None = None  # shared between exec_tool and LLM streams
 _last_screenshot_time: float = 0.0
 _tool_last_elapsed_ms: dict[str, float] = {}  # tool_name → last elapsed ms (set by exec_tool)
 
@@ -1464,11 +2441,24 @@ _tool_last_elapsed_ms: dict[str, float] = {}  # tool_name → last elapsed ms (s
 
 _VISION_PROVIDERS = {"openai", "github", "anthropic", "gemini", "groq"}
 _OLLAMA_VISION_KEYWORDS = (
-    "llava", "bakllava", "moondream", "minicpm", "vision",
-    "llama3.2-vision", "qwen2.5vl", "qwen3-vl", "qwen2-vl",
-    "minicpm-v", "cogvlm", "phi3-vision", "phi-3-vision",
-    "internvl", "pixtral", "gemma3",  # gemma3 supports vision
+    "llava",
+    "bakllava",
+    "moondream",
+    "minicpm",
+    "vision",
+    "llama3.2-vision",
+    "qwen2.5vl",
+    "qwen3-vl",
+    "qwen2-vl",
+    "minicpm-v",
+    "cogvlm",
+    "phi3-vision",
+    "phi-3-vision",
+    "internvl",
+    "pixtral",
+    "gemma3",  # gemma3 supports vision
 )
+
 
 def _model_supports_vision() -> bool:
     """True if the current provider/model can process screenshot images."""
@@ -1479,6 +2469,7 @@ def _model_supports_vision() -> bool:
         return any(k in m for k in _OLLAMA_VISION_KEYWORDS)
     return False
 
+
 def _make_vision_tool_result(text: str, tool_call_id: str) -> dict:
     """Build a tool result message that includes the last screenshot as an image."""
     global _last_screenshot_b64
@@ -1486,12 +2477,11 @@ def _make_vision_tool_result(text: str, tool_call_id: str) -> dict:
     _last_screenshot_b64 = None
     if b64 and _model_supports_vision():
         return {
-            "role": "tool", "tool_call_id": tool_call_id,
+            "role": "tool",
+            "tool_call_id": tool_call_id,
             "content": [
                 {"type": "text", "text": text or "(screenshot captured)"},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/jpeg;base64,{b64}", "detail": "high"
-                }},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "high"}},
             ],
         }
     return {"role": "tool", "tool_call_id": tool_call_id, "content": text}
@@ -1504,12 +2494,23 @@ def _tool_err(action: str, e: Exception) -> str:
 
 # Tools that are safe to automatically retry on transient failure
 _RETRYABLE_TOOLS = {
-    "read_screen", "screenshot", "ocr_region", "find_on_screen",
-    "browser_open", "browser_click", "browser_fill", "browser_extract",
-    "browser_screenshot", "browser_wait",
-    "web_search", "fetch_url",
-    "click", "double_click", "right_click",
+    "read_screen",
+    "screenshot",
+    "ocr_region",
+    "find_on_screen",
+    "browser_open",
+    "browser_click",
+    "browser_fill",
+    "browser_extract",
+    "browser_screenshot",
+    "browser_wait",
+    "web_search",
+    "fetch_url",
+    "click",
+    "double_click",
+    "right_click",
 }
+
 
 async def exec_tool(name: str, args: dict) -> str:
     """
@@ -1541,6 +2542,7 @@ async def exec_tool(name: str, args: dict) -> str:
     # Provide the last error back to the LLM to help it self-correct
     return _tool_err(name, last_err) if last_err else f"{name} failed with unknown error"
 
+
 async def _exec_tool_impl(name: str, args: dict) -> str:
     """
     Core implementation of tool logic.
@@ -1560,6 +2562,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── Screen & vision ────────────────────────────────────────────────────────
     if name in ("read_screen", "screenshot"):
+
         def _snap():
             img = pyautogui.screenshot()
             buf_hq = io.BytesIO()
@@ -1569,21 +2572,26 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             img.save(buf_ui, format="JPEG", quality=55)
             b64_ui = base64.b64encode(buf_ui.getvalue()).decode()
             return b64_hq, b64_ui, img
+
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
-        _last_screenshot_b64  = snap_b64
+        _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
         await broadcast({"type": "screenshot", "data": snap_ui_b64})
         if name == "screenshot":
             return "(screenshot captured)"
         # read_screen: return OCR text; vision image is injected into tool result by LLM stream
         if HAS_OCR:
+
             def _ocr(im):
-                from PIL import ImageOps, ImageFilter, Image as _Image
+                from PIL import Image as _Image
+                from PIL import ImageFilter, ImageOps
+
                 g = im.convert("L")
                 g = ImageOps.autocontrast(g, cutoff=2)
                 g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
                 g = g.filter(ImageFilter.SHARPEN)
                 return pytesseract.image_to_string(g, config="--psm 3 --oem 3").strip()
+
             text = await loop.run_in_executor(None, lambda: _ocr(img))
             screen_w, screen_h = pyautogui.size()
             header = f"[Screen {screen_w}×{screen_h}px | image sent to vision model]\n"
@@ -1593,24 +2601,34 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── Screenshot region (zoom in for precision) ──────────────────────────────
     elif name == "screenshot_region":
-        x = int(args.get("x", 0));  y = int(args.get("y", 0))
-        w = int(args.get("width", 400));  h = int(args.get("height", 300))
+        x = int(args.get("x", 0))
+        y = int(args.get("y", 0))
+        w = int(args.get("width", 400))
+        h = int(args.get("height", 300))
+
         def _snap_r():
             im = pyautogui.screenshot(region=(x, y, w, h))
-            buf_hq = io.BytesIO(); im.save(buf_hq, format="JPEG", quality=90)
-            buf_ui = io.BytesIO(); im.save(buf_ui, format="JPEG", quality=60)
-            return base64.b64encode(buf_hq.getvalue()).decode(), \
-                   base64.b64encode(buf_ui.getvalue()).decode(), im
+            buf_hq = io.BytesIO()
+            im.save(buf_hq, format="JPEG", quality=90)
+            buf_ui = io.BytesIO()
+            im.save(buf_ui, format="JPEG", quality=60)
+            return base64.b64encode(buf_hq.getvalue()).decode(), base64.b64encode(buf_ui.getvalue()).decode(), im
+
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap_r)
-        _last_screenshot_b64  = snap_b64
+        _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
         await broadcast({"type": "screenshot", "data": snap_ui_b64})
         if HAS_OCR:
+
             def _ocr_r(im):
-                from PIL import ImageOps, Image as _Image
-                g = im.convert("L"); g = ImageOps.autocontrast(g, cutoff=2)
+                from PIL import Image as _Image
+                from PIL import ImageOps
+
+                g = im.convert("L")
+                g = ImageOps.autocontrast(g, cutoff=2)
                 g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
                 return pytesseract.image_to_string(g, config="--psm 6 --oem 3").strip()
+
             ocr_text = await loop.run_in_executor(None, lambda: _ocr_r(img))
             return f"Region ({x},{y}) {w}×{h}px | OCR: {ocr_text[:1500] or '(no text)'}"
         return f"Region ({x},{y}) {w}×{h}px captured."
@@ -1633,10 +2651,12 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         await loop.run_in_executor(None, lambda: pyautogui.moveTo(x, y, duration=0.3))
         return f"Mouse moved to ({x},{y})"
     elif name == "drag":
-        x1,y1,x2,y2 = args.get("x1",0),args.get("y1",0),args.get("x2",0),args.get("y2",0)
+        x1, y1, x2, y2 = args.get("x1", 0), args.get("y1", 0), args.get("x2", 0), args.get("y2", 0)
+
         def _drag():
             pyautogui.moveTo(x1, y1, duration=0.15)
             pyautogui.dragTo(x2, y2, duration=0.5, button="left")
+
         await loop.run_in_executor(None, _drag)
         return f"Dragged from ({x1},{y1}) to ({x2},{y2})"
     elif name == "scroll":
@@ -1650,6 +2670,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Keyboard ───────────────────────────────────────────────────────────────
     elif name == "type_text":
         text = args.get("text", "")
+
         def _type():
             # Use clipboard paste for unicode support; fallback to pyautogui.write for ASCII
             if all(ord(c) < 128 for c in text):
@@ -1657,13 +2678,17 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             else:
                 try:
                     import pyperclip
+
                     old = pyperclip.paste()
                     pyperclip.copy(text)
                     pyautogui.hotkey("ctrl", "v")
-                    import time; time.sleep(0.1)
+                    import time
+
+                    time.sleep(0.1)
                     pyperclip.copy(old)  # restore clipboard
                 except Exception:
                     pyautogui.write(text, interval=0.02)
+
         await loop.run_in_executor(None, _type)
         return f"Typed: {text[:80]}"
     elif name == "press_key":
@@ -1676,6 +2701,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "get_clipboard":
         try:
             import pyperclip
+
             return pyperclip.paste() or "(clipboard empty)"
         except Exception as e:
             return f"Clipboard error: {e}"
@@ -1683,6 +2709,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         text = args.get("text", "")
         try:
             import pyperclip
+
             pyperclip.copy(text)
             return f"Copied to clipboard: {text[:60]}"
         except Exception as e:
@@ -1692,6 +2719,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "list_windows":
         try:
             import pygetwindow as gw
+
             wins = [w.title for w in gw.getAllWindows() if w.title.strip()]
             return "\n".join(wins[:30]) if wins else "(no windows found)"
         except Exception as e:
@@ -1700,6 +2728,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         title = args.get("title", "")
         try:
             import pygetwindow as gw
+
             wins = [w for w in gw.getAllWindows() if title.lower() in w.title.lower()]
             if wins:
                 wins[0].activate()
@@ -1715,14 +2744,17 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         timeout = int(args.get("timeout", 30))
         try:
             proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:3000] if result else f"(command exited {proc.returncode})"
-            except asyncio.TimeoutError:
-                try: proc.kill()
-                except Exception: pass
+            except TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
                 return f"Command timed out after {timeout}s. Use a shorter command or run in background."
         except Exception as e:
             return f"Error: {e}"
@@ -1740,7 +2772,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_click":
         selector = args.get("selector", "")
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         try:
             # Try CSS selector first, then text match
             try:
@@ -1753,7 +2786,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_fill":
         selector, text = args.get("selector", ""), args.get("text", "")
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         try:
             await page.fill(selector, text, timeout=5000)
             return f"Filled '{selector}' with: {text[:60]}"
@@ -1762,7 +2796,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_extract":
         selector = args.get("selector", "")
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         try:
             if selector:
                 text = await page.inner_text(selector, timeout=5000)
@@ -1773,7 +2808,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return f"Extract failed: {e}"
     elif name == "browser_screenshot":
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         buf = await page.screenshot()
         b64 = base64.b64encode(buf).decode()
         await broadcast({"type": "screenshot", "data": b64})
@@ -1781,17 +2817,20 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_press":
         key = args.get("key", "Enter")
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         await page.keyboard.press(key)
         return f"Browser pressed: {key}"
 
     # ── System info ────────────────────────────────────────────────────────────
     elif name in ("get_time", "get_date"):
         from datetime import datetime as _dt
+
         tz_name = args.get("timezone", "")
         try:
             if tz_name:
                 import zoneinfo
+
                 tz = zoneinfo.ZoneInfo(tz_name)
                 now = _dt.now(tz)
             else:
@@ -1805,25 +2844,28 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "get_system_info":
         lines: list[str] = []
         if HAS_PSUTIL:
-            cpu   = psutil.cpu_percent(interval=0.2)
-            vm    = psutil.virtual_memory()
-            disk  = psutil.disk_usage("/")
-            boot  = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M")
+            cpu = psutil.cpu_percent(interval=0.2)
+            vm = psutil.virtual_memory()
+            disk = psutil.disk_usage("/")
+            boot = datetime.fromtimestamp(psutil.boot_time()).strftime("%Y-%m-%d %H:%M")
             lines += [
                 f"CPU:  {cpu:.1f}%  ({psutil.cpu_count()} cores)",
-                f"RAM:  {vm.percent:.1f}%  ({vm.used/1e9:.1f}/{vm.total/1e9:.1f} GB)",
-                f"Disk: {disk.percent:.1f}%  ({disk.used/1e9:.0f}/{disk.total/1e9:.0f} GB)",
+                f"RAM:  {vm.percent:.1f}%  ({vm.used / 1e9:.1f}/{vm.total / 1e9:.1f} GB)",
+                f"Disk: {disk.percent:.1f}%  ({disk.used / 1e9:.0f}/{disk.total / 1e9:.0f} GB)",
                 f"Boot: {boot}",
             ]
             # Top 5 CPU processes
-            procs = sorted(psutil.process_iter(["name", "cpu_percent"]),
-                           key=lambda p: p.info["cpu_percent"] or 0, reverse=True)[:5]
+            procs = sorted(
+                psutil.process_iter(["name", "cpu_percent"]), key=lambda p: p.info["cpu_percent"] or 0, reverse=True
+            )[:5]
             lines.append("Top procs: " + ", ".join(f"{p.info['name']}({p.info['cpu_percent']:.0f}%)" for p in procs))
         if HAS_GPU:
             try:
                 util = pynvml.nvmlDeviceGetUtilizationRates(_GPU_HANDLE)
-                mem  = pynvml.nvmlDeviceGetMemoryInfo(_GPU_HANDLE)
-                lines.append(f"GPU:  {util.gpu}%  mem {mem.used/1e9:.1f}/{mem.total/1e9:.1f} GB  ({pynvml.nvmlDeviceGetName(_GPU_HANDLE)})")
+                mem = pynvml.nvmlDeviceGetMemoryInfo(_GPU_HANDLE)
+                lines.append(
+                    f"GPU:  {util.gpu}%  mem {mem.used / 1e9:.1f}/{mem.total / 1e9:.1f} GB  ({pynvml.nvmlDeviceGetName(_GPU_HANDLE)})"
+                )
             except Exception:
                 pass
         return "\n".join(lines) if lines else "psutil unavailable"
@@ -1839,7 +2881,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return f"Error: {e}"
     elif name == "find_files":
         directory = args.get("directory", "") or str(Path.home())
-        pattern   = args.get("pattern", "*")
+        pattern = args.get("pattern", "*")
         try:
             matches = []
             for root, _dirs, files in os.walk(directory):
@@ -1882,30 +2924,33 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         if not fact:
             return "No fact provided"
         before = len(memory.data["facts"])
-        memory.data["facts"] = [f for f in memory.data["facts"]
-                                 if fact.lower() not in f.lower()]
+        memory.data["facts"] = [f for f in memory.data["facts"] if fact.lower() not in f.lower()]
         memory.save()
         removed = before - len(memory.data["facts"])
         return f"Removed {removed} fact(s) matching '{fact}'"
 
     elif name == "window_resize":
-        title, w, h = args.get("title",""), int(args.get("width",800)), int(args.get("height",600))
+        title, w, h = args.get("title", ""), int(args.get("width", 800)), int(args.get("height", 600))
         try:
             import pygetwindow as gw
+
             wins = [w_ for w_ in gw.getAllWindows() if title.lower() in w_.title.lower()]
-            if not wins: return f"No window matching '{title}'"
+            if not wins:
+                return f"No window matching '{title}'"
             wins[0].resizeTo(w, h)
             return f"Resized '{wins[0].title}' to {w}×{h}"
         except Exception as e:
             return f"Error: {e}"
 
     elif name == "window_move":
-        title = args.get("title","")
-        x, y = int(args.get("x",0)), int(args.get("y",0))
+        title = args.get("title", "")
+        x, y = int(args.get("x", 0)), int(args.get("y", 0))
         try:
             import pygetwindow as gw
+
             wins = [w for w in gw.getAllWindows() if title.lower() in w.title.lower()]
-            if not wins: return f"No window matching '{title}'"
+            if not wins:
+                return f"No window matching '{title}'"
             wins[0].moveTo(x, y)
             return f"Moved '{wins[0].title}' to ({x},{y})"
         except Exception as e:
@@ -1913,9 +2958,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_scroll":
         direction = args.get("direction", "down")
-        amount    = int(args.get("amount", 300))
+        amount = int(args.get("amount", 300))
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         delta = amount if direction == "down" else -amount
         await page.evaluate(f"window.scrollBy(0, {delta})")
         return f"Browser scrolled {direction} {amount}px"
@@ -1923,7 +2969,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_eval":
         js = args.get("js", "")
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         try:
             result = await page.evaluate(js)
             return str(result)[:2000] if result is not None else "(no return value)"
@@ -1932,14 +2979,16 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_get_url":
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         return page.url or "(no URL)"
 
     elif name == "browser_wait":
         selector = args.get("selector", "")
-        timeout  = int(args.get("timeout", 5000))
+        timeout = int(args.get("timeout", 5000))
         page = await get_browser_page()
-        if page is None: return "Browser unavailable"
+        if page is None:
+            return "Browser unavailable"
         try:
             await page.wait_for_selector(selector, timeout=timeout)
             return f"Element '{selector}' appeared"
@@ -1949,47 +2998,56 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Agent Orchestrator ─────────────────────────────────────────────────────
     elif name == "ao_start":
         repo = args.get("repo", "").strip()
-        cmd  = f"ao start {repo}" if repo else "ao start"
+        cmd = f"ao start {repo}" if repo else "ao start"
+
         # Try WSL if ao not on Windows PATH, otherwise try direct
         async def _try_ao(command: str) -> str:
             try:
                 proc = await asyncio.create_subprocess_shell(
-                    command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:2000] if result else "(started)"
-            except asyncio.TimeoutError:
-                return f"Orchestrator starting in background (dashboard at http://localhost:3000)"
+            except TimeoutError:
+                return "Orchestrator starting in background (dashboard at http://localhost:3000)"
             except Exception as e:
                 return str(e)
+
         result = await _try_ao(cmd)
         if "not found" in result.lower() or "not recognized" in result.lower():
             result = await _try_ao(f"wsl {cmd}")
         return result or "Agent Orchestrator started. Dashboard: http://localhost:3000"
 
     elif name == "ao_status":
+
         async def _ao_run(c):
             try:
                 proc = await asyncio.create_subprocess_shell(
-                    c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=10)
                 return (out + err).decode(errors="replace").strip()[:2000]
             except Exception as e:
                 return str(e)
+
         result = await _ao_run("ao list 2>&1")
         if not result or "not recognized" in result.lower():
             result = await _ao_run("wsl ao list 2>&1")
         return result or "Orchestrator not running or ao CLI not installed."
 
     elif name == "ao_stop":
+
         async def _ao_stop():
             try:
                 proc = await asyncio.create_subprocess_shell(
-                    "ao stop 2>&1", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    "ao stop 2>&1", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=10)
                 return (out + err).decode(errors="replace").strip()
             except Exception as e:
                 return str(e)
+
         result = await _ao_stop()
         return result or "Orchestrator stopped."
 
@@ -1998,16 +3056,18 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         cmd = f"ao {ao_args}"
         try:
             proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
             out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
             result = (out + err).decode(errors="replace").strip()
             if not result or "not recognized" in result.lower():
                 proc2 = await asyncio.create_subprocess_shell(
-                    f"wsl {cmd}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    f"wsl {cmd}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
                 out2, err2 = await asyncio.wait_for(proc2.communicate(), timeout=15)
                 result = (out2 + err2).decode(errors="replace").strip()
             return result[:2000] or "(no output)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"Command '{cmd}' timed out"
         except Exception as e:
             return f"Error: {e}"
@@ -2020,14 +3080,16 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 from ddgs import DDGS
             except ImportError:
                 from duckduckgo_search import DDGS
+
             def _ddg_search():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
+
             results = await loop.run_in_executor(None, _ddg_search)
             if results:
                 lines = []
                 for r in results:
-                    lines.append(f"**{r.get('title','')}**\n{r.get('href','')}\n{r.get('body','')}")
+                    lines.append(f"**{r.get('title', '')}**\n{r.get('href', '')}\n{r.get('body', '')}")
                 return "\n\n".join(lines)
         except Exception:
             pass
@@ -2040,10 +3102,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 data = r.json()
             lines = []
             if data.get("Abstract"):
-                lines.append(f"**{data['AbstractTitle']}**: {data['Abstract']}\n{data.get('AbstractURL','')}")
+                lines.append(f"**{data['AbstractTitle']}**: {data['Abstract']}\n{data.get('AbstractURL', '')}")
             for item in data.get("RelatedTopics", [])[:max_results]:
                 if isinstance(item, dict) and item.get("Text"):
-                    lines.append(f"• {item['Text']}\n  {item.get('FirstURL','')}")
+                    lines.append(f"• {item['Text']}\n  {item.get('FirstURL', '')}")
             return "\n\n".join(lines[:max_results]) or f"No results found for: {query}"
         except Exception as e:
             return f"Search error: {e}"
@@ -2060,15 +3122,18 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             if as_markdown and "html" in content_type:
                 try:
                     from markdownify import markdownify as md
-                    text = md(text, heading_style="ATX", strip=["script","style","nav","footer"])
+
+                    text = md(text, heading_style="ATX", strip=["script", "style", "nav", "footer"])
                 except ImportError:
-                    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', text, flags=re.DOTALL|re.I)
-                    text = re.sub(r'<h[1-6][^>]*>(.*?)</h[1-6]>', r'\n## \1\n', text, flags=re.DOTALL|re.I)
-                    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\n\1\n', text, flags=re.DOTALL|re.I)
-                    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.I)
-                    text = re.sub(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r'\2 (\1)', text, flags=re.DOTALL|re.I)
-                    text = re.sub(r'<[^>]+>', '', text)
-                    text = re.sub(r'\n{3,}', '\n\n', text).strip()
+                    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL | re.I)
+                    text = re.sub(r"<h[1-6][^>]*>(.*?)</h[1-6]>", r"\n## \1\n", text, flags=re.DOTALL | re.I)
+                    text = re.sub(r"<p[^>]*>(.*?)</p>", r"\n\1\n", text, flags=re.DOTALL | re.I)
+                    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+                    text = re.sub(
+                        r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', r"\2 (\1)", text, flags=re.DOTALL | re.I
+                    )
+                    text = re.sub(r"<[^>]+>", "", text)
+                    text = re.sub(r"\n{3,}", "\n\n", text).strip()
             limit = 8000
             return text[:limit] + (f"\n\n[truncated — {len(text)} chars total]" if len(text) > limit else "")
         except Exception as e:
@@ -2108,7 +3173,13 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                         lines.append(f"📁 {entry.name}/")
                     else:
                         size = entry.stat().st_size
-                        sz = f"{size}B" if size < 1024 else f"{size//1024}KB" if size < 1048576 else f"{size//1048576}MB"
+                        sz = (
+                            f"{size}B"
+                            if size < 1024
+                            else f"{size // 1024}KB"
+                            if size < 1048576
+                            else f"{size // 1048576}MB"
+                        )
                         lines.append(f"📄 {entry.name} ({sz})")
             return "\n".join(lines[:100]) or "(empty)"
         except Exception as e:
@@ -2120,11 +3191,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "ocr_region":
         x, y = int(args.get("x", 0)), int(args.get("y", 0))
         w, h = int(args.get("width", 400)), int(args.get("height", 300))
+
         def _ocr_region():
             img = pyautogui.screenshot(region=(x, y, w, h))
             if not HAS_OCR:
                 return "(OCR not available)"
-            from PIL import ImageOps, ImageFilter, Image as _Image
+            from PIL import Image as _Image
+            from PIL import ImageFilter, ImageOps
+
             results = []
             for scale in (3, 2):
                 g = img.convert("L")
@@ -2137,6 +3211,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                         results.append(txt)
             # Return the longest (most text extracted)
             return max(results, key=len) if results else "(no text detected)"
+
         text = await loop.run_in_executor(None, _ocr_region)
         return text or "(no text detected in region)"
 
@@ -2144,31 +3219,38 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "execute_python":
         code = args.get("code", "")
         timeout = int(args.get("timeout", 30))
-        import io as _io, traceback as _tb, contextlib as _cl
+        import contextlib as _cl
+        import io as _io
+        import traceback as _tb
+
         def _run_code():
             stdout_buf = _io.StringIO()
             local_ns: dict = {}
             try:
                 with _cl.redirect_stdout(stdout_buf), _cl.redirect_stderr(stdout_buf):
-                    exec(compile(code, "<vision_exec>", "exec"), local_ns)  # noqa: S102
-                result_val = local_ns.get("result", None)
+                    exec(compile(code, "<vision_exec>", "exec"), local_ns)
+                result_val = local_ns.get("result")
                 output = stdout_buf.getvalue()
                 if result_val is not None:
                     output = (output + f"\nresult = {result_val}").strip()
             except Exception:
                 output = stdout_buf.getvalue() + _tb.format_exc()
             return output[:4000] or "(code ran with no output)"
+
         return await asyncio.wait_for(loop.run_in_executor(None, _run_code), timeout=timeout)
 
     elif name == "find_on_screen":
         search_text = args.get("text", "")
         if not search_text:
             return "Provide 'text' to search for"
+
         def _find():
             img = pyautogui.screenshot()
             if not HAS_OCR:
                 return None
-            from PIL import ImageOps, Image as _Image
+            from PIL import Image as _Image
+            from PIL import ImageOps
+
             g = img.convert("L")
             g = ImageOps.autocontrast(g, cutoff=1)
             g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
@@ -2180,6 +3262,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     y = data["top"][i] // 2 + data["height"][i] // 4
                     return x, y
             return None
+
         pos = await loop.run_in_executor(None, _find)
         if pos:
             return f"Found '{search_text}' at ({pos[0]}, {pos[1]})"
@@ -2191,8 +3274,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         duration = int(args.get("duration", 5))
         try:
             from plyer import notification as _notif
+
             def _notify():
                 _notif.notify(title=title, message=message, timeout=duration, app_name="VISION")
+
             await loop.run_in_executor(None, _notify)
             return f"Notification sent: '{title}'"
         except Exception:
@@ -2200,10 +3285,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             escaped_msg = message.replace("'", "''")
             escaped_title = title.replace("'", "''")
             proc = await asyncio.create_subprocess_exec(
-                "powershell", "-NoProfile", "-Command",
+                "powershell",
+                "-NoProfile",
+                "-Command",
                 f"Add-Type -AssemblyName System.Windows.Forms; "
                 f"[System.Windows.Forms.MessageBox]::Show('{escaped_msg}', '{escaped_title}')",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             await proc.communicate()
             return f"Notification sent: '{title}'"
 
@@ -2212,7 +3301,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         if not HAS_PSUTIL:
             return "psutil not available"
         procs = []
-        for p in sorted(psutil.process_iter(["pid","name","cpu_percent","memory_info"]), key=lambda x: x.info["pid"]):
+        for p in sorted(
+            psutil.process_iter(["pid", "name", "cpu_percent", "memory_info"]), key=lambda x: x.info["pid"]
+        ):
             try:
                 n = p.info["name"] or ""
                 if filt and filt not in n.lower():
@@ -2229,12 +3320,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         if not HAS_PSUTIL:
             return "psutil not available"
         killed = []
-        for p in psutil.process_iter(["pid","name"]):
+        for p in psutil.process_iter(["pid", "name"]):
             try:
                 if pid and p.info["pid"] == int(pid):
-                    p.kill(); killed.append(str(p.info["pid"]))
+                    p.kill()
+                    killed.append(str(p.info["pid"]))
                 elif pname and pname.lower() in (p.info["name"] or "").lower():
-                    p.kill(); killed.append(p.info["name"])
+                    p.kill()
+                    killed.append(p.info["name"])
             except Exception:
                 pass
         return f"Killed: {', '.join(killed)}" if killed else "No matching process found"
@@ -2251,7 +3344,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 r.raise_for_status()
                 Path(dest).parent.mkdir(parents=True, exist_ok=True)
                 Path(dest).write_bytes(r.content)
-            return f"Downloaded {len(r.content)//1024}KB → {dest}"
+            return f"Downloaded {len(r.content) // 1024}KB → {dest}"
         except Exception as e:
             return f"Download error: {e}"
 
@@ -2317,22 +3410,28 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "color_at":
         x, y = int(args.get("x", 0)), int(args.get("y", 0))
+
         def _col():
             img = pyautogui.screenshot(region=(x, y, 1, 1))
             return img.getpixel((0, 0))
+
         rgb = await loop.run_in_executor(None, _col)
         return f"Color at ({x},{y}): RGB{rgb}  hex=#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
     elif name == "get_active_window":
         try:
-            import win32gui, win32process
+            import win32gui
+            import win32process
+
             hwnd = win32gui.GetForegroundWindow()
             title = win32gui.GetWindowText(hwnd)
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             pname = ""
             if HAS_PSUTIL:
-                try: pname = psutil.Process(pid).name()
-                except Exception: pass
+                try:
+                    pname = psutil.Process(pid).name()
+                except Exception:
+                    pass
             return f"Active window: '{title}' (PID {pid}, {pname})"
         except Exception as e:
             return f"Error: {e}"
@@ -2340,8 +3439,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "speak":
         text = args.get("text", "")
         try:
+
             def _sapi_speak():
                 import pyttsx3
+
                 eng = pyttsx3.init()
                 voices = eng.getProperty("voices")
                 if voices and tts_voice_idx < len(voices):
@@ -2350,6 +3451,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 eng.setProperty("volume", 1.0)
                 eng.say(text)
                 eng.runAndWait()
+
             await loop.run_in_executor(None, _sapi_speak)
             return f"Spoken: {text[:80]}"
         except Exception as e:
@@ -2415,6 +3517,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         deadline = time.monotonic() + timeout
         interval = 0.5
         while time.monotonic() < deadline:
+
             def _ocr_poll(r=region):
                 try:
                     if r:
@@ -2432,6 +3535,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     return None
                 except Exception:
                     return None
+
             found = await loop.run_in_executor(None, _ocr_poll)
             if found:
                 return f"Found '{found[2]}' at ({found[0]}, {found[1]})"
@@ -2448,7 +3552,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _hex_to_rgb(h: str):
             try:
-                return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
             except Exception:
                 return None
 
@@ -2456,9 +3560,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         initial_rgb = _hex_to_rgb(change_from_hex) if change_from_hex else None
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+
             def _pixel():
                 img = pyautogui.screenshot(region=(x, y, 1, 1))
                 return img.getpixel((0, 0))[:3]
+
             rgb = await loop.run_in_executor(None, _pixel)
             if target_rgb and rgb == target_rgb:
                 return f"Pixel ({x},{y}) matched #{target_hex} after {timeout - (deadline - time.monotonic()):.1f}s"
@@ -2469,18 +3575,34 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     return f"Unknown tool: {name}"
 
+
 # ── LLM ───────────────────────────────────────────────────────────────────────
 
 # Models known to support native function calling
-_NATIVE_TOOL_MODELS = {
-    "openai", "github", "groq", "deepseek", "mistral", "gemini"
-}
+_NATIVE_TOOL_MODELS = {"openai", "github", "groq", "deepseek", "mistral", "gemini"}
 # Ollama model families that support native tool calling
 _OLLAMA_TOOL_FAMILIES = {
-    "llama3.1", "llama3.2", "llama3.3", "llama3.4", "qwen2.5", "qwen2", "qwen3",
-    "mistral-nemo", "mixtral", "firefunction", "functionary", "nexusraven", "gorilla",
-    "command-r", "phi3", "phi4", "smollm2", "gemma3", "gemma2",
+    "llama3.1",
+    "llama3.2",
+    "llama3.3",
+    "llama3.4",
+    "qwen2.5",
+    "qwen2",
+    "qwen3",
+    "mistral-nemo",
+    "mixtral",
+    "firefunction",
+    "functionary",
+    "nexusraven",
+    "gorilla",
+    "command-r",
+    "phi3",
+    "phi4",
+    "smollm2",
+    "gemma3",
+    "gemma2",
 }
+
 
 def _model_supports_tools() -> bool:
     """Return True if the current provider/model supports native function calling."""
@@ -2493,33 +3615,41 @@ def _model_supports_tools() -> bool:
     # broadly. llm_stream catches errors and falls back to prompt-based.
     return True
 
-import re as _re  # noqa: E402
 
 # Matches: TOOL_CALL: run_command(...) OR bare run_command(...)
 # Also handles transcription-spaced variants: run _command  read _screen
 _TOOL_NAMES_PATTERN = (
-    r'run_?\s*command|read_?\s*screen|screenshot|double_?\s*click|right_?\s*click|click|'
-    r'type_?\s*text|press_?\s*key|get_?\s*clipboard|set_?\s*clipboard|list_?\s*windows|'
-    r'focus_?\s*window|read_?\s*file|write_?\s*file|list_?\s*files|'
-    r'browser_?\s*open|browser_?\s*click|browser_?\s*fill|browser_?\s*extract|'
-    r'browser_?\s*screenshot|browser_?\s*press|move_?\s*mouse|drag|scroll'
+    r"run_?\s*command|read_?\s*screen|screenshot|double_?\s*click|right_?\s*click|click|"
+    r"type_?\s*text|press_?\s*key|get_?\s*clipboard|set_?\s*clipboard|list_?\s*windows|"
+    r"focus_?\s*window|read_?\s*file|write_?\s*file|list_?\s*files|"
+    r"browser_?\s*open|browser_?\s*click|browser_?\s*fill|browser_?\s*extract|"
+    r"browser_?\s*screenshot|browser_?\s*press|move_?\s*mouse|drag|scroll"
 )
-_BARE_TOOL_RE = _re.compile(
-    r'(?:TOOL_CALL:\s*)?(?P<name>' + _TOOL_NAMES_PATTERN + r')\s*\((?P<args>[^)]*)\)',
-    _re.IGNORECASE
+_BARE_TOOL_RE = re.compile(
+    r"(?:TOOL_CALL:\s*)?(?P<name>" + _TOOL_NAMES_PATTERN + r")\s*\((?P<args>[^)]*)\)", re.IGNORECASE
 )
 # Mapping from bare-call first positional arg to param name
 _TOOL_FIRST_PARAM: dict[str, str] = {
-    "run_command": "command", "type_text": "text", "press_key": "key",
-    "browser_open": "url", "browser_click": "selector", "browser_fill": "selector",
-    "browser_extract": "selector", "focus_window": "title",
-    "read_file": "path", "write_file": "path", "list_files": "path",
-    "set_clipboard": "text", "scroll": "direction",
+    "run_command": "command",
+    "type_text": "text",
+    "press_key": "key",
+    "browser_open": "url",
+    "browser_click": "selector",
+    "browser_fill": "selector",
+    "browser_extract": "selector",
+    "focus_window": "title",
+    "read_file": "path",
+    "write_file": "path",
+    "list_files": "path",
+    "set_clipboard": "text",
+    "scroll": "direction",
 }
+
 
 def _normalise_tool_name(raw: str) -> str:
     """Collapse spaces/underscores from transcription artifacts: 'read _screen' → 'read_screen'."""
-    return _re.sub(r'[\s_]+', '_', raw).lower().rstrip('_')
+    return re.sub(r"[\s_]+", "_", raw).lower().rstrip("_")
+
 
 def _parse_call_args(tool_name: str, raw_args: str) -> dict:
     """Parse tool args from either named (key=value) or positional ('value') format."""
@@ -2527,26 +3657,29 @@ def _parse_call_args(tool_name: str, raw_args: str) -> dict:
     raw_args = raw_args.strip()
     if not raw_args:
         return args
-    named = list(_re.finditer(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[^,]+)', raw_args))
+    named = list(re.finditer(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[^,]+)', raw_args))
     if named:
         for pair in named:
             k = pair.group(1)
-            v = pair.group(2).strip().strip('"\'')
-            try: v = int(v)
+            v = pair.group(2).strip().strip("\"'")
+            try:
+                v = int(v)
             except ValueError:
-                try: v = float(v)
-                except ValueError: pass
+                try:
+                    v = float(v)
+                except ValueError:
+                    pass
             args[k] = v
     else:
-        val = raw_args.strip().strip('"\'')
+        val = raw_args.strip().strip("\"'")
         param = _TOOL_FIRST_PARAM.get(tool_name, "value")
         if val:
             args[param] = val
     return args
 
-_TOOL_CALL_RE = _re.compile(
-    r'TOOL_CALL:\s*(\w+)\s*\(([^)]*)\)', _re.IGNORECASE
-)
+
+_TOOL_CALL_RE = re.compile(r"TOOL_CALL:\s*(\w+)\s*\(([^)]*)\)", re.IGNORECASE)
+
 
 def _parse_prompt_tool_calls(text: str) -> list[tuple[str, dict]]:
     """Parse TOOL_CALL: name(key=value, ...) patterns from model output."""
@@ -2556,6 +3689,7 @@ def _parse_prompt_tool_calls(text: str) -> list[tuple[str, dict]]:
         args = _parse_call_args(name, m.group("args"))
         calls.append((name, args))
     return calls
+
 
 def _build_tool_prompt_suffix() -> str:
     """Inject tool instructions for models without native function calling."""
@@ -2573,6 +3707,7 @@ After calling a tool, you will receive the result. Then continue your response.
 Never refuse to use tools — you have full access to the computer.
 """
 
+
 async def _llm_prompt_tools(oai, system: str, full_so_far: str):
     """Prompt-based tool calling for Ollama models without native FC support."""
     tool_suffix = _build_tool_prompt_suffix()
@@ -2584,7 +3719,10 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
     for _ in range(6):
         try:
             resp = await oai.chat.completions.create(
-                model=current_model, messages=messages, stream=False, max_tokens=600,
+                model=current_model,
+                messages=messages,
+                stream=False,
+                max_tokens=600,
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
@@ -2617,7 +3755,14 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
                 await broadcast_action(tname, targs, result, _tool_last_elapsed_ms.get(tname))
                 action_summary.append(f"{tname}: {result[:80]}")
                 tool_results.append(f"[{tname}] → {result}")
-            messages.append({"role": "user", "content": "Tool results:\n" + "\n".join(tool_results) + "\n\nNow give a brief spoken reply summarizing what you did."})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Tool results:\n"
+                    + "\n".join(tool_results)
+                    + "\n\nNow give a brief spoken reply summarizing what you did.",
+                }
+            )
 
     # If no text was ever yielded, synthesize a short summary
     if not yielded_any and action_summary:
@@ -2627,10 +3772,10 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             await asyncio.sleep(0.015)
 
 
-
 # ── OpenAI Responses API (computer-use-preview + streaming tool loop) ─────────
 
 _RESPONSES_API_MODELS = {"computer-use-preview", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3"}
+
 
 def _use_responses_api() -> bool:
     """True when OpenAI provider + model supports the Responses API."""
@@ -2640,11 +3785,13 @@ def _use_responses_api() -> bool:
 async def _take_screenshot_b64() -> str:
     """Take a desktop screenshot and return base64 JPEG."""
     loop = asyncio.get_running_loop()
+
     def _snap():
         img = pyautogui.screenshot()
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=70)
         return base64.b64encode(buf.getvalue()).decode()
+
     b64 = await loop.run_in_executor(None, _snap)
     await broadcast({"type": "screenshot", "data": b64})
     return b64
@@ -2661,7 +3808,14 @@ async def _execute_computer_action(action) -> dict:
     elif action_type == "click":
         x, y = int(action.x), int(action.y)
         button = getattr(action, "button", "left")
-        btn_map = {"left": "left", "right": "right", "middle": "middle", "wheel": "middle", "back": "left", "forward": "left"}
+        btn_map = {
+            "left": "left",
+            "right": "right",
+            "middle": "middle",
+            "wheel": "middle",
+            "back": "left",
+            "forward": "left",
+        }
         btn = btn_map.get(str(button).lower(), "left")
         await loop.run_in_executor(None, lambda: pyautogui.click(x, y, button=btn))
 
@@ -2700,9 +3854,9 @@ async def _execute_computer_action(action) -> dict:
     elif action_type == "drag":
         x, y = int(action.x), int(action.y)
         ex, ey = int(action.end_x), int(action.end_y)
-        await loop.run_in_executor(None, lambda: (
-            pyautogui.mouseDown(x, y), pyautogui.moveTo(ex, ey, duration=0.4), pyautogui.mouseUp()
-        ))
+        await loop.run_in_executor(
+            None, lambda: (pyautogui.mouseDown(x, y), pyautogui.moveTo(ex, ey, duration=0.4), pyautogui.mouseUp())
+        )
 
     elif action_type in ("wait", "pause"):
         await asyncio.sleep(1.0)
@@ -2720,6 +3874,7 @@ async def _llm_stream_responses_api(user_text: str):
     Yields text tokens as an async generator.
     """
     from openai import AsyncOpenAI as _AsyncOpenAI
+
     api_key = PROVIDERS["openai"]["api_key"]
     if not api_key:
         yield "OpenAI API key not configured. Add it in ⚙ Settings."
@@ -2729,7 +3884,7 @@ async def _llm_stream_responses_api(user_text: str):
     screen_w, screen_h = pyautogui.size()
     is_cua = current_model == "computer-use-preview"
     system = build_system_prompt()
-    full   = ""
+    full = ""
     actions_taken: list[str] = []
 
     # Build initial input from history (skip system messages, last 14 turns)
@@ -2743,21 +3898,23 @@ async def _llm_stream_responses_api(user_text: str):
 
     # Tool definitions
     if is_cua:
-        tools: list[dict] = [{
-            "type": "computer_use_preview",
-            "display_width":  screen_w,
-            "display_height": screen_h,
-            "environment":    "windows",
-        }]
+        tools: list[dict] = [
+            {
+                "type": "computer_use_preview",
+                "display_width": screen_w,
+                "display_height": screen_h,
+                "environment": "windows",
+            }
+        ]
     else:
         # Convert existing Chat-Completions TOOLS to Responses API format
         tools = [
             {
-                "type":        "function",
-                "name":        t["function"]["name"],
+                "type": "function",
+                "name": t["function"]["name"],
                 "description": t["function"].get("description", ""),
-                "parameters":  t["function"].get("parameters", {}),
-                "strict":      False,
+                "parameters": t["function"].get("parameters", {}),
+                "strict": False,
             }
             for t in TOOLS
         ]
@@ -2781,7 +3938,7 @@ async def _llm_stream_responses_api(user_text: str):
 
     # ── Response→action loop ───────────────────────────────────────────────────
     MAX_ROUNDS = 12
-    round_num  = 0
+    round_num = 0
 
     while round_num < MAX_ROUNDS:
         round_num += 1
@@ -2799,10 +3956,7 @@ async def _llm_stream_responses_api(user_text: str):
 
         # Check for pending computer_call items
         if is_cua:
-            computer_calls = [
-                i for i in getattr(response, "output", [])
-                if getattr(i, "type", "") == "computer_call"
-            ]
+            computer_calls = [i for i in getattr(response, "output", []) if getattr(i, "type", "") == "computer_call"]
             if not computer_calls:
                 break
 
@@ -2815,20 +3969,24 @@ async def _llm_stream_responses_api(user_text: str):
                 output = await _execute_computer_action(action)
                 await broadcast_action(atype, {}, f"computer_call: {atype}")
                 actions_taken.append(atype)
-                tool_outputs.append({
-                    "type":    "computer_call_output",
-                    "call_id": call_id,
-                    "output":  output,
-                })
+                tool_outputs.append(
+                    {
+                        "type": "computer_call_output",
+                        "call_id": call_id,
+                        "output": output,
+                    }
+                )
 
             # Safety check for pending_safety_checks
             safety = getattr(response, "output", [])
             for item in safety:
                 for sc in getattr(item, "pending_safety_checks", []):
-                    tool_outputs.append({
-                        "type":    "input_item",
-                        "item":    {"type": "safety_check_acknowledgement", "id": getattr(sc, "id", "")},
-                    })
+                    tool_outputs.append(
+                        {
+                            "type": "input_item",
+                            "item": {"type": "safety_check_acknowledgement", "id": getattr(sc, "id", "")},
+                        }
+                    )
 
             try:
                 response = await oai.responses.create(
@@ -2844,16 +4002,13 @@ async def _llm_stream_responses_api(user_text: str):
 
         else:
             # Responses API function calling (non-CUA models)
-            function_calls = [
-                i for i in getattr(response, "output", [])
-                if getattr(i, "type", "") == "function_call"
-            ]
+            function_calls = [i for i in getattr(response, "output", []) if getattr(i, "type", "") == "function_call"]
             if not function_calls:
                 break
 
             fn_outputs: list[dict] = []
             for fc in function_calls:
-                name    = getattr(fc, "name", "")
+                name = getattr(fc, "name", "")
                 call_id = getattr(fc, "call_id", None)
                 try:
                     args = json.loads(getattr(fc, "arguments", "{}") or "{}")
@@ -2863,17 +4018,21 @@ async def _llm_stream_responses_api(user_text: str):
                 result = await exec_tool(name, args)
                 await broadcast_action(name, args, result)
                 actions_taken.append(f"{name}: {result[:60]}")
-                fn_outputs.append({
-                    "type":    "function_call_output",
-                    "call_id": call_id,
-                    "output":  result,
-                })
+                fn_outputs.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": result,
+                    }
+                )
 
             # Force a text reply after tools
-            fn_outputs.append({
-                "role":    "user",
-                "content": "You just used tools. Give a brief 1-2 sentence spoken reply summarising what you did.",
-            })
+            fn_outputs.append(
+                {
+                    "role": "user",
+                    "content": "You just used tools. Give a brief 1-2 sentence spoken reply summarising what you did.",
+                }
+            )
             try:
                 response = await oai.responses.create(
                     model=current_model,
@@ -2902,6 +4061,7 @@ async def _llm_stream_responses_api(user_text: str):
 
 _THINKING_PREFIXES = ("deepseek-r1", "qwen3", "qwq", "marco-o1", "claude-3-7")
 
+
 def _is_thinking_model() -> bool:
     m = current_model.lower()
     return any(m.startswith(t) for t in _THINKING_PREFIXES)
@@ -2918,8 +4078,8 @@ async def _llm_stream_ollama(user_text: str):
     global _last_screenshot_b64
     client = get_ollama_client()
     system = build_system_prompt()
-    think  = _is_thinking_model()
-    full   = ""
+    think = _is_thinking_model()
+    full = ""
     actions_taken: list[str] = []
 
     options = OllamaOptions(
@@ -2932,8 +4092,8 @@ async def _llm_stream_ollama(user_text: str):
     msgs: list[dict] = [{"role": "system", "content": system}, *history[-20:]]
     tools_to_use = TOOLS if mode == "operator" else []
     _MAX_STEPS = 20
-    _last_tool_sig: str = ""   # detect repeated identical tool calls (infinite loop guard)
-    _repeat_count: int  = 0
+    _last_tool_sig: str = ""  # detect repeated identical tool calls (infinite loop guard)
+    _repeat_count: int = 0
 
     for _round in range(_MAX_STEPS):
         tool_calls_pending: list = []
@@ -2979,7 +4139,8 @@ async def _llm_stream_ollama(user_text: str):
                 print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:2727")
                 oai = get_oai_client()
                 async for c in _llm_prompt_tools(oai, system, full):
-                    full += c; yield c
+                    full += c
+                    yield c
                 break
             yield f"Ollama error: {e.error}"
             break
@@ -3013,12 +4174,11 @@ async def _llm_stream_ollama(user_text: str):
                 if _last_screenshot_b64 and _model_supports_vision():
                     b64 = _last_screenshot_b64
                     _last_screenshot_b64 = None
-                    msgs.append({"role": "user",
-                                 "content": "Here is the screenshot. What do you see?",
-                                 "images": [b64]})
+                    msgs.append(
+                        {"role": "user", "content": "Here is the screenshot. What do you see?", "images": [b64]}
+                    )
                 else:
-                    msgs.append({"role": "user",
-                                 "content": "Tool done. One short sentence summary."})
+                    msgs.append({"role": "user", "content": "Tool done. One short sentence summary."})
                 continue  # go to next round for follow-up
 
         # In operator mode with no tool calls, flush buffered text now
@@ -3032,8 +4192,7 @@ async def _llm_stream_ollama(user_text: str):
             break
 
         # Execute tool calls
-        msgs.append({"role": "assistant", "content": chunk_text,
-                     "tool_calls": tool_calls_pending})
+        msgs.append({"role": "assistant", "content": chunk_text, "tool_calls": tool_calls_pending})
         # Detect repeated identical tool call (infinite-loop guard)
         _sig = json.dumps(
             [{"n": tc.function.name, "a": tc.function.arguments} for tc in tool_calls_pending],
@@ -3045,14 +4204,21 @@ async def _llm_stream_ollama(user_text: str):
             _repeat_count = 0
         _last_tool_sig = _sig
         if _repeat_count >= 2:
-            msgs.append({"role": "user",
-                         "content": "You've called the same tool repeatedly with no progress. "
-                                    "Stop and give a brief spoken summary of what you achieved."})
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": "You've called the same tool repeatedly with no progress. "
+                    "Stop and give a brief spoken summary of what you achieved.",
+                }
+            )
             break
         for tc in tool_calls_pending:
             name = tc.function.name
-            args = tc.function.arguments if isinstance(tc.function.arguments, dict) \
-                   else json.loads(getattr(tc.function, "arguments", "{}") or "{}")
+            args = (
+                tc.function.arguments
+                if isinstance(tc.function.arguments, dict)
+                else json.loads(getattr(tc.function, "arguments", "{}") or "{}")
+            )
             await set_state("thinking")
             result = await exec_tool(name, args)
             await broadcast_action(name, args, result)
@@ -3062,12 +4228,9 @@ async def _llm_stream_ollama(user_text: str):
         if _last_screenshot_b64 and _model_supports_vision():
             b64 = _last_screenshot_b64
             _last_screenshot_b64 = None
-            msgs.append({"role": "user",
-                         "content": "Here is the screenshot. Analyse it and respond.",
-                         "images": [b64]})
+            msgs.append({"role": "user", "content": "Here is the screenshot. Analyse it and respond.", "images": [b64]})
         else:
-            msgs.append({"role": "user",
-                         "content": "Tools executed. Give a brief spoken summary."})
+            msgs.append({"role": "user", "content": "Tools executed. Give a brief spoken summary."})
 
     if full.strip():
         history.append({"role": "assistant", "content": full.strip()})
@@ -3085,24 +4248,26 @@ async def _llm_stream_openai(user_text: str):
     Streaming Chat Completions for OpenAI-compatible providers.
     Catches specific openai exceptions and streams tokens live.
     """
-    oai    = get_oai_client()
+    oai = get_oai_client()
     system = build_system_prompt()
-    full   = ""
+    full = ""
     actions_taken: list[str] = []
 
     MAX_TOOL_ROUNDS = 20
-    tool_rounds     = 0
+    tool_rounds = 0
     _last_tool_sig_oai: str = ""
-    _repeat_count_oai: int  = 0
+    _repeat_count_oai: int = 0
 
     while True:
         force_text = tool_rounds >= MAX_TOOL_ROUNDS
-        base_msgs  = [{"role": "system", "content": system}, *history]
+        base_msgs = [{"role": "system", "content": system}, *history]
         if force_text and actions_taken:
-            base_msgs.append({
-                "role": "user",
-                "content": "Tools done. Give a brief 1-2 sentence spoken reply.",
-            })
+            base_msgs.append(
+                {
+                    "role": "user",
+                    "content": "Tools done. Give a brief 1-2 sentence spoken reply.",
+                }
+            )
         kw_tools = {} if force_text else {"tools": TOOLS, "tool_choice": "auto"}
 
         try:
@@ -3126,7 +4291,7 @@ async def _llm_stream_openai(user_text: str):
                 delta = choice.delta
 
                 # Accumulate streaming tool call fragments
-                for tc_delta in (delta.tool_calls or []):
+                for tc_delta in delta.tool_calls or []:
                     idx = tc_delta.index
                     if idx not in tool_calls_acc:
                         tool_calls_acc[idx] = {"id": "", "name": "", "arguments": ""}
@@ -3148,21 +4313,28 @@ async def _llm_stream_openai(user_text: str):
         except openai.RateLimitError as e:
             rid = getattr(e, "request_id", None)
             print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:2898")
-            yield "Rate limit reached — please wait a moment."; break
+            yield "Rate limit reached — please wait a moment."
+            break
         except openai.APIStatusError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]} - live_chat_app.py:2902")
-            yield f"API error {e.status_code}: {str(e.message)[:100]}"; break
+            print(
+                f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]} - live_chat_app.py:2902"
+            )
+            yield f"API error {e.status_code}: {str(e.message)[:100]}"
+            break
         except openai.APIConnectionError:
-            yield "Connection error — check your internet."; break
+            yield "Connection error — check your internet."
+            break
         except openai.APITimeoutError:
-            yield "Request timed out."; break
+            yield "Request timed out."
+            break
         except Exception as e:
             err_s = str(e)
             print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:2910")
             if any(k in err_s.lower() for k in ("tool", "function", "schema", "unsupported")):
                 async for c in _llm_prompt_tools(oai, system, full):
-                    full += c; yield c
+                    full += c
+                    yield c
             else:
                 yield f"Error: {err_s[:120]}"
             break
@@ -3178,18 +4350,28 @@ async def _llm_stream_openai(user_text: str):
                 _repeat_count_oai = 0
             _last_tool_sig_oai = _sig_oai
             if _repeat_count_oai >= 2:
-                history.append({"role": "user",
-                                 "content": "You've called the same tool repeatedly with no progress. "
-                                            "Stop and give a brief spoken summary."})
+                history.append(
+                    {
+                        "role": "user",
+                        "content": "You've called the same tool repeatedly with no progress. "
+                        "Stop and give a brief spoken summary.",
+                    }
+                )
                 continue
-            history.append({
-                "role": "assistant", "content": None,
-                "tool_calls": [
-                    {"id": tc["id"], "type": "function",
-                     "function": {"name": tc["name"], "arguments": tc["arguments"]}}
-                    for tc in tcs
-                ],
-            })
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tcs
+                    ],
+                }
+            )
             for tc in tcs:
                 try:
                     args = json.loads(tc["arguments"] or "{}")
@@ -3235,18 +4417,20 @@ async def _llm_stream_anthropic(user_text: str):
 
     client = _ant.AsyncAnthropic(api_key=api_key)
     system = build_system_prompt()
-    full   = ""
+    full = ""
     actions_taken: list[str] = []
 
     # Convert TOOLS to Anthropic format
     ant_tools = []
     for t in TOOLS:
         fn = t["function"]
-        ant_tools.append({
-            "name":         fn["name"],
-            "description":  fn["description"],
-            "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-        })
+        ant_tools.append(
+            {
+                "name": fn["name"],
+                "description": fn["description"],
+                "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+            }
+        )
 
     # Convert history to Anthropic message format (no system role in messages)
     msgs: list[dict] = []
@@ -3286,11 +4470,13 @@ async def _llm_stream_anthropic(user_text: str):
                     if et == "content_block_start":
                         block = getattr(event, "content_block", None)
                         if block and getattr(block, "type", "") == "tool_use":
-                            tool_use_blocks.append({
-                                "id":    block.id,
-                                "name":  block.name,
-                                "input": "",
-                            })
+                            tool_use_blocks.append(
+                                {
+                                    "id": block.id,
+                                    "name": block.name,
+                                    "input": "",
+                                }
+                            )
                     elif et == "content_block_delta":
                         delta = getattr(event, "delta", None)
                         if delta is None:
@@ -3305,8 +4491,7 @@ async def _llm_stream_anthropic(user_text: str):
                                     full += word + " "
                                     await asyncio.sleep(0.012)
                         elif dtype == "thinking_delta":
-                            await broadcast({"type": "thinking",
-                                             "text": getattr(delta, "thinking", "")})
+                            await broadcast({"type": "thinking", "text": getattr(delta, "thinking", "")})
                         elif dtype == "input_json_delta":
                             if tool_use_blocks:
                                 tool_use_blocks[-1]["input"] += getattr(delta, "partial_json", "")
@@ -3350,15 +4535,16 @@ async def _llm_stream_anthropic(user_text: str):
             if tb["name"] in ("read_screen", "screenshot", "screenshot_region") and _last_screenshot_b64:
                 b64 = _last_screenshot_b64
                 _last_screenshot_b64 = None
-                tool_results.append({
-                    "type": "tool_result", "tool_use_id": tb["id"],
-                    "content": [
-                        {"type": "text", "text": result or "(screenshot captured)"},
-                        {"type": "image", "source": {
-                            "type": "base64", "media_type": "image/jpeg", "data": b64
-                        }},
-                    ],
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tb["id"],
+                        "content": [
+                            {"type": "text", "text": result or "(screenshot captured)"},
+                            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+                        ],
+                    }
+                )
             else:
                 tool_results.append({"type": "tool_result", "tool_use_id": tb["id"], "content": result})
 
@@ -3378,20 +4564,19 @@ async def _llm_stream_anthropic(user_text: str):
 
 # ── Context compression ───────────────────────────────────────────────────────
 # Rough token estimate: ~4 chars per token. Compress when history exceeds limit.
-_CONTEXT_TOKEN_LIMIT = 12_000   # ~48K chars before compressing
-_CONTEXT_KEEP_RECENT = 6        # keep last N message pairs (user+assistant) verbatim
-
-from typing import AsyncGenerator, Any  # noqa: E402
+_CONTEXT_TOKEN_LIMIT = 12_000  # ~48K chars before compressing
+_CONTEXT_KEEP_RECENT = 6  # keep last N message pairs (user+assistant) verbatim
 
 # Fast model preferences for background tasks (memory, compression)
 _FAST_MODEL_MAP: dict[str, str] = {
-    "openai":    "gpt-4.1-mini",
-    "github":    "gpt-4o-mini",
-    "groq":      "llama-3.1-8b-instant",
-    "gemini":    "gemini-2.0-flash-lite",
-    "deepseek":  "deepseek-chat",
-    "mistral":   "mistral-small-latest",
+    "openai": "gpt-4.1-mini",
+    "github": "gpt-4o-mini",
+    "groq": "llama-3.1-8b-instant",
+    "gemini": "gemini-2.0-flash-lite",
+    "deepseek": "deepseek-chat",
+    "mistral": "mistral-small-latest",
     "anthropic": "claude-haiku-4-5",
+    "xai": "grok-3-mini",
 }
 
 
@@ -3445,6 +4630,7 @@ def _estimate_tokens(history_list: list[dict]) -> int:
                     total += 500  # constant high-detail image estimate
     return total
 
+
 async def _compress_history_if_needed() -> None:
     """Summarise old history turns when the context grows too large."""
     global history
@@ -3459,11 +4645,7 @@ async def _compress_history_if_needed() -> None:
         "Summarize the following conversation history in 3-5 concise bullet points, "
         "focusing on tasks completed, key facts learned, and important context. "
         "Be brief — this will be prepended to the next prompt.\n\n"
-        + "\n".join(
-            f"{m['role'].upper()}: {m['content'][:300]}"
-            for m in old_msgs
-            if isinstance(m.get("content"), str)
-        )
+        + "\n".join(f"{m['role'].upper()}: {m['content'][:300]}" for m in old_msgs if isinstance(m.get("content"), str))
     )
     try:
         summary_text = await _fast_completion(summary_prompt, max_tokens=300)
@@ -3508,6 +4690,7 @@ async def _always_learn_step(user_text: str, assistant_text: str) -> None:
             write_log("memory", f"Learned: {fact[:100]}")
     except Exception as e:
         write_log("memory_err", str(e))
+
 
 async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     """
@@ -3573,9 +4756,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         async for chunk in _llm_stream_openai(user_text):
             collected_chunks.append(chunk)
             if len(collected_chunks) == 1 and (
-                chunk.startswith("Connection error")
-                or chunk.startswith("API error")
-                or chunk.startswith("Error:")
+                chunk.startswith("Connection error") or chunk.startswith("API error") or chunk.startswith("Error:")
             ):
                 errored = True
                 first_error = chunk
@@ -3596,22 +4777,25 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:3290")
         await _activate_provider(fallback_provider)
 
+
 # ── TTS ───────────────────────────────────────────────────────────────────────
+
 
 async def speak(text_gen):
     """Stream LLM tokens to ElevenLabs in real-time for minimal latency."""
     loop = asyncio.get_running_loop()
     global last_tts_provider, _response_lock
-    if _response_lock is None:
-        _response_lock = asyncio.Lock()
     collected: list[str] = []
     tts_start = time.monotonic()
 
     async with _response_lock:
+
         async def _pyttsx3_tts(text: str) -> bool:
             try:
+
                 def _sapi():
                     import pyttsx3
+
                     eng = pyttsx3.init()
                     voices = eng.getProperty("voices")
                     if voices and tts_voice_idx < len(voices):
@@ -3620,6 +4804,7 @@ async def speak(text_gen):
                     eng.setProperty("volume", 1.0)
                     eng.say(text)
                     eng.runAndWait()
+
                 await loop.run_in_executor(None, _sapi)
                 return True
             except asyncio.CancelledError:
@@ -3635,8 +4820,10 @@ async def speak(text_gen):
                 print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:3322")
                 return False
             try:
+
                 def _speak_sync():
                     import win32com.client  # pywin32
+
                     tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
                     cat = win32com.client.Dispatch("SAPI.SpObjectTokenCategory")
                     cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
@@ -3650,9 +4837,10 @@ async def speak(text_gen):
                         except Exception:
                             continue
                     # Map WPM rate (175=normal) to SAPI rate scale (-10..+10)
-                    tts_obj.Rate   = max(-10, min(10, int((tts_rate - 175) / 20)))
+                    tts_obj.Rate = max(-10, min(10, int((tts_rate - 175) / 20)))
                     tts_obj.Volume = 100
                     tts_obj.Speak(text, 0)  # 0 = SVSFDefault (synchronous)
+
                 await loop.run_in_executor(None, _speak_sync)
                 return True
             except asyncio.CancelledError:
@@ -3706,8 +4894,8 @@ async def speak(text_gen):
                             idx = max(buf.rfind("."), buf.rfind("?"), buf.rfind("!"), buf.rfind("\n"))
                             if idx < 0:
                                 break
-                            sentence = buf[:idx + 1].strip()
-                            buf = buf[idx + 1:]
+                            sentence = buf[: idx + 1].strip()
+                            buf = buf[idx + 1 :]
                             if sentence:
                                 await sentence_q.put(sentence)
                     if buf.strip():
@@ -3734,8 +4922,10 @@ async def speak(text_gen):
                         return False
                     # auto_mode=true disables internal buffering schedules — ElevenLabs
                     # processes each sentence/phrase immediately for lower latency.
-                    uri = (f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
-                           f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true")
+                    uri = (
+                        f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
+                        f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true"
+                    )
                     try:
                         # API key in header (not JSON body) — standard, avoids logging it
                         async with ws_lib.connect(
@@ -3743,10 +4933,14 @@ async def speak(text_gen):
                             open_timeout=6,
                             additional_headers={"xi-api-key": api_11},
                         ) as ws:
-                            await ws.send(json.dumps({
-                                "text": " ",
-                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                            }))
+                            await ws.send(
+                                json.dumps(
+                                    {
+                                        "text": " ",
+                                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                                    }
+                                )
+                            )
                             out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
                             out.start()
                             await broadcast({"type": "tts_active", "provider": "elevenlabs"})
@@ -3764,8 +4958,8 @@ async def speak(text_gen):
                                         idx = max(buf.rfind("."), buf.rfind("?"), buf.rfind("!"), buf.rfind("\n"))
                                         if idx < 0:
                                             break
-                                        sentence = buf[:idx + 1].strip()
-                                        buf = buf[idx + 1:]
+                                        sentence = buf[: idx + 1].strip()
+                                        buf = buf[idx + 1 :]
                                         if sentence:
                                             await _wait_for_quiet_input()
                                             await ws.send(json.dumps({"text": sentence + " "}))
@@ -3780,8 +4974,7 @@ async def speak(text_gen):
                                     try:
                                         msg = json.loads(raw)
                                         if msg.get("audio"):
-                                            out.write(np.frombuffer(
-                                                base64.b64decode(msg["audio"]), dtype=np.int16))
+                                            out.write(np.frombuffer(base64.b64decode(msg["audio"]), dtype=np.int16))
                                             got_audio = True
                                         if msg.get("isFinal"):
                                             break
@@ -3829,11 +5022,13 @@ async def speak(text_gen):
 
         speak.last_duration = time.monotonic() - tts_start
 
+
 # ── Input handler ─────────────────────────────────────────────────────────────
+
 
 async def handle_input(text: str) -> None:
     global speak_task, _input_busy
-    _input_busy = True       # gate voice loop BEFORE any await
+    _input_busy = True  # gate voice loop BEFORE any await
     try:
         # NOTE: don't call add_transcript("user") here — the UI already shows
         # the user message locally via addMessage() when the user hits Enter.
@@ -3854,6 +5049,7 @@ async def handle_input(text: str) -> None:
     finally:
         _input_busy = False  # always release even if an error occurs
 
+
 async def _drain(tts_duration_secs: float = 0.0) -> None:
     global _tts_silence_until
     # Suppress VAD for the TTS audio duration + 3s room reverb tail (min 5s)
@@ -3862,11 +5058,15 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
     await asyncio.sleep(0.4)
     if audio_q:
         while not audio_q.empty():
-            try: audio_q.get_nowait()
-            except asyncio.QueueEmpty: break
+            try:
+                audio_q.get_nowait()
+            except asyncio.QueueEmpty:
+                break
     await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
 
+
 # ── Voice loop ────────────────────────────────────────────────────────────────
+
 
 async def voice_loop() -> None:
     global audio_q, speak_task, _input_busy, _tts_silence_until
@@ -3886,13 +5086,14 @@ async def voice_loop() -> None:
         while True:
             try:
                 frame = await audio_q.get()
-                rms   = float(np.sqrt(np.mean(frame.astype(np.float64)**2)))
+                rms = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
                 now = loop.time()
                 await broadcast_volume(rms / 2000.0)
                 if rms > RMS_THRESH:
                     _mic_hold_until = now + 0.25
-                if muted: continue
-                if _input_busy:          # text input is being processed — skip VAD entirely
+                if muted:
+                    continue
+                if _input_busy:  # text input is being processed — skip VAD entirely
                     continue
                 if not continuous_listening and not wake_word_active:
                     vad.reset()
@@ -3904,8 +5105,9 @@ async def voice_loop() -> None:
                     if rms > RMS_THRESH:
                         barge += 1
                         if barge >= START_FRAMES:
-                            speak_task.cancel(); barge = 0
-                            _tts_silence_until = 0.0   # let VAD capture immediately after barge-in
+                            speak_task.cancel()
+                            barge = 0
+                            _tts_silence_until = 0.0  # let VAD capture immediately after barge-in
                             await set_state("listening")
                             await asyncio.sleep(0.15)
                     else:
@@ -3919,11 +5121,13 @@ async def voice_loop() -> None:
                 ev, data = vad.feed(frame)
                 if ev == "start":
                     _voice_capture_active = True
-                    winsound.Beep(400, 80); await set_state("recording")
+                    winsound.Beep(400, 80)
+                    await set_state("recording")
                     await broadcast({"type": "partial_transcript", "text": "🎙 Listening…"})
                 elif ev == "end":
                     _voice_capture_active = False
-                    winsound.Beep(700, 80); await set_state("thinking")
+                    winsound.Beep(700, 80)
+                    await set_state("thinking")
                     await broadcast({"type": "partial_transcript", "text": ""})
                     if len(data) < 12:
                         _tts_silence_until = asyncio.get_running_loop().time() + 0.5
@@ -3937,11 +5141,14 @@ async def voice_loop() -> None:
                         _voice_capture_active = False
                         await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
-                        vad.reset(); continue
+                        vad.reset()
+                        continue
                     if not text or len(text) < 3:
                         _voice_capture_active = False
                         _tts_silence_until = asyncio.get_running_loop().time() + 0.75
-                        await set_state("listening"); vad.reset(); continue
+                        await set_state("listening")
+                        vad.reset()
+                        continue
                     print(f"[operator] 🎙 {text} - live_chat_app.py:3599")
                     # ── Wake-word gate ──────────────────────────────────────
                     if wake_word_active:
@@ -3953,28 +5160,29 @@ async def voice_loop() -> None:
                                 txt_lo = txt_lo.replace(p, "").strip()
                             text = txt_lo or ""
                             winsound.Beep(1000, 80)
-                            await broadcast({"type": "transcript", "role": "system",
-                                             "text": "🔓 Wake word detected"})
+                            await broadcast({"type": "transcript", "role": "system", "text": "🔓 Wake word detected"})
                             if not text:
                                 # Just a bare wake phrase — acknowledge and wait
-                                gen_wake = (w for w in ["Yes?"])
-                                async def _ack():
-                                    for w in ["Yes? "]:
-                                        yield w
+                                async def _yes_once():
+                                    yield "Yes? "
+
                                 await set_state("speaking")
-                                speak_task = asyncio.create_task(speak(_ack()))
+                                speak_task = asyncio.create_task(speak(_yes_once()))
                                 await speak_task
-                                vad.reset(); continue
+                                vad.reset()
+                                continue
                         else:
                             # Not a wake phrase — silently discard
                             _voice_capture_active = False
-                            await set_state("listening"); vad.reset(); continue
+                            await set_state("listening")
+                            vad.reset()
+                            continue
                     # ── Normal processing ────────────────────────────────────
                     await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
                     await add_transcript("user", text)
                     memory.add_task(text)
                     gen = llm_stream(text)
-                    _input_busy = True   # gate: don't let handle_input race with voice
+                    _input_busy = True  # gate: don't let handle_input race with voice
                     try:
                         speak_task = asyncio.create_task(speak(gen))
                         await speak_task
@@ -3989,60 +5197,113 @@ async def voice_loop() -> None:
                 print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:3643")
                 await asyncio.sleep(0.5)
 
+
 # ── ElevenLabs Conversational Agent ──────────────────────────────────────────
+
 
 def _make_tool_handler(tool_name: str):
     """Bridge: called from ElevenLabs SDK thread → exec_tool() in FastAPI event loop."""
+
     def handler(params: dict):
         if not _main_loop:
             return "Error: event loop not ready"
         try:
             future = asyncio.run_coroutine_threadsafe(exec_tool(tool_name, params), _main_loop)
             result = future.result(timeout=30)
-            asyncio.run_coroutine_threadsafe(
-                broadcast_action(tool_name, params, str(result)), _main_loop)
+            asyncio.run_coroutine_threadsafe(broadcast_action(tool_name, params, str(result)), _main_loop)
             return result
         except Exception as e:
             return f"Error in {tool_name}: {e}"
+
     return handler
 
 
 _EL_TOOL_NAMES = [
-    "read_screen", "screenshot", "screenshot_region", "ocr_region",
-    "click", "double_click", "right_click", "move_mouse", "drag", "scroll",
-    "type_text", "press_key", "hotkey",
-    "get_clipboard", "set_clipboard",
-    "list_windows", "focus_window",
-    "run_command", "read_file", "write_file", "list_files",
-    "web_search", "fetch_url",
-    "browser_open", "browser_click", "browser_fill", "browser_extract",
-    "browser_screenshot", "browser_press", "browser_scroll", "browser_eval",
-    "browser_get_url", "browser_wait",
-    "browser_back", "browser_forward", "browser_refresh",
-    "browser_new_tab", "browser_close_tab",
-    "get_screen_size", "get_mouse_position", "get_time", "get_date",
-    "wait", "remember", "recall", "forget",
-    "window_resize", "window_move",
-    "ao_start", "ao_status", "ao_stop", "ao_command",
+    "read_screen",
+    "screenshot",
+    "screenshot_region",
+    "ocr_region",
+    "click",
+    "double_click",
+    "right_click",
+    "move_mouse",
+    "drag",
+    "scroll",
+    "type_text",
+    "press_key",
+    "hotkey",
+    "get_clipboard",
+    "set_clipboard",
+    "list_windows",
+    "focus_window",
+    "run_command",
+    "read_file",
+    "write_file",
+    "list_files",
+    "web_search",
+    "fetch_url",
+    "browser_open",
+    "browser_click",
+    "browser_fill",
+    "browser_extract",
+    "browser_screenshot",
+    "browser_press",
+    "browser_scroll",
+    "browser_eval",
+    "browser_get_url",
+    "browser_wait",
+    "browser_back",
+    "browser_forward",
+    "browser_refresh",
+    "browser_new_tab",
+    "browser_close_tab",
+    "get_screen_size",
+    "get_mouse_position",
+    "get_time",
+    "get_date",
+    "wait",
+    "remember",
+    "recall",
+    "forget",
+    "window_resize",
+    "window_move",
+    "ao_start",
+    "ao_status",
+    "ao_stop",
+    "ao_command",
     # Power tools
-    "execute_python", "find_on_screen", "send_notification",
-    "list_processes", "kill_process",
-    "download_file", "move_file", "delete_file", "copy_file", "open_file",
-    "search_file_content", "color_at", "get_active_window", "speak",
+    "execute_python",
+    "find_on_screen",
+    "send_notification",
+    "list_processes",
+    "kill_process",
+    "download_file",
+    "move_file",
+    "delete_file",
+    "copy_file",
+    "open_file",
+    "search_file_content",
+    "color_at",
+    "get_active_window",
+    "speak",
     # Polling / wait
-    "wait_for_text", "wait_for_pixel",
+    "wait_for_text",
+    "wait_for_pixel",
 ]
 
 
 async def _start_el_agent() -> None:
     global _el_conv, _el_thread, _el_active
     if _el_active:
-        await broadcast({"type": "el_agent", "status": "already_running"}); return
+        await broadcast({"type": "el_agent", "status": "already_running"})
+        return
     if not HAS_CONVAI:
-        await broadcast({"type": "el_agent", "status": "error", "msg": "ConvAI SDK missing"}); return
+        await broadcast({"type": "el_agent", "status": "error", "msg": "ConvAI SDK missing"})
+        return
     api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
     if not api_11:
-        await broadcast({"type": "el_agent", "status": "error", "msg": "No ElevenLabs API key"}); return
+        await broadcast({"type": "el_agent", "status": "error", "msg": "No ElevenLabs API key"})
+        return
 
     client_tools = ClientTools()
     for name in _EL_TOOL_NAMES:
@@ -4055,18 +5316,19 @@ async def _start_el_agent() -> None:
         requires_auth=True,
         audio_interface=DefaultAudioInterface(),
         client_tools=client_tools,
-        callback_agent_response=lambda text:
-            asyncio.run_coroutine_threadsafe(add_transcript("assistant", text), _main_loop),
+        callback_agent_response=lambda text: asyncio.run_coroutine_threadsafe(
+            add_transcript("assistant", text), _main_loop
+        ),
         callback_agent_response_correction=lambda orig, corr: None,
-        callback_user_transcript=lambda text:
-            asyncio.run_coroutine_threadsafe(add_transcript("user", text), _main_loop),
+        callback_user_transcript=lambda text: asyncio.run_coroutine_threadsafe(
+            add_transcript("user", text), _main_loop
+        ),
     )
 
     def _run():
         global _el_active
         _el_active = True
-        asyncio.run_coroutine_threadsafe(
-            broadcast({"type": "el_agent", "status": "active"}), _main_loop)
+        asyncio.run_coroutine_threadsafe(broadcast({"type": "el_agent", "status": "active"}), _main_loop)
         write_log("el_agent", "session started")
         try:
             _el_conv.start_session()
@@ -4076,8 +5338,7 @@ async def _start_el_agent() -> None:
             write_log("el_agent", f"error: {e}")
         finally:
             _el_active = False
-            asyncio.run_coroutine_threadsafe(
-                broadcast({"type": "el_agent", "status": "idle"}), _main_loop)
+            asyncio.run_coroutine_threadsafe(broadcast({"type": "el_agent", "status": "idle"}), _main_loop)
 
     _el_thread = threading.Thread(target=_run, daemon=True, name="el-agent")
     _el_thread.start()
@@ -4096,7 +5357,9 @@ async def _stop_el_agent() -> None:
     await broadcast({"type": "el_agent", "status": "idle"})
     write_log("el_agent", "stopped by user")
 
+
 # ── Startup ───────────────────────────────────────────────────────────────────
+
 
 @app.on_event("startup")
 async def startup():
@@ -4141,7 +5404,7 @@ async def startup():
 async def _prewarm_playwright():
     """Launch Playwright Chromium in background at startup to avoid cold-start delay."""
     try:
-        await asyncio.sleep(3)          # let server fully initialise first
+        await asyncio.sleep(3)  # let server fully initialise first
         await get_browser_page()
         print("[playwright] browser prewarmed ✓ - live_chat_app.py:3795")
     except Exception as e:

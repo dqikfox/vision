@@ -5,6 +5,7 @@ Shared fixtures for async tests, mocks, and integration setup.
 """
 
 import asyncio
+import json
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -53,14 +54,14 @@ def tmp_config_file(tmp_project_dir: Path) -> Path:
 @pytest.fixture
 def mock_http_client():
     """Mock HTTP client for testing."""
+
     class MockResponse:
         def __init__(self, status_code: int = 200, text: str = "{}") -> None:
             self.status_code = status_code
             self.text = text
 
         async def json(self) -> Any:
-            import json as _json
-            return _json.loads(self.text)
+            return json.loads(self.text)
 
     class MockClient:
         async def get(self, url: str, **kwargs: Any) -> MockResponse:
@@ -75,12 +76,17 @@ def mock_http_client():
 @pytest.fixture
 def mock_llm_response():
     """Mock LLM streaming response."""
+
     class MockChoice:
         def __init__(self):
-            self.delta = type('obj', (object,), {
-                'content': 'Test response',
-                'tool_calls': None,
-            })()
+            self.delta = type(
+                "obj",
+                (object,),
+                {
+                    "content": "Test response",
+                    "tool_calls": None,
+                },
+            )()
             self.finish_reason = "stop"
 
     class MockStreamChunk:
@@ -102,6 +108,7 @@ def mock_llm_response():
 @pytest.fixture
 def caplog_with_json(caplog):
     """Capture and parse JSON logs."""
+
     class JsonLogCapture:
         def __init__(self, caplog):
             self.caplog = caplog
@@ -110,10 +117,12 @@ def caplog_with_json(caplog):
             """Parse captured log records."""
             records = []
             for record in self.caplog.records:
-                records.append({
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                })
+                records.append(
+                    {
+                        "level": record.levelname,
+                        "message": record.getMessage(),
+                    }
+                )
             return records
 
     return JsonLogCapture(caplog)
@@ -128,6 +137,7 @@ def caplog_with_json(caplog):
 async def elite_metrics_clean():
     """Fresh metrics collector for each test."""
     from elite_metrics import MetricsCollector
+
     return MetricsCollector()
 
 
@@ -135,14 +145,17 @@ async def elite_metrics_clean():
 async def elite_tool_executor_clean():
     """Fresh tool executor for each test."""
     from elite_tools import SafeToolExecutor, ToolCache
+
     return SafeToolExecutor(cache=ToolCache())
 
 
 @pytest.fixture
 def monkeypatch_env(monkeypatch):
     """Monkeypatch environment variables."""
+
     def patch_env(key: str, value: str):
         monkeypatch.setenv(key, value)
+
     return patch_env
 
 
@@ -188,10 +201,12 @@ def benchmark_async():
 
 @pytest.fixture(autouse=True)
 def cleanup_tasks():
-    """Clean up dangling async tasks after each test."""
+    """Cancel any dangling async tasks after each test."""
     yield
-
-    # Cancel all pending tasks
-    pending = asyncio.all_tasks(asyncio.get_event_loop())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return  # no running loop — nothing to cancel
+    pending = {t for t in asyncio.all_tasks(loop) if not t.done()}
     for task in pending:
         task.cancel()

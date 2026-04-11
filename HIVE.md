@@ -45,14 +45,14 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 
 ### Always-On Guidance
 - **`.github/copilot-instructions.md`**: Repository-scoped instructions loaded in every Copilot chat. Covers working priorities, runtime assumptions, verification patterns, and editing rules.
-- **`F:\rag-v1` (via workspace MCP)**: External local LM Studio plugin workspace available as an extra context source for LM Studio and RAG-related tasks.
+- **`RAG_PLUGIN_WORKSPACE` (via workspace MCP)**: External local LM Studio plugin workspace path for LM Studio and RAG-related tasks (example: `F:\rag-v1` on Windows, `/home/user/rag-v1` on Linux/macOS).
 - **`DOCUMENTATION_INDEX.md`**: Top-level map for runtime, customization, and debugging documentation.
 
 ### On-Demand Skills (invoke with `@skill-name`)
 - **`vision-runtime-ops`**: Start, verify, and smoke-test the local Vision stack
 - **`vision-debugging`**: Root-cause analysis for voice, WebSocket, provider, OCR, tool-call failures
 - **`vision-tool-audit`**: Audit direct tool execution and NL routing behavior
-- **`vision-context-ops`**: Improve Copilot repo awareness, memory workflow, and context continuity
+- **`vision-context-ops`**: Improve Copilot repo awareness, memory workflow, and context continuity (`.github/skills/vision-context-ops/SKILL.md`)
 - **`vision-home-ops`**: Apply Vision to home PC, network, security, backup, and automation work
 - **`vision-documentation-ops`**: Keep docs, skill listings, and runtime notes synchronized
 - **`vision-mcp-builder`**: Add or expand repo-local MCP servers and related customizations

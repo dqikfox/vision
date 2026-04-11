@@ -9,44 +9,106 @@ const TRANSCRIBE_MODEL = "whisper-large-v3-turbo";
 
 type RecorderState = "idle" | "recording" | "processing";
 
+let activeRecorder: RecorderController | undefined;
+
 class RecorderController {
   private process: ChildProcess | undefined;
   private outputPath: string | undefined;
 
   async start(): Promise<string> {
     const tempFile = path.join(os.tmpdir(), `copilot-voice-${Date.now()}.wav`);
-    const { command, args } = this.buildRecordingCommand(tempFile);
+    const candidates = this.buildRecordingCandidates(tempFile);
 
-    this.process = spawn(command, args, {
-      stdio: ["pipe", "ignore", "pipe"],
-      windowsHide: true,
-    });
+    let lastError: Error | undefined;
+    for (const { command, args } of candidates) {
+      try {
+        this.process = spawn(command, args, {
+          stdio: ["pipe", "ignore", "pipe"],
+          windowsHide: true,
+        });
 
-    this.outputPath = tempFile;
+        await new Promise<void>((resolve, reject) => {
+          if (!this.process) {
+            reject(new Error("Recording process did not start."));
+            return;
+          }
 
-    await new Promise<void>((resolve, reject) => {
-      if (!this.process) {
-        reject(new Error("Recording process did not start."));
-        return;
+          let settled = false;
+
+          const cleanup = () => {
+            this.process?.off("spawn", onSpawn);
+            this.process?.off("error", onError);
+            this.process?.off("exit", onExit);
+            this.process?.off("close", onClose);
+          };
+
+          const settleResolve = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            cleanup();
+            resolve();
+          };
+
+          const settleReject = (error: Error) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            cleanup();
+            reject(error);
+          };
+
+          const onSpawn = () => settleResolve();
+          const onError = (error: Error) => settleReject(error);
+          const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+            settleReject(new Error(`Recording process exited before spawn (code=${code}, signal=${signal ?? "none"}).`));
+          };
+          const onClose = (code: number | null, signal: NodeJS.Signals | null) => {
+            settleReject(new Error(`Recording process closed before spawn (code=${code}, signal=${signal ?? "none"}).`));
+          };
+
+          this.process.once("spawn", onSpawn);
+          this.process.once("error", onError);
+          this.process.once("exit", onExit);
+          this.process.once("close", onClose);
+        });
+
+        // Spawn succeeded
+        this.outputPath = tempFile;
+        return tempFile;
+      } catch (err) {
+        const e = err instanceof Error ? err : new Error(String(err));
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+          lastError = new Error(`'${command}' not found. ${this.installHint()}`);
+          this.process = undefined;
+          continue; // try next candidate
+        }
+        throw e;
       }
+    }
 
-      this.process.once("spawn", () => resolve());
-      this.process.once("error", (error) => reject(error));
-    });
-
-    return tempFile;
+    throw lastError ?? new Error("No audio recording tool found.");
   }
 
-  async stop(): Promise<string> {
+  async stop(): Promise<string | undefined> {
     if (!this.process || !this.outputPath) {
-      throw new Error("Recording is not running.");
+      return undefined;
     }
 
     const proc = this.process;
     const filePath = this.outputPath;
 
     await new Promise<void>((resolve) => {
-      const finish = () => resolve();
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve();
+      };
 
       proc.once("exit", () => finish());
       proc.once("close", () => finish());
@@ -61,6 +123,11 @@ class RecorderController {
         }, 800);
       } else {
         proc.kill("SIGINT");
+        setTimeout(() => {
+          if (!proc.killed) {
+            proc.kill("SIGKILL");
+          }
+        }, 800);
       }
     });
 
@@ -70,31 +137,42 @@ class RecorderController {
     return filePath;
   }
 
-  private buildRecordingCommand(outputFile: string): { command: string; args: string[] } {
+  private buildRecordingCandidates(outputFile: string): Array<{ command: string; args: string[] }> {
+    const soxArgs = ["-d", "-c", "1", "-r", "16000", outputFile];
     if (process.platform === "win32") {
-      return {
-        command: "ffmpeg",
-        args: ["-y", "-f", "dshow", "-i", "audio=default", "-ac", "1", "-ar", "16000", outputFile],
-      };
+      return [
+        // FFmpeg via DirectShow (requires ffmpeg in PATH)
+        { command: "ffmpeg", args: ["-y", "-f", "dshow", "-i", "audio=default", "-ac", "1", "-ar", "16000", outputFile] },
+        // SoX fallback (e.g. installed via Chocolatey or bundled with Audacity tools)
+        { command: "sox", args: soxArgs },
+      ];
     }
+    return [{ command: "sox", args: soxArgs }];
+  }
 
-    return {
-      command: "sox",
-      args: ["-d", "-c", "1", "-r", "16000", outputFile],
-    };
+  private installHint(): string {
+    if (process.platform === "win32") {
+      return "Install FFmpeg (https://ffmpeg.org/download.html) or SoX (choco install sox.portable) and add to PATH.";
+    }
+    if (process.platform === "darwin") {
+      return "Install SoX with: brew install sox";
+    }
+    return "Install SoX with: sudo apt install sox";
   }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
   const recorder = new RecorderController();
+  activeRecorder = recorder;
   let state: RecorderState = "idle";
+  let isHandlingToggle = false;
   const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = "copilotVoice.toggleRecording";
 
   const renderState = () => {
     if (state === "recording") {
-      statusBarItem.text = "$(vm-record) Recording… (press Ctrl+Shift+M to stop)";
-      statusBarItem.tooltip = "Recording — click or press Ctrl+Shift+M to stop";
+      statusBarItem.text = "$(vm-record) Recording… (press Ctrl+Shift+Alt+V to stop)";
+      statusBarItem.tooltip = "Recording — click or press Ctrl+Shift+Alt+V to stop";
       statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
       return;
     }
@@ -107,7 +185,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     statusBarItem.text = "$(unmute) Copilot Voice";
-    statusBarItem.tooltip = "Click or press Ctrl+Shift+M to start recording";
+    statusBarItem.tooltip = "Click or press Ctrl+Shift+Alt+V to start recording";
     statusBarItem.backgroundColor = undefined;
   };
 
@@ -120,11 +198,19 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
 
   const toggleDisposable = vscode.commands.registerCommand("copilotVoice.toggleRecording", async () => {
+    if (isHandlingToggle) {
+      void vscode.window.showInformationMessage("Copilot Voice is already handling a recording action.");
+      return;
+    }
+    isHandlingToggle = true;
     try {
       if (state === "recording") {
         setState("processing");
         void vscode.window.showInformationMessage("$(sync~spin) Transcribing speech…");
         const audioPath = await recorder.stop();
+        if (!audioPath) {
+          throw new Error("Recording stopped before audio was captured.");
+        }
         const text = await transcribeAudio(audioPath);
         await safeInsertIntoCopilotChat(text);
         await fs.unlink(audioPath).catch(() => undefined);
@@ -140,19 +226,25 @@ export function activate(context: vscode.ExtensionContext): void {
 
       await recorder.start();
       setState("recording");
-      void vscode.window.showInformationMessage("$(vm-record) Recording started — press Ctrl+Shift+M to stop.");
+      void vscode.window.showInformationMessage("$(vm-record) Recording started — press Ctrl+Shift+Alt+V to stop.");
     } catch (error) {
       setState("idle");
       const message = error instanceof Error ? error.message : String(error);
       void vscode.window.showErrorMessage(`Copilot Voice error: ${message}`);
+    } finally {
+      isHandlingToggle = false;
     }
   });
 
   context.subscriptions.push(statusBarItem, toggleDisposable);
 }
 
-export function deactivate(): void {
-  // No-op.
+export async function deactivate(): Promise<void> {
+  if (!activeRecorder) {
+    return;
+  }
+  await activeRecorder.stop();
+  activeRecorder = undefined;
 }
 
 async function transcribeAudio(audioPath: string): Promise<string> {
@@ -171,13 +263,28 @@ async function transcribeAudio(audioPath: string): Promise<string> {
   formData.set("response_format", "json");
   formData.set("file", new Blob([fileBuffer], { type: "audio/wav" }), path.basename(audioPath));
 
-  const response = await fetch(TRANSCRIBE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: formData,
-  });
+  const controller = new AbortController();
+  const timeoutMs = 25000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(TRANSCRIBE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Transcription timed out after 25 seconds. Please try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const details = await response.text();

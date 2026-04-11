@@ -1,52 +1,44 @@
 # Copilot Voice Input 🎤
 
-VS Code расширение для голосового ввода в GitHub Copilot Chat через Groq Whisper API.
+VSCode extension for voice input into GitHub Copilot Chat via the Groq Whisper API.
 
-## Возможности
+## Features
 
-- Горячая клавиша `Ctrl+Shift+M` (`Cmd+Shift+M` на macOS) — запуск/остановка записи
-- Распознанный текст вставляется в поле Copilot Chat — можно отредактировать перед отправкой
-- Иконка в статус-баре отображает текущее состояние: `idle` / `recording` / `processing`
-- Поддержка Windows, macOS, Linux
+- Hotkey `Ctrl+Shift+Alt+V` (`Cmd+Shift+Alt+V` on macOS) — start / stop recording
+- Transcribed text is inserted into the Copilot Chat input box — edit before sending
+- Status-bar icon shows current state: `idle` / `recording` / `processing`
+- Cross-platform: Windows, macOS, Linux
 
-## Требования
+## Requirements
 
-### Groq API ключ
+### Groq API key
 
-1. Зарегистрируйтесь на `https://console.groq.com`
-2. Создайте API ключ
-3. Укажите его в настройках VS Code: `copilotVoice.groqApiKey`
+1. Sign up at `https://console.groq.com`
+2. Create an API key
+3. Set it in VS Code settings: `copilotVoice.groqApiKey`
 
-### Утилита записи звука
+### Audio recording utility
 
-- macOS / Linux: установите SoX
+- **Windows** — install [FFmpeg](https://ffmpeg.org/download.html) and add it to `PATH`
+- **macOS** — install [SoX](https://sox.sourceforge.net/): `brew install sox`
+- **Linux** — install SoX: `sudo apt install sox`
 
-```bash
-# macOS
-brew install sox
+## Settings
 
-# Ubuntu / Debian
-sudo apt install sox
-```
-
-- Windows: установите FFmpeg и добавьте в `PATH`
-
-## Настройки
-
-| Настройка | Тип | По умолчанию | Описание |
+| Setting | Type | Default | Description |
 |---|---|---|---|
-| `copilotVoice.groqApiKey` | `string` | `""` | API ключ Groq |
-| `copilotVoice.language` | `string` | `"ru"` | Язык распознавания (`ru`, `en`, ...) |
+| `copilotVoice.groqApiKey` | `string` | `""` | Groq API key for Whisper transcription |
+| `copilotVoice.language` | `string` | `"en"` | Recognition language code (`en`, `ru`, etc.) |
 
-## Использование
+## Usage
 
-1. Нажмите `Ctrl+Shift+M` или кликните на 🎤 в статус-баре
-2. Говорите в микрофон
-3. Нажмите `Ctrl+Shift+M` снова для остановки
-4. Текст появится в поле ввода Copilot Chat
-5. Отредактируйте при необходимости и отправьте
+1. Press `Ctrl+Shift+Alt+V` or click the 🎤 icon in the status bar
+2. Speak into your microphone
+3. Press `Ctrl+Shift+Alt+V` again to stop
+4. The transcribed text appears in the Copilot Chat input box
+5. Edit if needed and press Enter to send
 
-## Сборка из исходников
+## Build from source
 
 ```bash
 cd copilot-voice
@@ -54,4 +46,4 @@ npm install
 npm run compile
 ```
 
-Затем нажмите `F5` в VS Code для запуска в режиме отладки.
+Press `F5` in VS Code to launch the extension in debug mode.
