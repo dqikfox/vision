@@ -40,6 +40,11 @@
           "type": "string",
           "default": "en",
           "markdownDescription": "Recognition language code (for example: en, ru)."
+        },
+        "copilotVoice.visionUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional: base URL of the Vision backend (e.g. `http://localhost:8765`). When set, transcribed text is also sent to Vision as a voice command via WebSocket."
         }
       }
     }

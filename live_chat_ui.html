@@ -1882,8 +1882,8 @@ function saveVoiceSettings() {
 
 function buildKeysList() {
   // Quick API key inputs in settings panel
-  const providers = ['openai','github','groq','deepseek','mistral','gemini','elevenlabs'];
-  const labels = {openai:'OpenAI',github:'GitHub',groq:'Groq',deepseek:'DeepSeek',mistral:'Mistral',gemini:'Gemini',elevenlabs:'ElevenLabs'};
+  const providers = ['openai','github','groq','deepseek','mistral','gemini','anthropic','xai','elevenlabs'];
+  const labels = {openai:'OpenAI',github:'GitHub',groq:'Groq',deepseek:'DeepSeek',mistral:'Mistral',gemini:'Gemini',anthropic:'Anthropic',xai:'xAI (Grok)',elevenlabs:'ElevenLabs'};
   document.getElementById('keysList').innerHTML = providers.map(k => `
     <div style="margin-bottom:6px">
       <div style="font-family:var(--font-ui);font-size:8px;letter-spacing:.2em;color:var(--dim);margin-bottom:3px">${labels[k]}</div>

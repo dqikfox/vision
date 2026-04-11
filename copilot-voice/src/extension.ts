@@ -213,6 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         const text = await transcribeAudio(audioPath);
         await safeInsertIntoCopilotChat(text);
+        await maybeSendToVision(text);
         await fs.unlink(audioPath).catch(() => undefined);
         setState("idle");
         void vscode.window.showInformationMessage(`$(check) Transcribed: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`);
@@ -322,4 +323,61 @@ async function safeInsertIntoCopilotChat(text: string): Promise<void> {
   void vscode.window.showInformationMessage(
     "Transcribed text copied to clipboard. Paste into Copilot Chat input.",
   );
+}
+
+/**
+ * If `copilotVoice.visionUrl` is configured, forward the transcribed text to
+ * the Vision WebSocket backend as a `text` message so Vision processes it as
+ * a voice command.  Errors are non-fatal — failure is surfaced as an info toast.
+ */
+async function maybeSendToVision(text: string): Promise<void> {
+  const config = vscode.workspace.getConfiguration("copilotVoice");
+  const visionUrl = config.get<string>("visionUrl", "").trim();
+  if (!visionUrl) {
+    return;
+  }
+
+  const wsUrl = visionUrl.replace(/^http/, "ws").replace(/\/?$/, "/ws");
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      void vscode.window.showWarningMessage(`Copilot Voice: Could not connect to Vision at ${wsUrl}`);
+      return finish();
+    }
+
+    const timeout = setTimeout(() => {
+      ws.close();
+      void vscode.window.showWarningMessage(`Copilot Voice: Vision WebSocket timed out (${wsUrl})`);
+      finish();
+    }, 5000);
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "text", text }));
+      clearTimeout(timeout);
+      ws.close();
+      finish();
+    });
+
+    ws.addEventListener("error", () => {
+      clearTimeout(timeout);
+      void vscode.window.showWarningMessage(`Copilot Voice: Could not reach Vision at ${wsUrl}`);
+      finish();
+    });
+
+    ws.addEventListener("close", () => {
+      clearTimeout(timeout);
+      finish();
+    });
+  });
 }

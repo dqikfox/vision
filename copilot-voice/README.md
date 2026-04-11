@@ -29,6 +29,7 @@ VSCode extension for voice input into GitHub Copilot Chat via the Groq Whisper A
 |---|---|---|---|
 | `copilotVoice.groqApiKey` | `string` | `""` | Groq API key for Whisper transcription |
 | `copilotVoice.language` | `string` | `"en"` | Recognition language code (`en`, `ru`, etc.) |
+| `copilotVoice.visionUrl` | `string` | `""` | Vision backend URL (e.g. `http://localhost:8765`). When set, transcript is also sent to Vision as a voice command. |
 
 ## Usage
 

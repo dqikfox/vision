@@ -44,3 +44,6 @@ vision_error.log
 # Personal key-test scripts (contain no secrets but are not project code)
 test_keys.py
 retest_failed_keys.py
+
+# Bundled JDK (openJdk-25 — dependency dropped into repo root, not project code)
+openJdk-25/
