@@ -1908,6 +1908,20 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall",
+            "description": "Search and retrieve previously remembered facts from memory. Pass a query to filter, or omit to list all facts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Optional keyword to filter recalled facts"}
+                },
+                "required": [],
+            },
+        },
+    },
     # ── Window management
     {
         "type": "function",
@@ -2928,6 +2942,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         memory.save()
         removed = before - len(memory.data["facts"])
         return f"Removed {removed} fact(s) matching '{fact}'"
+
+    elif name == "recall":
+        query = args.get("query", "").strip().lower()
+        facts = memory.data.get("facts", [])
+        matches = [f for f in facts if not query or query in f.lower()]
+        if not matches:
+            return "No matching facts found." if query else "Memory is empty."
+        return "\n".join(f"• {f}" for f in matches[:20])
 
     elif name == "window_resize":
         title, w, h = args.get("title", ""), int(args.get("width", 800)), int(args.get("height", 600))
@@ -5231,7 +5253,6 @@ _EL_TOOL_NAMES = [
     "scroll",
     "type_text",
     "press_key",
-    "hotkey",
     "get_clipboard",
     "set_clipboard",
     "list_windows",
@@ -5239,6 +5260,8 @@ _EL_TOOL_NAMES = [
     "run_command",
     "read_file",
     "write_file",
+    "append_to_file",
+    "find_files",
     "list_files",
     "web_search",
     "fetch_url",
@@ -5277,6 +5300,7 @@ _EL_TOOL_NAMES = [
     "send_notification",
     "list_processes",
     "kill_process",
+    "get_system_info",
     "download_file",
     "move_file",
     "delete_file",
