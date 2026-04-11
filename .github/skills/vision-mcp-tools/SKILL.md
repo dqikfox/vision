@@ -74,19 +74,25 @@ Repository-aware git inspection through MCP.
 Repo-local FastMCP bridge defined in `vision_mcp_server.py`.
 It talks to the running Vision backend at `http://localhost:8765` and exposes:
 ```
-vision_health()
-vision_models()
-vision_metrics()
-vision_memory()
+vision_health()            → component health incl. anthropic_sdk, providers map
+vision_models()            → all providers + current active model
+vision_metrics()           → live CPU/RAM/GPU stats
+vision_memory()            → full memory dump (facts, prefs, task_history)
 vision_add_fact(fact)
 vision_delete_fact(fact)
 vision_set_model(provider, model)
 vision_execute_tool(name, parameters?)
-vision_voices()
-vision_screenshot()
-vision_wake_word(enabled)
+vision_voices()            → all SAPI + OneCore TTS voices
+vision_screenshot()        → desktop screenshot as base64 JPEG
+vision_wake_word(enabled)  → toggle wake-word activation mode
 ```
-Use `vision_execute_tool()` for the full Vision tool surface when the backend is running.
+Use `vision_execute_tool()` for the full 70-tool Vision surface when the backend is running.
+
+### lmstudio-rag
+Filesystem access to the user's LM Studio RAG plugin workspace at `F:\rag-v1`.
+Same tools as `filesystem` but scoped to that directory.
+Use when the user asks about LM Studio plugins, RAG, prompt preprocessing, or local retrieval.
+Read `manifest.json`, `src/`, and `.lmstudio/` before making assumptions about the plugin.
 
 ### github
 GitHub Copilot MCP — search code, manage PRs, issues, repos.
@@ -116,4 +122,10 @@ sequential-thinking: break "build a new Vision tool" into:
   3. Register in _EL_TOOL_NAMES
   4. Test via /api/tool/execute
   5. Verify in operator mode
+```
+
+### Check which providers are configured
+```
+vision_health() → look at result.providers  # {openai: true, groq: false, xai: true, ...}
+                → result.anthropic_sdk       # true if native SDK is installed
 ```
