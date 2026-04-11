@@ -141,7 +141,7 @@ class SemanticMemoryIndex:
 class EliteMemory:
     """Enhanced memory with context optimization + semantic search."""
 
-    def __init__(self, memory_file: Path = None):
+    def __init__(self, memory_file: Optional[Path] = None):
         self.context_opt = ContextOptimizer(max_tokens=8000)
         self.summarizer = ConversationSummarizer()
         self.search_index = SemanticMemoryIndex()
@@ -193,7 +193,7 @@ class EliteMemory:
             "updated": datetime.now().isoformat(),
         }
         try:
-            self.memory_file.write_text(json.dumps(data, indent=2))
+            self.memory_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception as e:
             print(f"[memory] save failed: {e}")
 
@@ -202,7 +202,7 @@ class EliteMemory:
         if not self.memory_file.exists():
             return
         try:
-            data = json.loads(self.memory_file.read_text())
+            data = json.loads(self.memory_file.read_text(encoding="utf-8"))
             self.facts = data.get("facts", {})
         except Exception as e:
             print(f"[memory] load failed: {e}")

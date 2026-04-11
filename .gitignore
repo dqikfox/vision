@@ -40,3 +40,7 @@ Thumbs.db
 # VISION runtime artifacts
 vision_launch.log
 vision_error.log
+
+# Personal key-test scripts (contain no secrets but are not project code)
+test_keys.py
+retest_failed_keys.py

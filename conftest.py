@@ -6,7 +6,9 @@ Shared fixtures for async tests, mocks, and integration setup.
 
 import asyncio
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,7 +18,7 @@ import pytest
 
 
 @pytest.fixture
-def event_loop():
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create event loop for async tests."""
     loop = asyncio.new_event_loop()
     yield loop
@@ -29,7 +31,7 @@ def event_loop():
 
 
 @pytest.fixture
-def tmp_project_dir() -> Path:
+def tmp_project_dir() -> Generator[Path, None, None]:
     """Create temporary project directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
@@ -52,19 +54,19 @@ def tmp_config_file(tmp_project_dir: Path) -> Path:
 def mock_http_client():
     """Mock HTTP client for testing."""
     class MockResponse:
-        def __init__(self, status_code: int = 200, text: str = "{}"):
+        def __init__(self, status_code: int = 200, text: str = "{}") -> None:
             self.status_code = status_code
             self.text = text
 
-        async def json(self):
+        async def json(self) -> Any:
             import json as _json
             return _json.loads(self.text)
 
     class MockClient:
-        async def get(self, url: str, **kwargs):
+        async def get(self, url: str, **kwargs: Any) -> MockResponse:
             return MockResponse()
 
-        async def post(self, url: str, **kwargs):
+        async def post(self, url: str, **kwargs: Any) -> MockResponse:
             return MockResponse()
 
     return MockClient()
@@ -153,7 +155,7 @@ def monkeypatch_env(monkeypatch):
 def slow_test_warning(request):
     """Warn if slow tests run in quick test suite."""
     if "slow" in request.keywords:
-        print("\n[SLOW TEST] This test may take several seconds")
+        print("\n[SLOW TEST] This test may take several seconds - conftest.py:158")
 
 
 # ──────────────────────────────────────────────────────────────────────────────

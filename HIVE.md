@@ -15,6 +15,9 @@ This project is managed by a **Hive Mind** (Gemini CLI) and an **Elite Swarm** o
 | **@debug-agent** | Mistake Tracker. | Corrective Prompt Engineering |
 | **@vision-maintainer** | Operator Protocol Guardian. | WebSocket, perception, tool routing |
 | **@openclaw-operator** | Gateway Orchestrator. | Installation, daemon, SLA enforcement |
+| **@mcp-builder** | Customization Specialist. | MCP wiring, skills, and agent expansion |
+| **@context-steward** | Repo Awareness Specialist. | Memory workflow, context refresh, Copilot customization |
+| **@home-ops-steward** | Home Operations Specialist. | System admin, network reliability, security, backups, automation |
 
 ## Elite Infrastructure (Hive Tools)
 
@@ -42,16 +45,25 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 
 ### Always-On Guidance
 - **`.github/copilot-instructions.md`**: Repository-scoped instructions loaded in every Copilot chat. Covers working priorities, runtime assumptions, verification patterns, and editing rules.
+- **`F:\rag-v1` (via workspace MCP)**: External local LM Studio plugin workspace available as an extra context source for LM Studio and RAG-related tasks.
+- **`DOCUMENTATION_INDEX.md`**: Top-level map for runtime, customization, and debugging documentation.
 
 ### On-Demand Skills (invoke with `@skill-name`)
 - **`vision-runtime-ops`**: Start, verify, and smoke-test the local Vision stack
 - **`vision-debugging`**: Root-cause analysis for voice, WebSocket, provider, OCR, tool-call failures
 - **`vision-tool-audit`**: Audit direct tool execution and NL routing behavior
+- **`vision-context-ops`**: Improve Copilot repo awareness, memory workflow, and context continuity
+- **`vision-home-ops`**: Apply Vision to home PC, network, security, backup, and automation work
+- **`vision-documentation-ops`**: Keep docs, skill listings, and runtime notes synchronized
+- **`vision-mcp-builder`**: Add or expand repo-local MCP servers and related customizations
 - **`mcp-recovery`**: Diagnose and restore MCP server configuration
 
 ### Specialized Agents (invoke via Copilot Chat)
 - **Vision Maintainer**: Focused handler for operator runtime, WebSocket protocol, tool calling, and code changes to `live_chat_app.py`
 - **OpenClaw Operator**: Dedicated agent for OpenClaw installation, daemon setup, gateway bootstrapping, and multi-agent orchestration
+- **MCP Builder**: Dedicated agent for MCP server wiring, repo-local bridges, and Copilot customization changes
+- **Context Steward**: Dedicated agent for improving Copilot instructions, memory workflow, and repo-awareness surfaces
+- **Home Ops Steward**: Dedicated agent for home-environment maintenance, security, backup, and automation workflows
 
 ### How to Use
 1. Open Copilot Chat (`Ctrl+Shift+I` or `Cmd+Shift+I`)

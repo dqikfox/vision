@@ -73,16 +73,25 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 ### Agents
 - **Vision Maintainer** — Main agent for runtime, debugging, and code changes (`.github/agents/vision-maintainer.agent.md`)
 - **OpenClaw Operator** — Specialized agent for OpenClaw workflows (installed in this repo)
+- **MCP Builder** — Specialist for MCP wiring, skills, and custom agent expansion (`.github/agents/mcp-builder.agent.md`)
+- **Context Steward** — Specialist for making Copilot more repo-aware via instructions, skills, memory workflow, and context discipline (`.github/agents/context-steward.agent.md`)
+- **Home Ops Steward** — Specialist for single-user home PC, network, security, backup, and automation workflows (`.github/agents/home-ops-steward.agent.md`)
 
 ### Skills (On-Demand Workflows)
 - **vision-runtime-ops** — Start the app, verify endpoints, check provider readiness
 - **vision-debugging** — Debug voice, WebSocket, provider, OCR, and tool-call issues
 - **vision-tool-audit** — Audit direct tool execution and natural-language tool routing
+- **vision-context-ops** — Improve Copilot repo awareness, context refresh, and memory workflow
+- **vision-home-ops** — Apply Vision to home PC administration, networking, security, backups, and automation
+- **vision-documentation-ops** — Keep docs, skills, agents, and runtime notes aligned
+- **vision-mcp-builder** — Expand repo-local MCP servers and customization wiring
 - **openclaw-getting-started** — Install and bootstrap OpenClaw (Windows, WSL2, macOS, Linux)
 - **mcp-recovery** — Diagnose and restore MCP server configurations
 
 ### Repo Instructions
 - **Copilot Instructions** — Global guidelines for working in this repo (`.github/copilot-instructions.md`)
+- **Local LM Studio RAG Context** — Copilot can now inspect the user's LM Studio plugin workspace at `F:\rag-v1` through workspace MCP when LM Studio or local retrieval tasks are relevant
+- **Documentation Index** — Start with `DOCUMENTATION_INDEX.md` for the current doc map
 
 Type `/` in any Copilot chat to browse available skills.
 
@@ -101,11 +110,27 @@ Type `/` in any Copilot chat to browse available skills.
 
 ---
 
+## Home Ops Objective
+
+Vision is also being shaped into a **single-user home operations assistant** for:
+- system administration
+- home network management
+- security and protection
+- backup and data protection
+- automation and efficiency
+- monitoring and maintenance
+
+The goal is to reduce manual overhead by combining local system control, scripting, diagnostics, monitoring, and documented operating workflows.
+
+---
+
 ## Modes
 
 ### Chat Mode
 Conversational AI assistant.
-- Always-on microphone with voice activity detection (VAD)
+- Always-listening microphone with voice activity detection (VAD)
+- User-facing toggle for **Always Listening ON/OFF**
+- Speech output yields when new speech is detected so the user can interrupt naturally
 - Speak naturally, AI responds via ElevenLabs TTS
 - Full conversation history with memory across sessions
 
@@ -209,17 +234,25 @@ C:\project\vision\
 │   ├── copilot-instructions.md       ← Global Copilot behavior
 │   ├── agents/
 │   │   ├── vision-maintainer.agent.md        ← Main repo agent
-│   │   └── openclaw-operator.agent.md        ← OpenClaw specialist
+│   │   ├── openclaw-operator.agent.md        ← OpenClaw specialist
+│   │   ├── mcp-builder.agent.md              ← MCP/customization specialist
+│   │   ├── context-steward.agent.md          ← Repo awareness specialist
+│   │   └── home-ops-steward.agent.md         ← Home operations specialist
 │   └── skills/
 │       ├── vision-runtime-ops/       ← Run/verify the operator
 │       ├── vision-debugging/         ← Debug failures
 │       ├── vision-tool-audit/        ← Audit tool-calling
+│       ├── vision-context-ops/       ← Improve Copilot context discipline
+│       ├── vision-home-ops/          ← Home PC/network/security workflows
+│       ├── vision-documentation-ops/ ← Keep docs aligned
+│       ├── vision-mcp-builder/       ← Expand MCP capabilities
 │       ├── openclaw-getting-started/ ← Install OpenClaw
 │       ├── mcp-recovery/             ← Restore MCP config
 │       └── (+ other community skills)
 │
 ├── README.md                          ← This file
 ├── live_chat_app.py                   ← Main backend server
+├── vision_mcp_server.py               ← Repo-local FastMCP bridge
 ├── live_chat_ui.html                  ← Browser GUI (primary)
 ├── speak.py                           ← Standalone TTS
 ├── voice_toggle.py                    ← Hotkey tool (F9/F10/F11)
@@ -314,6 +347,22 @@ print(f"Cache hit: {result.cache_hit}")
 - Use the `/vision-debugging` skill in Copilot
 - Read `setup.md` for environment problems
 - Check `architecture.md` for protocol/design questions
+
+**For making Copilot smarter in this repo:**
+- Use the `/vision-context-ops` skill
+- Invoke the `@Context Steward` agent
+- Update `.github/copilot-instructions.md` when the improvement should be always-on
+- Pull in `F:\rag-v1` as local context when the task involves LM Studio or RAG
+
+**For documentation maintenance:**
+- Start with `DOCUMENTATION_INDEX.md`
+- Use the `/vision-documentation-ops` skill
+- Update the nearest authoritative doc when behavior changes
+
+**For home PC and network operations:**
+- Use the `/vision-home-ops` skill
+- Invoke the `@Home Ops Steward` agent
+- Prefer documented, repeatable maintenance and automation over one-off fixes
 
 **For code quality & development:**
 - Read `.github/copilot-conventions.md` for coding standards

@@ -620,6 +620,38 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   color:var(--tx2);resize:none;outline:none;min-height:44px;
   scrollbar-width:thin;
 }
+.provider-pill{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:1px 6px;border-radius:10px;font-size:9px;font-weight:700;
+  letter-spacing:.1em;transition:background .3s,color .3s;
+  background:rgba(255,255,255,.06);color:var(--tx2);
+}
+.provider-pill::before{
+  content:'';width:5px;height:5px;border-radius:50%;
+  background:currentColor;flex-shrink:0;transition:background .3s;
+}
+.provider-pill.p-elevenlabs{background:rgba(124,58,237,.18);color:#a78bfa}
+.provider-pill.p-groq{background:rgba(234,88,12,.18);color:#fb923c}
+.provider-pill.p-local{background:rgba(75,85,99,.25);color:#9ca3af}
+.provider-pill.p-auto{background:rgba(8,145,178,.15);color:#22d3ee}
+.provider-pill.p-active{animation:pill-pulse 1s ease-in-out infinite}
+@keyframes pill-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+/* Always-listening indicator on mic button */
+#micBtn.always-on{
+  position:relative;
+}
+#micBtn.always-on::after{
+  content:'';position:absolute;top:-2px;right:-2px;
+  width:7px;height:7px;border-radius:50%;
+  background:#22c55e;border:1px solid #000;
+  animation:live-dot 2s ease-in-out infinite;
+}
+@keyframes live-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+#micBtn.recording-glow{
+  color:#22d3ee!important;
+  filter:drop-shadow(0 0 6px #22d3ee);
+}
 </style>
 </head>
 <body>
@@ -650,8 +682,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="hud-item"><div class="hud-dot" id="wsHudDot"></div><span id="wsHudLbl">OFFLINE</span></div>
   <div style="width:1px;height:14px;background:rgba(29,78,216,.12)"></div>
   <div class="hud-item">CORE <span id="activeCore">LOADING...</span></div>
-  <div class="hud-item">STT <span id="hudSTT">AUTO</span></div>
-  <div class="hud-item">TTS <span id="hudTTS">AUTO</span></div>
+  <div class="hud-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+    <div style="display:flex;align-items:center;gap:5px">
+      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">STT</span>
+      <span id="hudSTT" class="provider-pill">AUTO</span>
+    </div>
+    <div id="sttCascade" style="font-size:8px;color:var(--dim);letter-spacing:.05em;opacity:0;transition:opacity .3s;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+  </div>
+  <div class="hud-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+    <div style="display:flex;align-items:center;gap:5px">
+      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">TTS</span>
+      <span id="hudTTS" class="provider-pill">AUTO</span>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ COMPONENT STATUS ═══ -->
@@ -937,6 +980,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ CORNER BUTTONS BR ═══ -->
 <div id="cornerBR">
+  <div class="corner-label-group">
+    <button class="corner-btn" id="btnContinuous" onclick="toggleContinuous()" title="Toggle always-listening mode">🟢</button>
+    <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
+  </div>
   <div class="corner-label-group">
     <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
@@ -1270,6 +1317,17 @@ function handleMsg(msg) {
       }
       document.getElementById('hudSession').textContent = msg.memory?.session_count || 1;
       buildKeysList();
+      // Default always-listening: add green dot to mic button unless muted
+      const initMuted = msg.muted === true;
+      const initContinuous = msg.continuous_listening !== false;
+      updateContinuousUI(initContinuous);
+      const micBtnEl = document.getElementById('micBtn');
+      if (micBtnEl) {
+        if (!initMuted && initContinuous) micBtnEl.classList.add('always-on');
+        micBtnEl.textContent = initMuted ? '🚫' : '🎙';
+      }
+      muted = initMuted;
+      continuousEnabled = initContinuous;
       break;
     case 'wake_word_state':
       wakeWordEnabled = !!msg.enabled;
@@ -1332,6 +1390,35 @@ function handleMsg(msg) {
     case 'volume':
       setVolume(msg.level || 0);
       break;
+    case 'stt_active': {
+      const prov = msg.provider || 'auto';
+      updateProviderPill('hudSTT', prov, false);
+      const cascade = msg.cascade || [];
+      const trail = document.getElementById('sttCascade');
+      if (trail) {
+        if (cascade.length > 1) {
+          trail.textContent = cascade.join(' → ');
+          trail.style.opacity = '1';
+          clearTimeout(trail._fadeTimer);
+          trail._fadeTimer = setTimeout(() => { trail.style.opacity = '0'; }, 5000);
+        } else {
+          trail.style.opacity = '0';
+        }
+      }
+      break;
+    }
+    case 'tts_active': {
+      const prov = msg.provider || 'auto';
+      updateProviderPill('hudTTS', prov, false);
+      break;
+    }
+    case 'continuous_state': {
+      const on = msg.enabled !== false;
+      updateContinuousUI(on);
+      const btn = document.getElementById('micBtn');
+      if (btn) btn.classList.toggle('always-on', on && !muted);
+      break;
+    }
     case 'el_agent':
       updateElAgentStatus(msg.status, msg.message);
       break;
@@ -1441,6 +1528,22 @@ function setState(s) {
     showLatency(Date.now() - listenTimestamp);
     listenTimestamp = null;
   }
+  // Provider pill pulse animations
+  const sttPill = document.getElementById('hudSTT');
+  const ttsPill = document.getElementById('hudTTS');
+  if (sttPill) sttPill.classList.toggle('p-active', s === 'recording');
+  if (ttsPill) ttsPill.classList.toggle('p-active', s === 'speaking');
+  // Mic button recording glow
+  const micBtn = document.getElementById('micBtn');
+  if (micBtn) micBtn.classList.toggle('recording-glow', s === 'recording' || s === 'listening');
+}
+function updateProviderPill(elemId, provider, active) {
+  const el = document.getElementById(elemId);
+  if (!el) return;
+  const labels = { elevenlabs: 'ELEVENLABS', groq: 'GROQ', local: 'LOCAL', 'local-onecore': 'ONECORE', 'local-sapi': 'SAPI', auto: 'AUTO' };
+  const classes = { elevenlabs: 'p-elevenlabs', groq: 'p-groq', local: 'p-local', 'local-onecore': 'p-local', 'local-sapi': 'p-local', auto: 'p-auto' };
+  el.textContent = labels[provider] || provider.toUpperCase();
+  el.className = 'provider-pill ' + (classes[provider] || 'p-auto') + (active ? ' p-active' : '');
 }
 function setVolume(v) {
   setOrbVolume(v);
@@ -1559,8 +1662,9 @@ function toggleMute() {
   const btn = document.getElementById('micBtn');
   btn.textContent = muted ? '🚫' : '🎙';
   btn.style.color = muted ? 'var(--r)' : 'var(--tx2)';
+  btn.classList.toggle('always-on', !muted && continuousEnabled);
   setOrbState(muted ? 'muted' : 'idle');
-  toast(muted ? 'Mic muted' : 'Mic active');
+  toast(muted ? 'Mic muted' : (continuousEnabled ? 'Mic active — always listening' : 'Mic active — voice standby'));
 }
 function toggleWakeWord() {
   wakeWordEnabled = !wakeWordEnabled;
@@ -1633,17 +1737,23 @@ function updateActiveCoreDisplay() {
 function toggleContinuous() {
   continuousEnabled = !continuousEnabled;
   send({ type: 'set_continuous', enabled: continuousEnabled });
-  toast(continuousEnabled ? 'Continuous Sync ON' : 'Continuous Sync OFF', continuousEnabled ? 'green' : 'cyan');
+  updateContinuousUI(continuousEnabled);
+  const micBtn = document.getElementById('micBtn');
+  if (micBtn) micBtn.classList.toggle('always-on', continuousEnabled && !muted);
+  toast(continuousEnabled ? 'Always Listening ON' : 'Always Listening OFF', continuousEnabled ? 'green' : 'cyan');
 }
 
 function updateContinuousUI(enabled) {
   continuousEnabled = enabled;
   const btn = document.getElementById('btnContinuous');
+  const lbl = document.getElementById('continuousLbl');
   if (btn) {
     btn.classList.toggle('active', enabled);
+    btn.textContent = enabled ? '🟢' : '⚪';
     btn.style.color = enabled ? 'var(--g2)' : 'var(--tx2)';
     btn.style.borderColor = enabled ? 'var(--g)' : 'rgba(29,78,216,.2)';
   }
+  if (lbl) lbl.textContent = enabled ? 'ALWAYS ON' : 'ALWAYS OFF';
 }
 
 function updateModelBadge() {
@@ -1758,8 +1868,8 @@ function applyVoiceSettings(v) {
   const rate = v.tts_rate || 175;
   const sl = document.getElementById('ttsRate');
   if (sl) { sl.value = rate; document.getElementById('ttsRateVal').textContent = rate; }
-  document.getElementById('hudSTT').textContent = (v.preferred_stt||'AUTO').toUpperCase();
-  document.getElementById('hudTTS').textContent = (v.preferred_tts||'AUTO').toUpperCase();
+  updateProviderPill('hudSTT', v.preferred_stt || 'auto', false);
+  updateProviderPill('hudTTS', v.preferred_tts || 'auto', false);
 }
 function saveVoiceSettings() {
   const stt = document.querySelector('#sttRadios .r-opt.on')?.dataset.val || 'auto';

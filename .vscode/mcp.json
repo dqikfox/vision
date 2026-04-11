@@ -1,34 +1,69 @@
 {
   "servers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "description": "GitHub Copilot MCP - issues, PRs, repos, code search"
+    },
     "filesystem": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/project/vision"],
-      "description": "Read/write files in the vision project"
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${workspaceFolder}"],
+      "description": "Read and write files in the current Vision workspace"
     },
-    "github": {
+    "lmstudio-rag": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GH_TOKEN}" },
-      "description": "GitHub API — issues, PRs, repos, code search"
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "F:\\rag-v1"],
+      "description": "Read the user's LM Studio RAG plugin workspace at F:\\rag-v1"
+    },
+    "fetch": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "description": "Fetch URLs as markdown or raw HTML"
+    },
+    "git": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git", "${workspaceFolder}"],
+      "description": "Inspect git history, diffs, and repository state"
     },
     "memory": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
-      "description": "Persistent knowledge graph — stores facts across sessions"
+      "description": "Persistent knowledge graph - stores facts across sessions"
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Structured multi-step reasoning for complex tasks"
     },
     "puppeteer": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
-      "description": "Browser automation — navigate, screenshot, extract web content"
+      "description": "Browser automation - navigate, screenshot, extract web content"
     },
-    "vision-tools": {
-      "type": "http",
-      "url": "http://localhost:8765/api/tool/execute",
-      "description": "VISION operator tools — screen control, OCR, mouse/keyboard automation"
+    "vision-local": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["vision_mcp_server.py"],
+      "env": {
+        "VISION_BASE_URL": "http://localhost:8765"
+      },
+      "description": "Repo-local FastMCP bridge for Vision health, memory, models, and tool execution"
+    },
+    "brave-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${env:BRAVE_API_KEY}"
+      },
+      "description": "Web search via Brave Search API"
     }
   }
 }

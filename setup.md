@@ -19,10 +19,16 @@ Tesseract OCR (for read_screen tool):
 
 ```bash
 # Install: https://ollama.ai
-ollama pull llama3.2      # 2GB — recommended, fast
-ollama pull dolphin3      # 5GB — uncensored
-ollama pull qwen2.5:14b   # 9GB — higher quality
+ollama pull qwen2.5:0.5b  # lightweight local model
+ollama pull llama3.2:3b   # stronger local general model
 ollama serve              # starts on port 11434
+```
+
+If your local Ollama store lives outside the default location, set `OLLAMA_MODELS` before starting the server.
+Example used in this project:
+
+```bash
+set OLLAMA_MODELS=F:\models
 ```
 
 ## 3. Environment Variables

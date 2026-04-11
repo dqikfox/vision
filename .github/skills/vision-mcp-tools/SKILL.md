@@ -7,7 +7,7 @@ user-invocable: true
 
 # Vision MCP Tools
 
-All MCP servers are configured in `%APPDATA%\Code\User\mcp.json`.
+Repo MCP servers are primarily configured in `.vscode/mcp.json`. User-level MCP config may add extra servers on top of that.
 
 ## Active Servers & Capabilities
 
@@ -67,9 +67,26 @@ puppeteer_hover(selector)
 puppeteer_select(selector, value)
 ```
 
+### git
+Repository-aware git inspection through MCP.
+
 ### vision-local
-Direct Vision tool execution via HTTP MCP at `http://localhost:8765/mcp`.
-Exposes all 41 Vision tools as MCP tools — use when Vision server is running.
+Repo-local FastMCP bridge defined in `vision_mcp_server.py`.
+It talks to the running Vision backend at `http://localhost:8765` and exposes:
+```
+vision_health()
+vision_models()
+vision_metrics()
+vision_memory()
+vision_add_fact(fact)
+vision_delete_fact(fact)
+vision_set_model(provider, model)
+vision_execute_tool(name, parameters?)
+vision_voices()
+vision_screenshot()
+vision_wake_word(enabled)
+```
+Use `vision_execute_tool()` for the full Vision tool surface when the backend is running.
 
 ### github
 GitHub Copilot MCP — search code, manage PRs, issues, repos.
@@ -88,7 +105,7 @@ memory.create_entities([{"name": "UserPreference", "entityType": "preference", "
 ```
 brave_web_search("latest ollama models 2025")
   → fetch(best_url)
-  → vision-local: run_command("ollama pull <model>")
+  → vision-local: vision_execute_tool("run_command", {"command": "ollama pull <model>"})
 ```
 
 ### Complex task planning

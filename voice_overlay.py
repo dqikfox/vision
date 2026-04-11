@@ -1,38 +1,16 @@
 """
-VISION Voice Overlay  v3
+VISION Voice Overlay  v5 — Elite Remote HUD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Always-on-top floating widget.
-
-Flow:
-  Hold button → record mic
-  Release     → Whisper transcribes
-              → text pasted into whatever window was active
-              → text sent to live_chat_app.py (port 8765) which has
-                ALL tools: open chrome, run commands, create folders, etc.
-              → AI reply streamed back and spoken via ElevenLabs
-
-The backend (live_chat_app.py) is your VISION operator — it can do
-anything: click, type, open apps, browse the web, manage files.
+Visual interface for the background VISION operator.
+Displays: Active Models, STT/TTS Providers, VU Meter, Status.
 """
 
-import os, sys, time, threading, queue, re, json, ctypes
-from pathlib import Path
-
-import numpy as np
-import sounddevice as sd
-import win32gui, win32con
+import json
+import sys
+import threading
+import time
 import tkinter as tk
-
-# ── Load .env ──────────────────────────────────────────────
-_env = Path(__file__).parent / ".env"
-if _env.exists():
-    for line in _env.read_text(encoding="utf-8", errors="ignore").splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, _, v = line.partition("=")
-            os.environ[k.strip()] = v.strip()
-
-BACKEND_WS   = "ws://localhost:8765/ws"
-BACKEND_HTTP = "http://localhost:8765"
+import websocket
 
 # ── Colours ────────────────────────────────────────────────
 BG      = "#080c18"
@@ -44,499 +22,227 @@ DIM     = "#334155"
 RED     = "#ff4757"
 TEXT    = "#cdd9e5"
 
-# ── Audio ──────────────────────────────────────────────────
-SAMPLE_RATE = 16000
-BLOCK_SIZE  = 1024
+BACKEND_WS = "ws://localhost:8765/ws"
 
-# ── State ──────────────────────────────────────────────────
-_recording      = False
-_audio_frames   = []
-_tts_queue      = queue.Queue()
-_whisper_model  = None
-_eleven_client  = None
-_eleven_ok      = False
-_lock           = threading.Lock()
-_last_active_hwnd: int = 0   # unused — kept for future dictation mode
+# ── Global State ───────────────────────────────────────────
+_ws_client = None
+_ws_connected = False
+_is_muted = False
+_continuous_enabled = False
+_current_info = {
+    "stt": "Auto",
+    "llm": "Connecting...",
+    "tts": "Auto",
+    "backend": "Offline"
+}
+_current_state = "idle"
+_current_volume = 0.0
 
-
-# ═══════════════════════════════════════════════════════════
-# ElevenLabs / TTS
-# ═══════════════════════════════════════════════════════════
-def _setup_eleven():
-    global _eleven_client, _eleven_ok
-    key = os.environ.get("ELEVENLABS_API_KEY") or os.environ.get("API_11")
-    if not key:
-        return False
-    try:
-        from elevenlabs import ElevenLabs
-        _eleven_client = ElevenLabs(api_key=key)
-        _eleven_ok = True
-        return True
-    except Exception:
-        return False
-
-def _tts_worker():
+def _ws_worker(overlay):
+    global _ws_client, _ws_connected, _is_muted, _continuous_enabled
+    global _current_info, _current_state, _current_volume
     while True:
-        text = _tts_queue.get()
-        if text is None:
-            break
-        text = text.strip()
-        if not text:
-            _tts_queue.task_done(); continue
-        # Clean markdown
-        text = re.sub(r"```[\s\S]*?```", "code block.", text)
-        text = re.sub(r"`([^`]+)`", r"\1", text)
-        text = re.sub(r"[*_~#>|]+", "", text)
-        text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
-        text = re.sub(r"\s{2,}", " ", text).strip()
-        if len(text) > 1000:
-            text = text[:1000] + "... and more."
         try:
-            if _eleven_ok and _eleven_client:
-                _speak_eleven(text)
-            else:
-                _speak_local(text)
-        except Exception as e:
-            print(f"[TTS ERR] {e}")
-            try: _speak_local(text)
-            except: pass
-        _tts_queue.task_done()
+            def on_message(ws, raw):
+                try:
+                    msg = json.loads(raw)
+                    t = msg.get("type")
+                    if t == "init":
+                        _current_info["llm"] = f"{msg.get('provider', '')} / {msg.get('model', '')}"
+                        _current_info["stt"] = msg.get("voice", {}).get("preferred_stt", "auto")
+                        _current_info["tts"] = msg.get("voice", {}).get("preferred_tts", "auto")
+                        _continuous_enabled = msg.get("continuous_listening", False)
+                        _is_muted = msg.get("muted", False)
+                        overlay.update_hud()
+                        overlay.set_continuous_btn(_continuous_enabled)
+                        overlay.set_mute_btn(_is_muted)
+                    elif t == "model_changed":
+                        _current_info["llm"] = f"{msg.get('provider', '')} / {msg.get('model', '')}"
+                        overlay.update_hud()
+                    elif t == "voice_settings":
+                        _current_info["stt"] = msg.get("preferred_stt", _current_info["stt"])
+                        _current_info["tts"] = msg.get("preferred_tts", _current_info["tts"])
+                        overlay.update_hud()
+                    elif t == "stt_active":
+                        provider = msg.get("provider")
+                        if provider:
+                            _current_info["stt"] = provider
+                            overlay.update_hud()
+                    elif t == "tts_active":
+                        provider = msg.get("provider")
+                        if provider:
+                            _current_info["tts"] = provider
+                            overlay.update_hud()
+                    elif t == "state":
+                        _current_state = msg.get("state", "idle")
+                        overlay.set_status(_current_state, _current_state.capitalize())
+                    elif t == "volume":
+                        _current_volume = float(msg.get("level", 0.0))
+                    elif t == "continuous_state":
+                        _continuous_enabled = msg.get("enabled", False)
+                        overlay.set_continuous_btn(_continuous_enabled)
+                    elif t == "mute_state":
+                        _is_muted = msg.get("muted", False)
+                        overlay.set_mute_btn(_is_muted)
+                except Exception:
+                    pass
 
-def _mci_play(path: str):
-    """Play an MP3/WAV via Windows MCI — no extra libraries needed."""
-    import ctypes
-    mci = ctypes.windll.winmm.mciSendStringW
-    alias = "vision_tts"
-    mci(f'open "{path}" type mpegvideo alias {alias}', None, 0, 0)
-    mci(f"play {alias} wait", None, 0, 0)
-    mci(f"close {alias}", None, 0, 0)
+            def on_error(ws, err):
+                overlay.set_status("error", f"Socket error: {err}")
 
-def _speak_eleven(text: str):
-    import tempfile
-    chunks = list(_eleven_client.text_to_speech.convert(
-        voice_id=_eleven_voice_id(),
-        text=text,
-        model_id="eleven_turbo_v2_5",
-        output_format="mp3_44100_128",
-    ))
-    audio = b"".join(chunks)
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(audio)
-        fname = f.name
-    try:
-        _mci_play(fname)
-    finally:
-        try: os.unlink(fname)
-        except: pass
+            def on_close(ws, *_):
+                global _ws_connected
+                _ws_connected = False
+                _current_info["backend"] = "Offline"
+                overlay.update_hud()
+                overlay.set_status("error", "Disconnected")
 
-def _eleven_voice_id():
-    try:
-        vs = _eleven_client.voices.get_all().voices
-        for v in vs:
-            if v.name.lower() in ("rachel", "bella", "sarah"):
-                return v.voice_id
-        return vs[0].voice_id if vs else "21m00Tcm4TlvDq8ikWAM"
-    except:
-        return "21m00Tcm4TlvDq8ikWAM"
+            def on_open(ws):
+                global _ws_connected
+                _ws_connected = True
+                _current_info["backend"] = "Connected"
+                overlay.update_hud()
+                overlay.set_status("ready", "Connected")
+                # Request initial state
+                ws.send(json.dumps({"type": "get_state"}))
 
-def _speak_local(text):
-    """Fallback: PowerShell SAPI — no extra libraries, no hang."""
-    import subprocess
-    safe = text.replace('"', "'").replace('\n', ' ')
-    ps = (
-        "Add-Type -AssemblyName System.Speech;"
-        "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
-        "$s.Rate=1;"
-        f'$s.Speak("{safe}")'
-    )
-    subprocess.run(["powershell", "-NonInteractive", "-c", ps],
-                   capture_output=True, timeout=30)
-
-def speak(text: str):
-    _tts_queue.put(text)
-
-# ═══════════════════════════════════════════════════════════
-# Whisper STT
-# ═══════════════════════════════════════════════════════════
-def _load_whisper():
-    global _whisper_model
-    if _whisper_model:
-        return _whisper_model
-    from faster_whisper import WhisperModel
-    # Force CPU — avoids CUDA hang on device="auto"
-    _whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
-    return _whisper_model
-
-def _transcribe(audio: np.ndarray) -> str:
-    result = [None]
-    error  = [None]
-
-    def _run():
-        try:
-            model = _load_whisper()
-            f32 = audio.astype(np.float32) / 32768.0
-            segs, _ = model.transcribe(f32, language="en", beam_size=3,
-                                       vad_filter=True, vad_parameters={"min_silence_duration_ms": 500})
-            result[0] = " ".join(s.text.strip() for s in segs).strip()
-        except Exception as e:
-            error[0] = e
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=20)          # hard timeout — never hang UI forever
-    if t.is_alive():
-        return ""               # timed out
-    if error[0]:
-        print(f"[Whisper] {error[0]}")
-        return ""
-    return result[0] or ""
-
-# ═══════════════════════════════════════════════════════════
-# Backend WebSocket — sends text to live_chat_app.py
-# which has ALL tools: click, run_command, open_browser, etc.
-# ═══════════════════════════════════════════════════════════
-_ws_response_queue: queue.Queue = queue.Queue()
-
-def _send_to_backend(text: str, overlay) -> str:
-    """Send transcription to live_chat_app.py and collect the AI reply."""
-    try:
-        import websocket as _ws   # websocket-client (sync)
-        reply_chunks = []
-        done = threading.Event()
-
-        def on_message(ws, raw):
-            try:
-                msg = json.loads(raw)
-                if msg.get("type") == "transcript" and msg.get("role") == "assistant":
-                    reply_chunks.append(msg.get("text", ""))
-                    # Don't set done here — keep collecting until state=listening
-                elif msg.get("type") == "state" and msg.get("state") == "listening":
-                    done.set()   # backend finished processing, all tokens received
-            except Exception:
-                pass
-
-        def on_error(ws, err):
-            print(f"[ws] {err}")
-            done.set()
-
-        def on_close(ws, *_):
-            done.set()
-
-        def on_open(ws):
-            ws.send(json.dumps({"type": "input", "text": text}))
-
-        ws_app = _ws.WebSocketApp(
-            BACKEND_WS,
-            on_open=on_open,
-            on_message=on_message,
-            on_error=on_error,
-            on_close=on_close,
-        )
-        t = threading.Thread(target=ws_app.run_forever, daemon=True)
-        t.start()
-        done.wait(timeout=60)   # allow up to 60s for tool execution
-        ws_app.close()
-
-        reply = " ".join(reply_chunks).strip()
-        return reply
-    except ImportError:
-        return _send_to_backend_http(text)
-    except Exception as e:
-        print(f"[backend] {e}")
-        return f"Backend error: {e}"
-
-def _send_to_backend_http(text: str) -> str:
-    """HTTP fallback — POST to /api/chat if WS fails."""
-    try:
-        import urllib.request
-        data = json.dumps({"text": text}).encode()
-        req = urllib.request.Request(
-            f"{BACKEND_HTTP}/api/chat",
-            data=data, method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return json.loads(r.read()).get("reply", "")
-    except Exception as e:
-        return f"HTTP error: {e}"
-
-# ═══════════════════════════════════════════════════════════
-# Direct AI chat — fallback if backend not running
-# ═══════════════════════════════════════════════════════════
-_chat_history: list[dict] = []
-_openai_client = None
-
-def _get_openai():
-    global _openai_client
-    if _openai_client is None:
-        from openai import OpenAI
-        _openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    return _openai_client
-
-def _ask_ai_fallback(text: str) -> str:
-    """Direct GPT call — only used when live_chat_app.py is not running."""
-    _chat_history.append({"role": "user", "content": text})
-    try:
-        client = _get_openai()
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content":
-                    "You are VISION, a concise AI voice assistant. "
-                    "Keep replies under 3 sentences. Plain spoken language only."},
-                *_chat_history[-10:],
-            ],
-            max_tokens=300,
-        )
-        reply = response.choices[0].message.content.strip()
-        _chat_history.append({"role": "assistant", "content": reply})
-        return reply
-    except Exception as e:
-        return f"AI error: {e}"
-
-def _check_backend_alive() -> bool:
-    try:
-        import urllib.request
-        urllib.request.urlopen(f"{BACKEND_HTTP}/api/health", timeout=2)
-        return True
-    except Exception:
-        return False
-
-# ═══════════════════════════════════════════════════════════
-# Audio
-# ═══════════════════════════════════════════════════════════
-def _audio_callback(indata, frames, t, s):
-    if _recording:
-        _audio_frames.append(indata.copy())
+            _ws_client = websocket.WebSocketApp(
+                BACKEND_WS, on_open=on_open, on_message=on_message, on_error=on_error, on_close=on_close
+            )
+            _ws_client.run_forever()
+        except Exception: pass
+        time.sleep(3)
 
 # ═══════════════════════════════════════════════════════════
 # Floating Overlay UI
-# ═══════════════════════════════════════════════════════════
+# ════════════════════════════════━━━━━━━━━━━━━━━━━━━━━━━━━━
 class VoiceOverlay:
-    VU_BARS = 16
+    VU_BARS = 22
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("VISION Voice")
-        self.root.overrideredirect(True)          # no title bar
-        self.root.attributes("-topmost", True)    # always on top
-        self.root.attributes("-alpha", 0.93)
+        self.root.title("VISION HUD")
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-alpha", 0.96)
         self.root.configure(bg=BG)
 
-        # Position: bottom-right corner
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        w, h = 220, 130
-        self.root.geometry(f"{w}x{h}+{sw-w-18}+{sh-h-52}")
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = 260, 190
+        self.root.geometry(f"{w}x{h}+{sw-w-20}+{sh-h-60}")
 
         self._build_ui()
         self._dragging = False
         self._drag_x = self._drag_y = 0
 
-        # Pre-load whisper in background
-        threading.Thread(target=_load_whisper, daemon=True).start()
-
-        # TTS worker
-        threading.Thread(target=_tts_worker, daemon=True).start()
-
-        # VU meter update loop
-        self._vu_job = None
-        self._stream = None
+        threading.Thread(target=_ws_worker, args=(self,), daemon=True).start()
 
     def _build_ui(self):
         r = self.root
-
-        # Header bar (drag handle)
-        hdr = tk.Frame(r, bg=SURFACE, height=22, cursor="fleur")
+        hdr = tk.Frame(r, bg=SURFACE, height=26, cursor="fleur")
         hdr.pack(fill="x")
         hdr.bind("<Button-1>",   self._drag_start)
         hdr.bind("<B1-Motion>",  self._drag_motion)
 
-        lbl = tk.Label(hdr, text="◈  VISION VOICE",
-                       bg=SURFACE, fg=BLUE,
-                       font=("Consolas", 8, "bold"),
-                       anchor="w", padx=8)
-        lbl.pack(side="left", fill="y")
-        lbl.bind("<Button-1>",   self._drag_start)
-        lbl.bind("<B1-Motion>",  self._drag_motion)
+        tk.Label(hdr, text="◈ VISION HUD", bg=SURFACE, fg=BLUE, font=("Consolas", 8, "bold"), padx=10).pack(side="left")
 
-        close_btn = tk.Label(hdr, text="✕", bg=SURFACE, fg=DIM,
-                             font=("Consolas", 9), padx=6, cursor="hand2")
-        close_btn.pack(side="right")
-        close_btn.bind("<Button-1>", lambda _: self._quit())
-        close_btn.bind("<Enter>",    lambda _: close_btn.config(fg=RED))
-        close_btn.bind("<Leave>",    lambda _: close_btn.config(fg=DIM))
+        close = tk.Label(hdr, text="✕", bg=SURFACE, fg=DIM, font=("Consolas", 9), padx=10, cursor="hand2")
+        close.pack(side="right")
+        close.bind("<Button-1>", lambda _: self._quit())
 
-        # VU meter (canvas)
-        self.vu_canvas = tk.Canvas(r, bg=BG, height=24,
-                                   highlightthickness=0)
-        self.vu_canvas.pack(fill="x", padx=8, pady=(6, 2))
+        # HUD Indicators
+        self.hud = tk.Frame(r, bg=BG, padx=12, pady=8)
+        self.hud.pack(fill="x")
+
+        self.stt_lbl = tk.Label(self.hud, text="STT: Loading...", bg=BG, fg=DIM, font=("Consolas", 7), anchor="w")
+        self.stt_lbl.pack(fill="x")
+        self.llm_lbl = tk.Label(self.hud, text="LLM: Disconnected", bg=BG, fg=CYAN, font=("Consolas", 7), anchor="w")
+        self.llm_lbl.pack(fill="x")
+        self.tts_lbl = tk.Label(self.hud, text="TTS: Loading...", bg=BG, fg=DIM, font=("Consolas", 7), anchor="w")
+        self.tts_lbl.pack(fill="x")
+
+        # VU Canvas
+        self.vu = tk.Canvas(r, bg=BG, height=24, highlightthickness=0)
+        self.vu.pack(fill="x", padx=12, pady=2)
         self._bars = []
-        bar_w = 8; gap = 2
-        total = self.VU_BARS * (bar_w + gap) - gap
-        start_x = (220 - total) // 2
         for i in range(self.VU_BARS):
-            x1 = start_x + i * (bar_w + gap)
-            rect = self.vu_canvas.create_rectangle(
-                x1, 6, x1 + bar_w, 20, fill=DIM, outline=""
-            )
-            self._bars.append(rect)
+            b = self.vu.create_rectangle(i*11+2, 5, i*11+10, 19, fill=DIM, outline="")
+            self._bars.append(b)
 
-        # Status label
-        self.status_var = tk.StringVar(value="Ready")
-        self.status_lbl = tk.Label(r, textvariable=self.status_var,
-                                   bg=BG, fg=DIM,
-                                   font=("Consolas", 8))
-        self.status_lbl.pack(pady=(0, 4))
+        # Status
+        self.status_var = tk.StringVar(value="Searching for backend...")
+        self.status_lbl = tk.Label(r, textvariable=self.status_var, bg=BG, fg=DIM, font=("Consolas", 8))
+        self.status_lbl.pack(pady=2)
 
-        # Hold-to-talk button
-        self.btn = tk.Button(
-            r,
-            text="🎙  HOLD TO TALK",
-            bg=SURFACE, fg=TEXT,
-            activebackground=BLUE, activeforeground="white",
-            font=("Consolas", 9, "bold"),
-            relief="flat", bd=0,
-            padx=10, pady=6,
-            cursor="hand2",
-        )
-        self.btn.pack(fill="x", padx=8, pady=(0, 8))
-        self.btn.bind("<ButtonPress-1>",   self._on_press)
-        self.btn.bind("<ButtonRelease-1>", self._on_release)
+        # Controls
+        ctrls = tk.Frame(r, bg=BG, pady=8)
+        ctrls.pack(fill="x", padx=12)
 
-    # ── Drag ──────────────────────────────────────────────
-    def _drag_start(self, ev):
-        self._drag_x = ev.x_root - self.root.winfo_x()
-        self._drag_y = ev.y_root - self.root.winfo_y()
+        self.mute_btn = tk.Button(ctrls, text="🎙 UNMUTE", bg=RED, fg="white", font=("Consolas", 8, "bold"), relief="flat", command=self.toggle_mute)
+        self.mute_btn.pack(side="left", expand=True, fill="x", padx=(0,5))
 
-    def _drag_motion(self, ev):
-        x = ev.x_root - self._drag_x
-        y = ev.y_root - self._drag_y
-        self.root.geometry(f"+{x}+{y}")
+        self.cont_btn = tk.Button(ctrls, text="∞ ALWAYS-ON", bg=SURFACE, fg=DIM, font=("Consolas", 8, "bold"), relief="flat", command=self.toggle_always_on)
+        self.cont_btn.pack(side="right", expand=True, fill="x")
 
-    # ── Status ─────────────────────────────────────────────
-    def set_status(self, kind: str, msg: str):
-        colours = {
-            "ready":       DIM,
-            "recording":   RED,
-            "transcribing": CYAN,
-            "injecting":   BLUE,
-            "speaking":    GREEN,
-            "error":       RED,
-        }
-        col = colours.get(kind, DIM)
-        self.root.after(0, lambda: (
-            self.status_var.set(msg),
-            self.status_lbl.config(fg=col),
+    def update_hud(self):
+        self.root.after(0, self._update_hud_now)
+
+    def _update_hud_now(self):
+        self.stt_lbl.config(text=f"STT: {_current_info['stt']}")
+        self.llm_lbl.config(text=f"LLM: {_current_info['llm']}")
+        self.tts_lbl.config(text=f"TTS: {_current_info['tts']}")
+
+    def set_continuous_btn(self, enabled):
+        self.root.after(0, lambda: self.cont_btn.config(
+            bg=BLUE if enabled else SURFACE,
+            fg="white" if enabled else DIM,
         ))
 
-    # ── VU meter ───────────────────────────────────────────
-    def _update_vu(self):
-        if _audio_frames:
-            data = _audio_frames[-1].flatten().astype(np.float32)
-            rms  = float(np.sqrt(np.mean(data**2))) if data.size else 0
-            db   = 20 * np.log10(rms / 32768 + 1e-9)
-            lvl  = max(0, min(self.VU_BARS, int((db + 60) / 60 * self.VU_BARS)))
-        else:
-            lvl = 0
-        for i, bar in enumerate(self._bars):
-            if i < lvl:
-                col = GREEN if i < self.VU_BARS * 0.6 else (
-                      CYAN  if i < self.VU_BARS * 0.85 else RED)
-            else:
-                col = DIM
-            self.vu_canvas.itemconfig(bar, fill=col)
-        if _recording:
-            self._vu_job = self.root.after(40, self._update_vu)
-        else:
-            # Fade bars to zero
-            for bar in self._bars:
-                self.vu_canvas.itemconfig(bar, fill=DIM)
+    def set_mute_btn(self, muted):
+        self.root.after(0, lambda: self.mute_btn.config(
+            text="🎙 UNMUTE" if muted else "🎙 MUTE",
+            bg=RED if muted else SURFACE,
+            fg="white" if muted else TEXT,
+        ))
 
-    # ── Button press / release ─────────────────────────────
-    def _on_press(self, _ev):
-        global _recording, _audio_frames
-        with _lock:
-            if _recording:
-                return
-            _recording = True
-            _audio_frames = []
-        self.btn.config(bg=RED, fg="white", text="● RECORDING…")
-        self.set_status("recording", "Recording…")
-        self._update_vu()
+    def toggle_mute(self):
+        global _is_muted
+        if not _ws_connected: return
+        _is_muted = not _is_muted
+        _ws_client.send(json.dumps({"type": "set_mute", "muted": _is_muted}))
+        self.set_mute_btn(_is_muted)
 
-    def _on_release(self, _ev):
-        global _recording
-        with _lock:
-            if not _recording:
-                return
-            _recording = False
-            frames = list(_audio_frames)
+    def toggle_always_on(self):
+        global _continuous_enabled
+        if not _ws_connected: return
+        _continuous_enabled = not _continuous_enabled
+        _ws_client.send(json.dumps({"type": "set_continuous", "enabled": _continuous_enabled}))
+        self.set_continuous_btn(_continuous_enabled)
 
-        self.btn.config(bg=SURFACE, fg=TEXT, text="🎙  HOLD TO TALK")
+    def _update_loop(self):
+        lvl = min(self.VU_BARS, int(_current_volume * self.VU_BARS))
+        for i, b in enumerate(self._bars):
+            col = GREEN if i < lvl else DIM
+            if i >= self.VU_BARS - 2 and lvl > self.VU_BARS - 2: col = RED # Peak
+            self.vu.itemconfig(b, fill=col)
 
-        def _process():
-            if not frames:
-                self.set_status("ready", "Ready")
-                return
-            audio = np.concatenate(frames).flatten()
-            self.set_status("transcribing", "Transcribing…")
-            text = _transcribe(audio)
-            if not text:
-                self.set_status("ready", "Nothing detected")
-                return
+        self.root.after(50, self._update_loop)
 
-            short = (text[:48] + "…") if len(text) > 50 else text
-            self.set_status("injecting", f"You: {short}")
+    def _drag_start(self, e):
+        self._drag_x, self._drag_y = e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y()
+    def _drag_motion(self, e):
+        self.root.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
-            # Send to backend (has all tools) or fallback to plain GPT — fully in background
-            self.set_status("injecting", "Thinking…")
-            if _check_backend_alive():
-                reply = _send_to_backend(text, self)
-            else:
-                self.set_status("injecting", "Backend offline — using GPT")
-                reply = _ask_ai_fallback(text)
+    def set_status(self, k, m):
+        c = {"ready": DIM, "listening": GREEN, "recording": RED, "thinking": CYAN, "speaking": BLUE, "error": RED}
+        self.root.after(0, lambda: (self.status_var.set(m), self.status_lbl.config(fg=c.get(k, DIM))))
 
-            if reply:
-                self.set_status("speaking", "Speaking…")
-                speak(reply)
-            self.set_status("ready", "Ready")
-
-        threading.Thread(target=_process, daemon=True).start()
-
-    # ── Quit ───────────────────────────────────────────────
     def _quit(self):
-        _tts_queue.put(None)
-        if self._stream:
-            try: self._stream.stop(); self._stream.close()
-            except: pass
-        self.root.destroy()
-        sys.exit(0)
+        self.root.destroy(); sys.exit(0)
 
-    # ── Run ────────────────────────────────────────────────
     def run(self):
-        _setup_eleven()
-        label = "ElevenLabs" if _eleven_ok else "SAPI"
-
-        backend_ok = _check_backend_alive()
-        backend_label = "backend+tools" if backend_ok else "GPT-direct"
-        self.set_status("ready", f"Ready  [{label} | {backend_label}]")
-
-        greeting = (
-            "Vision online. Backend connected — I can open apps, run commands, and control your computer."
-            if backend_ok else
-            "Vision ready. Say anything."
-        )
-        threading.Thread(target=speak, args=(greeting,), daemon=True).start()
-
-        with sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1,
-            dtype="int16", blocksize=BLOCK_SIZE,
-            callback=_audio_callback,
-        ):
-            self.root.mainloop()
-
+        self._update_loop()
+        self.root.mainloop()
 
 if __name__ == "__main__":
     VoiceOverlay().run()

@@ -23,29 +23,29 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import httpx
-import numpy as np
-import pyautogui
-import sounddevice as sd
-import uvicorn
-import websockets as ws_lib
-import winsound
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-import openai
-from openai import AsyncOpenAI
-from ollama import AsyncClient as OllamaAsyncClient, ResponseError as OllamaResponseError, Options as OllamaOptions
-from elevenlabs.client import ElevenLabs
+import httpx  # noqa: E402
+import numpy as np  # noqa: E402
+import pyautogui  # noqa: E402
+import sounddevice as sd  # noqa: E402
+import uvicorn  # noqa: E402
+import websockets as ws_lib  # noqa: E402
+import winsound  # noqa: E402
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+import openai  # noqa: E402
+from openai import AsyncOpenAI  # noqa: E402
+from ollama import AsyncClient as OllamaAsyncClient, ResponseError as OllamaResponseError, Options as OllamaOptions  # noqa: E402
+from elevenlabs.client import ElevenLabs  # noqa: E402
 try:
     from elevenlabs.conversational_ai.conversation import Conversation, ClientTools
     from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
     HAS_CONVAI = True
 except ImportError:
     HAS_CONVAI = False
-from scipy.io import wavfile
+from scipy.io import wavfile  # noqa: E402
 
 try:
     import pytesseract
@@ -228,10 +228,17 @@ speak_task: asyncio.Task | None  = None
 _tts_silence_until: float        = 0.0   # ignore VAD input until this timestamp
 _input_busy: bool                = False  # True while handle_input is running (gate voice loop)
 wake_word_active: bool           = False  # True = wake-word mode; requires trigger phrase
+continuous_listening: bool       = True   # False = press-to-talk mode
+_response_lock: asyncio.Lock | None = None
+runtime_state: str               = "idle"
+_voice_capture_active: bool      = False
+_mic_hold_until: float           = 0.0
 
 # ── Voice provider preferences (user-configurable at runtime) ─────────────────
 preferred_stt: str = "auto"   # "auto" | "elevenlabs" | "groq" | "local"
 preferred_tts: str = "auto"   # "auto" | "elevenlabs" | "local"
+last_stt_provider: str = ""   # last STT provider that succeeded
+last_tts_provider: str = ""   # last TTS provider that succeeded
 tts_rate:      int = 175      # pyttsx3 words-per-minute
 tts_voice_idx: int = 0        # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
@@ -258,6 +265,7 @@ class Memory:
     _default = lambda _: {
         "user":          {"name": None, "preferences": []},
         "facts":         [],
+        "context_summary": "",
         "session_count": 0,
         "last_session":  None,
         "task_history":  [],
@@ -272,10 +280,96 @@ class Memory:
     def _load(self) -> dict:
         if MEMORY_FILE.exists():
             try:
-                return json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
+                data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
+                return self._normalize(data)
             except Exception:
                 pass
         return Memory._default(None)
+
+    def _normalize(self, data: dict) -> dict:
+        data.setdefault("user", {"name": None, "preferences": []})
+        data.setdefault("facts", [])
+        data.setdefault("context_summary", "")
+        data.setdefault("session_count", 0)
+        data.setdefault("last_session", None)
+        data.setdefault("task_history", [])
+        data["user"].setdefault("name", None)
+        data["user"].setdefault("preferences", [])
+        data["user"]["preferences"] = self._dedupe(
+            [p for p in (self._clean_text(x, 100) for x in data["user"]["preferences"]) if self._is_memorable_preference(p)]
+        )[-20:]
+        data["facts"] = self._dedupe(
+            [f for f in (self._clean_text(x, 160) for x in data["facts"]) if self._is_memorable_fact(f)]
+        )[-100:]
+        data["context_summary"] = self._clean_text(data.get("context_summary", ""), 600)
+
+        cleaned_tasks: list[dict] = []
+        seen_tasks: set[str] = set()
+        for item in data["task_history"]:
+            task = self._clean_text(item.get("task", ""), 120)
+            if not self._is_memorable_task(task):
+                continue
+            key = task.casefold()
+            if key in seen_tasks:
+                continue
+            seen_tasks.add(key)
+            cleaned_tasks.append({"task": task, "ts": item.get("ts", datetime.now().isoformat())})
+        data["task_history"] = cleaned_tasks[-50:]
+        return data
+
+    @staticmethod
+    def _dedupe(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in items:
+            key = item.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+        return result
+
+    @staticmethod
+    def _clean_text(text: str, limit: int = 160) -> str:
+        text = re.sub(r"\s+", " ", str(text or "")).strip()
+        return text[:limit]
+
+    @staticmethod
+    def _is_low_signal_text(text: str) -> bool:
+        if not text or len(text) < 4:
+            return True
+        lowered = text.casefold()
+        if lowered in {"none", "null", "okay", "ok", "thanks", "thank you", "yes", "no", "uh huh", "uh-huh"}:
+            return True
+        alpha = sum(ch.isalpha() for ch in text)
+        if alpha and alpha / max(len(text), 1) < 0.45:
+            return True
+        if text.count(".") > 8 or text.count("...") > 2:
+            return True
+        return False
+
+    def _is_memorable_task(self, task: str) -> bool:
+        lowered = task.casefold()
+        if self._is_low_signal_text(task):
+            return False
+        if lowered in {"hello", "hello friend", "hi", "test"}:
+            return False
+        if re.fullmatch(r"[\W_]+", task):
+            return False
+        if lowered.startswith("(") and "00:" in lowered:
+            return False
+        if lowered.startswith("reply with exactly") or lowered.startswith("run the echo command"):
+            return False
+        if "vision_test_ok" in lowered or "toolcall_ok" in lowered:
+            return False
+        return True
+
+    def _is_memorable_fact(self, fact: str) -> bool:
+        return not self._is_low_signal_text(fact)
+
+    def _is_memorable_preference(self, pref: str) -> bool:
+        lowered = pref.casefold()
+        return any(token in lowered for token in ("prefer", "likes", "uses", "wants", "always", "default"))
 
     def save(self) -> None:
         MEMORY_FILE.write_text(
@@ -283,13 +377,20 @@ class Memory:
         )
 
     def add_fact(self, fact: str) -> None:
-        fact = fact.strip()
-        if fact and fact not in self.data["facts"]:
+        fact = self._clean_text(fact, 160)
+        if self._looks_like_preference(fact):
+            self.add_preference(fact)
+        if self._is_memorable_fact(fact) and fact not in self.data["facts"]:
             self.data["facts"].append(fact)
             self.data["facts"] = self.data["facts"][-100:]
             self.save()
 
     def add_task(self, task: str) -> None:
+        task = self._clean_text(task, 120)
+        if not self._is_memorable_task(task):
+            return
+        if self.data["task_history"] and self.data["task_history"][-1]["task"].casefold() == task.casefold():
+            return
         self.data["task_history"].append({
             "task": task[:120],
             "ts": datetime.now().isoformat(),
@@ -298,8 +399,54 @@ class Memory:
         self.save()
 
     def set_user_name(self, name: str) -> None:
-        self.data["user"]["name"] = name
-        self.save()
+        clean = self._clean_text(name, 60)
+        if clean:
+            self.data["user"]["name"] = clean
+            self.save()
+
+    def add_preference(self, pref: str) -> None:
+        pref = self._clean_text(pref, 120)
+        if not self._is_memorable_preference(pref):
+            return
+        prefs = self.data["user"]["preferences"]
+        if pref not in prefs:
+            prefs.append(pref)
+            self.data["user"]["preferences"] = prefs[-20:]
+            self.save()
+
+    def set_context_summary(self, summary: str) -> None:
+        summary = self._clean_text(summary, 600)
+        if summary:
+            self.data["context_summary"] = summary
+            self.save()
+
+    def _looks_like_preference(self, text: str) -> bool:
+        lowered = text.casefold()
+        return lowered.startswith("user prefers") or lowered.startswith("prefers ") or lowered.startswith("user uses")
+
+    def learn_from_exchange(self, user_text: str, assistant_text: str = "") -> None:
+        user_text = self._clean_text(user_text, 200)
+        assistant_text = self._clean_text(assistant_text, 240)
+        if not self._is_memorable_task(user_text):
+            return
+
+        name_match = re.search(r"\b(?:my name is|call me)\s+([A-Za-z][a-zA-Z0-9_-]{1,30})\b", user_text, re.I)
+        if name_match:
+            self.set_user_name(name_match.group(1))
+
+        model_dir_match = re.search(r"\bmodels?\s+(?:are|is)\s+in\s+([A-Za-z]:\\[^\s]+)", user_text, re.I)
+        if model_dir_match:
+            self.add_fact(f"User stores models in {model_dir_match.group(1)}")
+
+        pref_match = re.search(r"\b(?:i prefer|prefer|always use|default to)\s+(.+)$", user_text, re.I)
+        if pref_match:
+            self.add_preference(f"User prefers {pref_match.group(1).strip('. ')}")
+
+        if assistant_text:
+            for line in assistant_text.splitlines():
+                clean = self._clean_text(line, 160)
+                if clean.startswith("User "):
+                    self.add_fact(clean)
 
     def get_context_block(self) -> str:
         lines = []
@@ -308,6 +455,8 @@ class Memory:
             lines.append(f"User name: {u['name']}")
         if u.get("preferences"):
             lines.append("Preferences: " + ", ".join(u["preferences"][-10:]))
+        if self.data.get("context_summary"):
+            lines.append("Session summary: " + self.data["context_summary"])
         if self.data["facts"]:
             lines.append("Remembered facts:")
             lines += [f"  • {f}" for f in self.data["facts"][-20:]]
@@ -432,6 +581,63 @@ def get_ollama_client() -> OllamaAsyncClient:
     return _ollama_client_cache
 
 
+_FALLBACK_PROVIDER_ORDER = (
+    "github",
+    "groq",
+    "gemini",
+    "deepseek",
+    "openai",
+    "mistral",
+    "anthropic",
+    "xai",
+)
+_provider_failure_until: dict[str, float] = {}
+
+
+def _provider_has_key(provider: str) -> bool:
+    """Return True when the provider has a non-placeholder API key configured."""
+    key = str(PROVIDERS.get(provider, {}).get("api_key", "")).strip()
+    return bool(key and key not in {"none", "ollama"})
+
+
+def _provider_default_model(provider: str) -> str:
+    """Return the best default model for a provider."""
+    models = PROVIDERS.get(provider, {}).get("models", [])
+    return models[0] if models else current_model
+
+
+def _choose_fallback_provider(exclude: set[str] | None = None) -> str | None:
+    """Pick the best configured non-Ollama provider, skipping any excluded names."""
+    blocked = exclude or set()
+    for provider in _FALLBACK_PROVIDER_ORDER:
+        if provider in blocked:
+            continue
+        if time.time() < _provider_failure_until.get(provider, 0.0):
+            continue
+        if _provider_has_key(provider):
+            return provider
+    return None
+
+
+async def _activate_provider(provider: str) -> None:
+    """Switch the active provider/model and notify clients."""
+    global current_provider, current_model
+    if provider == current_provider and current_model in PROVIDERS.get(provider, {}).get("models", []):
+        return
+    current_provider = provider
+    current_model = _provider_default_model(provider)
+    write_log("model", f"{current_provider}/{current_model}")
+    await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
+
+
+def _no_provider_message() -> str:
+    """Return a clear operator-facing message when no provider can answer."""
+    return (
+        "No working model provider is available. "
+        "Start Ollama on localhost:11434 or save a valid cloud model key in Settings."
+    )
+
+
 
 # ── Ollama model discovery ────────────────────────────────────────────────────
 
@@ -440,12 +646,12 @@ async def fetch_ollama_models() -> list[str]:
     try:
         client = get_ollama_client()
         resp = await client.list()
-        return [m.model for m in resp.models] if resp.models else ["llama3.2:latest"]
+        return [m.model for m in resp.models] if resp.models else []
     except OllamaResponseError as e:
         print(f"[ollama] list error: {e.error}")
-        return ["llama3.2:latest"]
+        return []
     except Exception:
-        return ["llama3.2:latest"]
+        return []
 
 # ── HTTP routes ───────────────────────────────────────────────────────────────
 
@@ -717,7 +923,7 @@ async def api_wake_word(body: dict):
 async def ws_ep(websocket: WebSocket):
     global muted, mode, speak_task, current_provider, current_model
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
-    global wake_word_active
+    global wake_word_active, continuous_listening
     await websocket.accept()
     clients.add(websocket)
     write_log("ws", "connected")
@@ -729,6 +935,8 @@ async def ws_ep(websocket: WebSocket):
         "mode":     mode,
         "memory":   memory.get_all(),
         "wake_word": wake_word_active,
+        "continuous_listening": continuous_listening,
+        "muted": muted,
         "voice": {
             "preferred_stt": preferred_stt,
             "preferred_tts": preferred_tts,
@@ -786,11 +994,24 @@ async def ws_ep(websocket: WebSocket):
                 write_log("mute", str(muted))
                 if muted and speak_task and not speak_task.done():
                     speak_task.cancel()
+                await broadcast({"type": "mute_state", "muted": muted})
+                if muted:
+                    if runtime_state != "muted":
+                        await set_state("muted")
+                elif not (speak_task and not speak_task.done()) and not _input_busy:
+                    target_state = "listening" if (continuous_listening or wake_word_active) else "idle"
+                    if runtime_state != target_state:
+                        await set_state(target_state)
             elif t == "set_continuous":
-                global continuous_listening
                 continuous_listening = bool(msg.get("enabled", False))
                 write_log("continuous", str(continuous_listening))
                 await broadcast({"type": "continuous_state", "enabled": continuous_listening})
+                if not muted:
+                    if continuous_listening or wake_word_active:
+                        if not (speak_task and not speak_task.done()) and not _input_busy and runtime_state != "listening":
+                            await set_state("listening")
+                    elif runtime_state != "idle":
+                        await set_state("idle")
             elif t == "set_mode":
                 mode = msg.get("mode", "chat")
                 history.clear()
@@ -813,6 +1034,23 @@ async def ws_ep(websocket: WebSocket):
                     memory.data["facts"].remove(fact)
                     memory.save()
                 await broadcast({"type": "memory_updated", "memory": memory.get_all()})
+            elif t == "get_state":
+                await websocket.send_text(json.dumps({
+                    "type":     "init",
+                    "provider": current_provider,
+                    "model":    current_model,
+                    "mode":     mode,
+                    "memory":   memory.get_all(),
+                    "wake_word": wake_word_active,
+                    "continuous_listening": continuous_listening,
+                    "muted": muted,
+                    "voice": {
+                        "preferred_stt": preferred_stt,
+                        "preferred_tts": preferred_tts,
+                        "tts_rate":      tts_rate,
+                        "tts_voice_idx": tts_voice_idx,
+                    },
+                }))
             elif t == "set_api_key":
                 provider = msg.get("provider", "")
                 key = msg.get("key", "").strip()
@@ -855,9 +1093,15 @@ async def ws_ep(websocket: WebSocket):
                 if wake_word_active:
                     await broadcast({"type": "transcript", "role": "system",
                                      "text": f"🔒 Wake-word mode ON — say one of: {', '.join(WAKE_PHRASES)}"})
+                    if not muted and not (speak_task and not speak_task.done()) and not _input_busy and runtime_state != "listening":
+                        await set_state("listening")
                 else:
                     await broadcast({"type": "transcript", "role": "system",
-                                     "text": "🔓 Wake-word mode OFF — always listening"})
+                                     "text": "🔓 Wake-word mode OFF — " + ("always listening" if continuous_listening else "voice standby")})
+                    if not muted:
+                        target_state = "listening" if continuous_listening else "idle"
+                        if runtime_state != target_state and not (speak_task and not speak_task.done()) and not _input_busy:
+                            await set_state(target_state)
     except WebSocketDisconnect:
         clients.discard(websocket)
 
@@ -874,9 +1118,11 @@ async def broadcast(msg: dict) -> None:
 
 async def set_state(s: str) -> None:
     """Broadcast state + current active provider/model for UI indicators."""
+    global runtime_state
+    runtime_state = s
     write_log("state", s)
     await broadcast({
-        "type": "state", 
+        "type": "state",
         "state": s,
         "provider": current_provider,
         "model": current_model
@@ -887,6 +1133,16 @@ async def add_transcript(role: str, text: str) -> None:
 
 async def broadcast_volume(lvl: float) -> None:
     await broadcast({"type": "volume", "level": round(min(lvl, 1.0), 3)})
+
+
+async def _wait_for_quiet_input(max_wait: float = 1.2) -> None:
+    """Delay TTS briefly while the microphone is actively receiving speech."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max_wait
+    while _voice_capture_active or loop.time() < _mic_hold_until:
+        if loop.time() >= deadline:
+            break
+        await asyncio.sleep(0.03)
 
 async def broadcast_action(action: str, params: dict, result: str, elapsed_ms: float | None = None) -> None:
     write_log("action", f"{action} ({elapsed_ms:.0f}ms) → {result[:80]}" if elapsed_ms else f"{action} → {result[:80]}")
@@ -931,10 +1187,11 @@ class VAD:
 # ── STT ───────────────────────────────────────────────────────────────────────
 
 _stt_failure_until: float = 0.0   # cooldown timestamp after all providers fail
+_stt_groq_failure_until: float = 0.0
 _faster_whisper_model = None       # lazy-loaded once
 
 async def transcribe(frames: list[np.ndarray]) -> str:
-    global _stt_failure_until, _faster_whisper_model
+    global _stt_failure_until, _stt_groq_failure_until, _faster_whisper_model
 
     # If all providers recently failed, skip until cooldown expires
     if time.time() < _stt_failure_until:
@@ -966,6 +1223,9 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             return None
 
     async def _try_groq():
+        global _stt_groq_failure_until
+        if time.time() < _stt_groq_failure_until:
+            return None
         groq_key = _load_key("groq", "GROQ_API_KEY")
         if not groq_key: return None
         try:
@@ -980,7 +1240,10 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             write_log("stt/groq", result[:150])
             return result
         except Exception as e:
-            print(f"[stt] Groq: {str(e)[:60]}")
+            err = str(e)
+            if "401" in err or "invalid api key" in err.lower():
+                _stt_groq_failure_until = time.time() + 300.0
+            print(f"[stt] Groq: {err[:60]}")
             return None
 
     async def _try_local():
@@ -1004,20 +1267,51 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 
     try:
         result = None
+        cascade: list[str] = []
+        used_provider = ""
+
         if preferred_stt == "elevenlabs":
             result = await _try_elevenlabs()
+            cascade = ["elevenlabs"]
+            used_provider = "elevenlabs"
         elif preferred_stt == "groq":
             result = await _try_groq()
+            cascade = ["groq"]
+            used_provider = "groq"
         elif preferred_stt == "local":
             result = await _try_local()
+            cascade = ["local"]
+            used_provider = "local"
         else:  # "auto" — full fallback chain
-            result = await _try_elevenlabs()
-            if result is None:
-                result = await _try_groq()
-            if result is None:
-                result = await _try_local()
+            auto_chain = [
+                ("local", _try_local),
+                ("elevenlabs", _try_elevenlabs),
+                ("groq", _try_groq),
+            ] if continuous_listening else [
+                ("elevenlabs", _try_elevenlabs),
+                ("groq", _try_groq),
+                ("local", _try_local),
+            ]
+            cascade = []
+            for provider_name, provider_fn in auto_chain:
+                result = await provider_fn()
+                if result is not None:
+                    cascade.append(provider_name)
+                    used_provider = provider_name
+                    break
+                cascade.append(f"{provider_name}✗")
 
-        if result is not None:
+        if isinstance(result, str):
+            result = result.strip()
+
+        if result:
+            global last_stt_provider
+            last_stt_provider = used_provider
+            asyncio.create_task(broadcast({
+                "type": "stt_active",
+                "provider": used_provider,
+                "cascade": cascade,
+            }))
             return result
 
         # All failed — impose 30s cooldown to prevent hammering
@@ -1218,11 +1512,11 @@ _RETRYABLE_TOOLS = {
 async def exec_tool(name: str, args: dict) -> str:
     """
     Execute a tool with automatic timing and exponential backoff retry on transient failure.
-    
+
     Args:
         name: The unique identifier of the tool to execute.
         args: A dictionary of arguments for the tool.
-        
+
     Returns:
         The result of the tool execution as a string, or a formatted error message.
     """
@@ -1240,7 +1534,7 @@ async def exec_tool(name: str, args: dict) -> str:
             if attempt < max_attempts - 1:
                 # Use exponential backoff: 0.5s, 1.0s, etc.
                 await asyncio.sleep(0.5 * (attempt + 1))
-    
+
     _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
     # Provide the last error back to the LLM to help it self-correct
     return _tool_err(name, last_err) if last_err else f"{name} failed with unknown error"
@@ -1248,14 +1542,14 @@ async def exec_tool(name: str, args: dict) -> str:
 async def _exec_tool_impl(name: str, args: dict) -> str:
     """
     Core implementation of tool logic.
-    
+
     Args:
         name: The tool name.
         args: The tool arguments.
-        
+
     Returns:
         The tool's textual output.
-        
+
     Raises:
         Exception: Any error encountered during execution.
     """
@@ -2197,8 +2491,7 @@ def _model_supports_tools() -> bool:
     # broadly. llm_stream catches errors and falls back to prompt-based.
     return True
 
-# Regex to parse prompt-based tool calls from Ollama models that don't support native FC
-import re as _re
+import re as _re  # noqa: E402
 
 # Matches: TOOL_CALL: run_command(...) OR bare run_command(...)
 # Also handles transcription-spaced variants: run _command  read _screen
@@ -2293,7 +2586,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
-            print(f"[llm/prompt-tools] {e}")
+            print(f"[llm/prompttools] {e} - live_chat_app.py:2339")
             err = f"Error: {str(e)[:120]}"
             yield err
             return
@@ -2681,7 +2974,7 @@ async def _llm_stream_ollama(user_text: str):
         except OllamaResponseError as e:
             # Native tool calling not supported — fall back to prompt-based
             if "tool" in str(e.error).lower() or "function" in str(e.error).lower():
-                print(f"[llm/ollama] tool error → prompt fallback: {e.error}")
+                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:2727")
                 oai = get_oai_client()
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c; yield c
@@ -2689,7 +2982,7 @@ async def _llm_stream_ollama(user_text: str):
             yield f"Ollama error: {e.error}"
             break
         except Exception as e:
-            print(f"[llm/ollama] {e}")
+            print(f"[llm/ollama] {e} - live_chat_app.py:2735")
             yield f"Error: {str(e)[:120]}"
             break
 
@@ -2852,11 +3145,11 @@ async def _llm_stream_openai(user_text: str):
 
         except openai.RateLimitError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] rate_limit request_id={rid}")
+            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:2898")
             yield "Rate limit reached — please wait a moment."; break
         except openai.APIStatusError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]}")
+            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]} - live_chat_app.py:2902")
             yield f"API error {e.status_code}: {str(e.message)[:100]}"; break
         except openai.APIConnectionError:
             yield "Connection error — check your internet."; break
@@ -2864,7 +3157,7 @@ async def _llm_stream_openai(user_text: str):
             yield "Request timed out."; break
         except Exception as e:
             err_s = str(e)
-            print(f"[llm/openai] {err_s[:120]}")
+            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:2910")
             if any(k in err_s.lower() for k in ("tool", "function", "schema", "unsupported")):
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c; yield c
@@ -3086,15 +3379,15 @@ async def _llm_stream_anthropic(user_text: str):
 _CONTEXT_TOKEN_LIMIT = 12_000   # ~48K chars before compressing
 _CONTEXT_KEEP_RECENT = 6        # keep last N message pairs (user+assistant) verbatim
 
-from typing import AsyncGenerator, Any
+from typing import AsyncGenerator, Any  # noqa: E402
 
 def _estimate_tokens(history_list: list[dict]) -> int:
     """
     Roughly estimate token count of message history for context management.
-    
+
     Args:
         history_list: List of message dictionaries.
-        
+
     Returns:
         Estimated token count.
     """
@@ -3154,6 +3447,7 @@ async def _compress_history_if_needed() -> None:
             summary_text = "\n".join(lines[:10])
         compressed = [{"role": "system", "content": f"[Conversation summary]\n{summary_text}"}]
         history = compressed + list(recent_msgs)
+        memory.set_context_summary(summary_text)
         write_log("context", f"compressed {len(old_msgs)} msgs → summary ({len(summary_text)} chars)")
         await broadcast({"type": "state", "state": "context_compressed"})
     except Exception as e:
@@ -3162,11 +3456,12 @@ async def _compress_history_if_needed() -> None:
 
 async def _always_learn_step(user_text: str, assistant_text: str) -> None:
     """
-    Elite 'Always Learning' mechanism. 
+    Elite 'Always Learning' mechanism.
     Analyses the interaction to extract new facts or user preferences.
     """
     if not user_text or not assistant_text:
         return
+    memory.learn_from_exchange(user_text, assistant_text)
 
     prompt = (
         "As an elite memory-architect, extract any new permanent facts about the user "
@@ -3176,11 +3471,18 @@ async def _always_learn_step(user_text: str, assistant_text: str) -> None:
         f"ASSISTANT: {assistant_text}"
     )
     try:
-        api_key = _load_key("openai", "OPENAI_API_KEY")
-        if not api_key: return
-        client = AsyncOpenAI(api_key=api_key)
+        if current_provider == "ollama":
+            return
+        provider = current_provider if current_provider in PROVIDERS and _provider_has_key(current_provider) else _choose_fallback_provider()
+        if not provider:
+            return
+        model = "gpt-4o-mini" if provider in {"openai", "github"} and "gpt-4o-mini" in PROVIDERS[provider]["models"] else _provider_default_model(provider)
+        client = AsyncOpenAI(
+            base_url=PROVIDERS[provider]["base_url"],
+            api_key=PROVIDERS[provider]["api_key"],
+        )
         resp = await client.chat.completions.create(
-            model="gpt-4o-mini", # Use a fast model for learning
+            model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150,
         )
@@ -3225,241 +3527,295 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     if current_provider == "ollama":
         collected_chunks: list[str] = []
         errored = False
+        first_error = ""
         async for chunk in _llm_stream_ollama(user_text):
             collected_chunks.append(chunk)
             if len(collected_chunks) == 1 and (chunk.startswith("Ollama error:") or chunk.startswith("Error:")):
-                errored = True; break
+                errored = True
+                first_error = chunk
+                break
             yield chunk
             full_response.append(chunk)
 
-        if errored and PROVIDERS["openai"].get("api_key"):
-            print(f"[llm] Ollama failed — cascading to OpenAI")
-            async for chunk in _handle_and_learn(_llm_stream_openai(user_text)):
-                yield chunk
+        if errored:
+            _provider_failure_until["ollama"] = time.time() + 120.0
+            fallback_provider = _choose_fallback_provider()
+            if fallback_provider:
+                print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:3279")
+                await _activate_provider(fallback_provider)
+            elif first_error:
+                yield _no_provider_message()
+                return
         else:
             asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
-        return
+            return
 
-    async for chunk in _handle_and_learn(_llm_stream_openai(user_text)):
-        yield chunk
+    attempted_providers: set[str] = set()
+    while True:
+        collected_chunks = []
+        errored = False
+        first_error = ""
+        active_provider = current_provider
+        attempted_providers.add(active_provider)
+
+        async for chunk in _llm_stream_openai(user_text):
+            collected_chunks.append(chunk)
+            if len(collected_chunks) == 1 and (
+                chunk.startswith("Connection error")
+                or chunk.startswith("API error")
+                or chunk.startswith("Error:")
+            ):
+                errored = True
+                first_error = chunk
+                break
+            yield chunk
+            full_response.append(chunk)
+
+        if not errored:
+            asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+            return
+
+        _provider_failure_until[active_provider] = time.time() + 300.0
+        fallback_provider = _choose_fallback_provider(attempted_providers)
+        if not fallback_provider:
+            yield _no_provider_message()
+            return
+
+        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:3290")
+        await _activate_provider(fallback_provider)
 
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
 async def speak(text_gen):
     """Stream LLM tokens to ElevenLabs in real-time for minimal latency."""
     loop = asyncio.get_running_loop()
+    global last_tts_provider, _response_lock
+    if _response_lock is None:
+        _response_lock = asyncio.Lock()
     collected: list[str] = []
     tts_start = time.monotonic()
 
-    async def _pyttsx3_tts(text: str) -> bool:
-        try:
-            def _sapi():
-                import pyttsx3
-                eng = pyttsx3.init()
-                voices = eng.getProperty("voices")
-                if voices and tts_voice_idx < len(voices):
-                    eng.setProperty("voice", voices[tts_voice_idx].id)
-                eng.setProperty("rate", tts_rate)
-                eng.setProperty("volume", 1.0)
-                eng.say(text)
-                eng.runAndWait()
-            await loop.run_in_executor(None, _sapi)
-            return True
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            print(f"[tts] pyttsx3: {e}")
-            return False
+    async with _response_lock:
+        async def _pyttsx3_tts(text: str) -> bool:
+            try:
+                def _sapi():
+                    import pyttsx3
+                    eng = pyttsx3.init()
+                    voices = eng.getProperty("voices")
+                    if voices and tts_voice_idx < len(voices):
+                        eng.setProperty("voice", voices[tts_voice_idx].id)
+                    eng.setProperty("rate", tts_rate)
+                    eng.setProperty("volume", 1.0)
+                    eng.say(text)
+                    eng.runAndWait()
+                await loop.run_in_executor(None, _sapi)
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"[tts] pyttsx3: {e} - live_chat_app.py:3315")
+                return False
 
-    async def _win32_tts(text: str) -> bool:
-        """Speak using a Windows OneCore neural voice via win32com SAPI."""
-        token_key = _onecore_voices.get(tts_voice_idx, "")
-        if not token_key:
-            print(f"[tts] win32: no token for voice index {tts_voice_idx}")
-            return False
-        try:
-            def _speak_sync():
-                import win32com.client  # pywin32
-                tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
-                cat = win32com.client.Dispatch("SAPI.SpObjectTokenCategory")
-                cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
-                tokens = cat.EnumerateTokens()
-                for token in tokens:
-                    try:
-                        # token.Id = full registry path ending in the token key name
-                        if token_key.lower() in token.Id.lower():
-                            tts_obj.Voice = token
-                            break
-                    except Exception:
-                        continue
-                # Map WPM rate (175=normal) to SAPI rate scale (-10..+10)
-                tts_obj.Rate   = max(-10, min(10, int((tts_rate - 175) / 20)))
-                tts_obj.Volume = 100
-                tts_obj.Speak(text, 0)  # 0 = SVSFDefault (synchronous)
-            await loop.run_in_executor(None, _speak_sync)
-            return True
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            print(f"[tts] win32 onecore: {e}")
-            return False
-
-    async def _fallback_tts(text: str) -> bool:
-        """Choose local TTS: OneCore win32 for index >= 100, else pyttsx3."""
-        if tts_voice_idx >= 100:
-            ok = await _win32_tts(text)
-            if not ok:
-                return await _pyttsx3_tts(text)
-            return ok
-        return await _pyttsx3_tts(text)
-
-    try:
-        await set_state("speaking")
-
-        # Wrap text_gen: broadcast each token to UI as it arrives so the
-        # console shows streaming text in real-time (not just after TTS finishes)
-        stream_started = False
-        async def _broadcasting_gen():
-            nonlocal stream_started
-            async for chunk in text_gen:
-                collected.append(chunk)
-                if chunk.strip():
-                    if not stream_started:
-                        await broadcast({"type": "stream_start"})
-                        stream_started = True
-                    await broadcast({"type": "token", "text": chunk})
-                yield chunk
-
-        if preferred_tts == "local":
-            # Overlapped pipeline: speak sentence N while LLM generates sentence N+1.
-            # Sentence boundary = '.', '?', '!', '\n'. Buffer until boundary, then
-            # fire TTS for that sentence and immediately continue collecting next.
-            sentence_q: asyncio.Queue[str | None] = asyncio.Queue()
-
-            async def _collect_sentences():
-                """Tokenize stream into sentences, push to sentence_q."""
-                buf = ""
-                async for chunk in _broadcasting_gen():
-                    buf += chunk
-                    while True:
-                        idx = max(buf.rfind("."), buf.rfind("?"),
-                                  buf.rfind("!"), buf.rfind("\n"))
-                        if idx < 0:
-                            break
-                        sentence = buf[:idx + 1].strip()
-                        buf = buf[idx + 1:]
-                        if sentence:
-                            await sentence_q.put(sentence)
-                if buf.strip():
-                    await sentence_q.put(buf.strip())
-                await sentence_q.put(None)  # sentinel
-
-            async def _speak_sentences():
-                """Consume sentence_q and speak each in sequence."""
-                while True:
-                    sentence = await sentence_q.get()
-                    if sentence is None:
-                        break
-                    await _fallback_tts(sentence)
-
-            # Run both concurrently: collector produces, speaker consumes
-            await asyncio.gather(_collect_sentences(), _speak_sentences())
-        else:
-            _eleven_gen = _broadcasting_gen()
-            async def _patched_eleven() -> bool:
-                api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
-                if not api_11:
-                    return False
-                # auto_mode=true disables internal buffering schedules — ElevenLabs
-                # processes each sentence/phrase immediately for lower latency.
-                uri = (f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
-                       f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true")
-                try:
-                    # API key in header (not JSON body) — standard, avoids logging it
-                    async with ws_lib.connect(
-                        uri,
-                        open_timeout=6,
-                        additional_headers={"xi-api-key": api_11},
-                    ) as ws:
-                        await ws.send(json.dumps({
-                            "text": " ",
-                            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                        }))
-                        out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
-                        out.start()
-                        got_audio = False
-
-                        async def _send():
-                            # Sentence-chunk tokens before sending — stable prosody with auto_mode.
-                            # Buffer until sentence boundary, then flush whole sentence at once.
-                            buf = ""
-                            async for chunk in _eleven_gen:
-                                if not chunk:
-                                    continue
-                                buf += chunk
-                                while True:
-                                    idx = max(buf.rfind("."), buf.rfind("?"),
-                                              buf.rfind("!"), buf.rfind("\n"))
-                                    if idx < 0:
-                                        break
-                                    sentence = buf[:idx + 1].strip()
-                                    buf = buf[idx + 1:]
-                                    if sentence:
-                                        await ws.send(json.dumps({"text": sentence + " "}))
-                            if buf.strip():
-                                await ws.send(json.dumps({"text": buf.strip()}))
-                            await ws.send(json.dumps({"text": ""}))
-
-                        async def _recv():
-                            nonlocal got_audio
-                            async for raw in ws:
-                                try:
-                                    msg = json.loads(raw)
-                                    if msg.get("audio"):
-                                        out.write(np.frombuffer(
-                                            base64.b64decode(msg["audio"]), dtype=np.int16))
-                                        got_audio = True
-                                    if msg.get("isFinal"):
-                                        break
-                                except Exception:
-                                    break
-
+        async def _win32_tts(text: str) -> bool:
+            """Speak using a Windows OneCore neural voice via win32com SAPI."""
+            token_key = _onecore_voices.get(tts_voice_idx, "")
+            if not token_key:
+                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:3322")
+                return False
+            try:
+                def _speak_sync():
+                    import win32com.client  # pywin32
+                    tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
+                    cat = win32com.client.Dispatch("SAPI.SpObjectTokenCategory")
+                    cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
+                    tokens = cat.EnumerateTokens()
+                    for token in tokens:
                         try:
-                            await asyncio.gather(_send(), _recv())
-                        finally:
-                            out.stop(); out.close()
-                        return got_audio
-                except asyncio.CancelledError:
-                    print("[tts] barge-in"); raise
-                except Exception as e:
-                    print(f"[tts] ElevenLabs stream: {str(e)[:80]}")
-                    return False
+                            # token.Id = full registry path ending in the token key name
+                            if token_key.lower() in token.Id.lower():
+                                tts_obj.Voice = token
+                                break
+                        except Exception:
+                            continue
+                    # Map WPM rate (175=normal) to SAPI rate scale (-10..+10)
+                    tts_obj.Rate   = max(-10, min(10, int((tts_rate - 175) / 20)))
+                    tts_obj.Volume = 100
+                    tts_obj.Speak(text, 0)  # 0 = SVSFDefault (synchronous)
+                await loop.run_in_executor(None, _speak_sync)
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                print(f"[tts] win32 onecore: {e} - live_chat_app.py:3348")
+                return False
 
-            success = await _patched_eleven()
-            if not success:
-                # _eleven_gen was already consuming text_gen — continue draining
-                # it rather than creating a new _broadcasting_gen() which would
-                # try to iterate text_gen from a second coroutine and crash.
-                if not collected:
-                    async for chunk in _eleven_gen:
-                        collected.append(chunk)
-                        if chunk.strip():
-                            if not stream_started:
-                                await broadcast({"type": "stream_start"})
-                                stream_started = True
-                            await broadcast({"type": "token", "text": chunk})
-                if collected:
-                    await _fallback_tts("".join(collected))
-    except asyncio.CancelledError:
-        return
+        async def _fallback_tts(text: str) -> bool:
+            """Choose local TTS: OneCore win32 for index >= 100, else pyttsx3."""
+            if tts_voice_idx >= 100:
+                ok = await _win32_tts(text)
+                if not ok:
+                    return await _pyttsx3_tts(text)
+                return ok
+            return await _pyttsx3_tts(text)
 
-    if collected:
-        full_text = "".join(collected)
-        # stream_finalize tells the UI to lock the streaming bubble into the chat
-        await broadcast({"type": "stream_finalize", "text": full_text})
-        await add_transcript("assistant", full_text)
+        try:
+            await _wait_for_quiet_input()
+            await set_state("speaking")
 
-    speak.last_duration = time.monotonic() - tts_start
+            # Wrap text_gen: broadcast each token to UI as it arrives so the
+            # console shows streaming text in real-time (not just after TTS finishes)
+            stream_started = False
+
+            async def _broadcasting_gen():
+                nonlocal stream_started
+                async for chunk in text_gen:
+                    collected.append(chunk)
+                    if chunk.strip():
+                        if not stream_started:
+                            await broadcast({"type": "stream_start"})
+                            stream_started = True
+                        await broadcast({"type": "token", "text": chunk})
+                    yield chunk
+
+            if preferred_tts == "local":
+                # Overlapped pipeline: speak sentence N while LLM generates sentence N+1.
+                # Sentence boundary = '.', '?', '!', '\n'. Buffer until boundary, then
+                # fire TTS for that sentence and immediately continue collecting next.
+                sentence_q: asyncio.Queue[str | None] = asyncio.Queue()
+                last_tts_provider = "local"
+                await broadcast({"type": "tts_active", "provider": "local"})
+
+                async def _collect_sentences():
+                    """Tokenize stream into sentences, push to sentence_q."""
+                    buf = ""
+                    async for chunk in _broadcasting_gen():
+                        buf += chunk
+                        while True:
+                            idx = max(buf.rfind("."), buf.rfind("?"), buf.rfind("!"), buf.rfind("\n"))
+                            if idx < 0:
+                                break
+                            sentence = buf[:idx + 1].strip()
+                            buf = buf[idx + 1:]
+                            if sentence:
+                                await sentence_q.put(sentence)
+                    if buf.strip():
+                        await sentence_q.put(buf.strip())
+                    await sentence_q.put(None)  # sentinel
+
+                async def _speak_sentences():
+                    """Consume sentence_q and speak each in sequence."""
+                    while True:
+                        sentence = await sentence_q.get()
+                        if sentence is None:
+                            break
+                        await _wait_for_quiet_input()
+                        await _fallback_tts(sentence)
+
+                # Run both concurrently: collector produces, speaker consumes
+                await asyncio.gather(_collect_sentences(), _speak_sentences())
+            else:
+                _eleven_gen = _broadcasting_gen()
+
+                async def _patched_eleven() -> bool:
+                    api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
+                    if not api_11:
+                        return False
+                    # auto_mode=true disables internal buffering schedules — ElevenLabs
+                    # processes each sentence/phrase immediately for lower latency.
+                    uri = (f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
+                           f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true")
+                    try:
+                        # API key in header (not JSON body) — standard, avoids logging it
+                        async with ws_lib.connect(
+                            uri,
+                            open_timeout=6,
+                            additional_headers={"xi-api-key": api_11},
+                        ) as ws:
+                            await ws.send(json.dumps({
+                                "text": " ",
+                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                            }))
+                            out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
+                            out.start()
+                            await broadcast({"type": "tts_active", "provider": "elevenlabs"})
+                            got_audio = False
+
+                            async def _send():
+                                # Sentence-chunk tokens before sending — stable prosody with auto_mode.
+                                # Buffer until sentence boundary, then flush whole sentence at once.
+                                buf = ""
+                                async for chunk in _eleven_gen:
+                                    if not chunk:
+                                        continue
+                                    buf += chunk
+                                    while True:
+                                        idx = max(buf.rfind("."), buf.rfind("?"), buf.rfind("!"), buf.rfind("\n"))
+                                        if idx < 0:
+                                            break
+                                        sentence = buf[:idx + 1].strip()
+                                        buf = buf[idx + 1:]
+                                        if sentence:
+                                            await _wait_for_quiet_input()
+                                            await ws.send(json.dumps({"text": sentence + " "}))
+                                if buf.strip():
+                                    await _wait_for_quiet_input()
+                                    await ws.send(json.dumps({"text": buf.strip()}))
+                                await ws.send(json.dumps({"text": ""}))
+
+                            async def _recv():
+                                nonlocal got_audio
+                                async for raw in ws:
+                                    try:
+                                        msg = json.loads(raw)
+                                        if msg.get("audio"):
+                                            out.write(np.frombuffer(
+                                                base64.b64decode(msg["audio"]), dtype=np.int16))
+                                            got_audio = True
+                                        if msg.get("isFinal"):
+                                            break
+                                    except Exception:
+                                        break
+
+                            try:
+                                await asyncio.gather(_send(), _recv())
+                            finally:
+                                out.stop()
+                                out.close()
+                            return got_audio
+                    except asyncio.CancelledError:
+                        print("[tts] bargein - live_chat_app.py:3480")
+                        raise
+                    except Exception as e:
+                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:3482")
+                        return False
+
+                success = await _patched_eleven()
+                if not success:
+                    # _eleven_gen was already consuming text_gen — continue draining
+                    # it rather than creating a new _broadcasting_gen() which would
+                    # try to iterate text_gen from a second coroutine and crash.
+                    if not collected:
+                        async for chunk in _eleven_gen:
+                            collected.append(chunk)
+                            if chunk.strip():
+                                if not stream_started:
+                                    await broadcast({"type": "stream_start"})
+                                    stream_started = True
+                                await broadcast({"type": "token", "text": chunk})
+                    if collected:
+                        last_tts_provider = "local"
+                        await broadcast({"type": "tts_active", "provider": "local"})
+                        await _fallback_tts("".join(collected))
+        except asyncio.CancelledError:
+            return
+
+        if collected:
+            full_text = "".join(collected)
+            # stream_finalize tells the UI to lock the streaming bubble into the chat
+            await broadcast({"type": "stream_finalize", "text": full_text})
+            await add_transcript("assistant", full_text)
+
+        speak.last_duration = time.monotonic() - tts_start
 
 # ── Input handler ─────────────────────────────────────────────────────────────
 
@@ -3472,6 +3828,12 @@ async def handle_input(text: str) -> None:
         # Voice input path calls add_transcript("user") directly in voice_loop.
         memory.add_task(text)
         await set_state("thinking")
+        if speak_task and not speak_task.done():
+            speak_task.cancel()
+            try:
+                await speak_task
+            except asyncio.CancelledError:
+                pass
         gen = llm_stream(text)
         speak_task = asyncio.create_task(speak(gen))
         await speak_task
@@ -3490,12 +3852,13 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
         while not audio_q.empty():
             try: audio_q.get_nowait()
             except asyncio.QueueEmpty: break
-    await set_state("listening")
+    await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
 
 # ── Voice loop ────────────────────────────────────────────────────────────────
 
 async def voice_loop() -> None:
     global audio_q, speak_task, _input_busy, _tts_silence_until
+    global _voice_capture_active, _mic_hold_until
     audio_q = asyncio.Queue()
     loop = asyncio.get_running_loop()
     barge = 0
@@ -3507,21 +3870,31 @@ async def voice_loop() -> None:
     with sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=FRAME, callback=cb):
         await set_state("listening")
         winsound.Beep(880, 120)
-        print(f"[operator] Ready — {current_provider}/{current_model}")
+        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:3559")
         while True:
             try:
                 frame = await audio_q.get()
                 rms   = float(np.sqrt(np.mean(frame.astype(np.float64)**2)))
+                now = loop.time()
                 await broadcast_volume(rms / 2000.0)
+                if rms > RMS_THRESH:
+                    _mic_hold_until = now + 0.25
                 if muted: continue
                 if _input_busy:          # text input is being processed — skip VAD entirely
                     continue
+                if not continuous_listening and not wake_word_active:
+                    vad.reset()
+                    _voice_capture_active = False
+                    if runtime_state != "idle":
+                        await set_state("idle")
+                    continue
                 if speak_task and not speak_task.done():
-                    if rms > BARGE_RMS:
+                    if rms > RMS_THRESH:
                         barge += 1
-                        if barge >= BARGE_FRAMES:
+                        if barge >= START_FRAMES:
                             speak_task.cancel(); barge = 0
                             _tts_silence_until = 0.0   # let VAD capture immediately after barge-in
+                            await set_state("listening")
                             await asyncio.sleep(0.15)
                     else:
                         barge = max(0, barge - 1)
@@ -3533,21 +3906,31 @@ async def voice_loop() -> None:
                     continue
                 ev, data = vad.feed(frame)
                 if ev == "start":
+                    _voice_capture_active = True
                     winsound.Beep(400, 80); await set_state("recording")
                     await broadcast({"type": "partial_transcript", "text": "🎙 Listening…"})
                 elif ev == "end":
+                    _voice_capture_active = False
                     winsound.Beep(700, 80); await set_state("thinking")
                     await broadcast({"type": "partial_transcript", "text": ""})
+                    if len(data) < 12:
+                        _tts_silence_until = asyncio.get_running_loop().time() + 0.5
+                        await set_state("listening")
+                        vad.reset()
+                        continue
                     try:
                         text = await transcribe(data)
                     except Exception as e:
-                        print(f"[stt] transcribe error: {e}")
-                        await broadcast({"type": "state", "state": "listening"})
+                        print(f"[stt] transcribe error: {e} - live_chat_app.py:3593")
+                        _voice_capture_active = False
+                        await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
                         vad.reset(); continue
                     if not text or len(text) < 3:
+                        _voice_capture_active = False
+                        _tts_silence_until = asyncio.get_running_loop().time() + 0.75
                         await set_state("listening"); vad.reset(); continue
-                    print(f"[operator] 🎙 {text}")
+                    print(f"[operator] 🎙 {text} - live_chat_app.py:3599")
                     # ── Wake-word gate ──────────────────────────────────────
                     if wake_word_active:
                         txt_lo = text.lower().strip()
@@ -3572,13 +3955,13 @@ async def voice_loop() -> None:
                                 vad.reset(); continue
                         else:
                             # Not a wake phrase — silently discard
+                            _voice_capture_active = False
                             await set_state("listening"); vad.reset(); continue
                     # ── Normal processing ────────────────────────────────────
                     await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
                     await add_transcript("user", text)
                     memory.add_task(text)
                     gen = llm_stream(text)
-                    await set_state("speaking")
                     _input_busy = True   # gate: don't let handle_input race with voice
                     try:
                         speak_task = asyncio.create_task(speak(gen))
@@ -3591,7 +3974,7 @@ async def voice_loop() -> None:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[voice_loop] error: {e} — continuing")
+                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:3643")
                 await asyncio.sleep(0.5)
 
 # ── ElevenLabs Conversational Agent ──────────────────────────────────────────
@@ -3705,15 +4088,20 @@ async def _stop_el_agent() -> None:
 
 @app.on_event("startup")
 async def startup():
-    global _main_loop
+    global _main_loop, _response_lock, current_provider, current_model
     _main_loop = asyncio.get_running_loop()
+    _response_lock = asyncio.Lock()
     if not API_11:
-        print("WARNING: ELEVENLABS_API_KEY not set — voice STT/TTS will use fallbacks")
+        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:3760")
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
     if ollama_models:
-        global current_model
         current_model = ollama_models[0]
+    elif current_provider == "ollama":
+        fallback_provider = _choose_fallback_provider()
+        if fallback_provider:
+            current_provider = fallback_provider
+            current_model = _provider_default_model(fallback_provider)
     write_log("startup", f"port={PORT} provider={current_provider} model={current_model}")
 
     async def _voice_supervisor():
@@ -3723,7 +4111,7 @@ async def startup():
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[voice] crashed ({e}), restarting in 2s…")
+                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:3775")
                 await broadcast({"type": "state", "state": "idle"})
                 await asyncio.sleep(2)
 
@@ -3743,9 +4131,9 @@ async def _prewarm_playwright():
     try:
         await asyncio.sleep(3)          # let server fully initialise first
         await get_browser_page()
-        print("[playwright] browser pre-warmed ✓")
+        print("[playwright] browser prewarmed ✓ - live_chat_app.py:3795")
     except Exception as e:
-        print(f"[playwright] pre-warm skipped: {e}")
+        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:3797")
     webbrowser.open(f"http://localhost:{PORT}")
 
 

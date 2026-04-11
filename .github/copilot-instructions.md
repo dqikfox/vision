@@ -5,6 +5,20 @@ Windows-first AI system that gives any human full computer control through voice
 
 ---
 
+## Core Objective
+
+Maintain, secure, optimize, and automate a **single-user home PC and network environment** so it runs reliably, safely, and efficiently with minimal manual intervention.
+
+This includes:
+- system administration
+- home network management
+- security and protection
+- backup and data protection
+- automation and efficiency
+- monitoring and maintenance
+
+---
+
 ## System Identity
 
 - **Backend**: `live_chat_app.py` — FastAPI + WebSocket server on `http://localhost:8765`
@@ -62,12 +76,22 @@ Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
 | `openclaw` | OpenClaw agent orchestration |
 | `openclaw-acp` | OpenClaw ACP session bridge |
 | `filesystem` | Read/write `C:\project`, Desktop, Documents |
+| `lmstudio-rag` | Filesystem access to the user's LM Studio plugin workspace at `F:\rag-v1` |
+| `git` | Repo-aware git inspection and history |
 | `memory` | Persistent cross-session knowledge graph |
 | `sequential-thinking` | Multi-step reasoning decomposition |
 | `fetch` | HTTP fetch any URL |
 | `brave-search` | Web search via Brave API |
 | `puppeteer` | Headless browser automation |
-| `vision-local` | Direct VISION tool execution via `http://localhost:8765/mcp` |
+| `vision-local` | Repo-local FastMCP bridge to the running Vision backend on `http://localhost:8765` |
+
+---
+
+## External Knowledge Sources
+
+- **LM Studio RAG workspace**: `F:\rag-v1` — a local LM Studio plugin project (`manifest.json`, `src\`, `.lmstudio\`) that can be used as a secondary context source when the user asks about LM Studio, RAG, plugins, prompt preprocessing, or local retrieval workflows.
+- Prefer reading `README.md`, `manifest.json`, `src\`, and `.lmstudio\` there before making assumptions about the plugin.
+- Treat `F:\rag-v1` as user-owned local knowledge; do not modify it unless the user explicitly asks.
 
 ---
 
@@ -77,6 +101,9 @@ Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
 |---|---|---|
 | Vision Maintainer | `.github/agents/vision-maintainer.agent.md` | Runtime, debug, protocol |
 | OpenClaw Operator | `.github/agents/openclaw-operator.agent.md` | OpenClaw install/run |
+| MCP Builder | `.github/agents/mcp-builder.agent.md` | MCP wiring, skills, and agent customization |
+| Context Steward | `.github/agents/context-steward.agent.md` | Copilot memory, repo awareness, and context discipline |
+| Home Ops Steward | `.github/agents/home-ops-steward.agent.md` | Home PC, network, security, backup, and automation workflows |
 | Coding Agent | `.gemini/agents/coding.md` | Features, refactoring, TDD |
 | Debug Agent | `.gemini/agents/debug.md` | Root cause, log analysis |
 | Analysis Agent | `.gemini/agents/analysis.md` | Architecture, security, perf |
@@ -92,7 +119,11 @@ Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
 - `vision-runtime-ops` — start, verify, smoke-test the stack
 - `vision-debugging` — debug any layer (startup/voice/WS/OCR/tools)
 - `vision-tool-audit` — audit tool-call routing and action broadcasts
+- `vision-context-ops` — improve Copilot repo awareness, memory workflow, and context refresh behavior
+- `vision-home-ops` — operate as a home PC/network/security/backup/automation assistant
+- `vision-documentation-ops` — keep docs, skills, agents, and runtime explanations aligned with reality
 - `vision-tool-dev` — add new tools (schema + handler + EL registration)
+- `vision-mcp-builder` — expand repo-local MCP servers and customization wiring
 - `mcp-recovery` — diagnose and restore broken MCP servers
 - `openclaw-getting-started` — install and run OpenClaw
 
@@ -170,6 +201,35 @@ python test_vision.py   # full integration tests
 
 ---
 
+## Context Discipline
+
+- When the user wants to improve **Copilot itself**, prefer evolving `.github/` instructions, skills, agents, MCP, and workflow guidance before changing application code.
+- Before major tasks or after context compaction, refresh the most relevant context sources: current `plan.md`, SQL todos, `.github/copilot-instructions.md`, the nearest skill/agent doc, and the authoritative runtime file.
+- When the task touches LM Studio or local retrieval, include `F:\rag-v1` in the context refresh set.
+- Treat SQL todos as short-term working memory and keep statuses current during execution.
+- Persist only durable, verified repo facts; keep transient notes in the session plan rather than long-term memory.
+- Whenever you add or rename a skill or agent, update the matching README/HIVE documentation in the same change to avoid drift.
+
+---
+
+## Documentation Discipline
+
+- Treat `DOCUMENTATION_INDEX.md`, `README.md`, `setup.md`, and `architecture.md` as living docs that must match the current runtime.
+- When runtime thresholds, protocol messages, MCP servers, or memory behavior change, update the nearest authoritative doc in the same task.
+- Prefer fixing stale docs over adding duplicate notes elsewhere.
+- Use `vision-documentation-ops` when the main problem is documentation drift rather than code behavior.
+
+---
+
+## Home Ops Discipline
+
+- Treat system administration, home networking, security, backup, automation, and monitoring as first-class goals for this environment.
+- Prefer repeatable maintenance workflows, scripts, and documented operating practices over ad hoc manual fixes.
+- Never log or publish private credentials, Wi-Fi passwords, router secrets, or sensitive local network details.
+- When adding support for a new operational workflow, update the matching documentation and skill/agent guidance in the same change.
+
+---
+
 ## Editing Rules
 
 1. `live_chat_app.py` is the single source of truth for backend logic
@@ -237,4 +297,3 @@ Always snapshot the clients set to avoid RuntimeError on disconnect:
 for ws in list(clients):   # ✅ snapshot
     await ws.send_json(...)
 ```
-
