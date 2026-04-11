@@ -10,7 +10,8 @@ The system is a real-time voice-controlled AI operator with three layers:
 │  Microphone → VAD → STT → Intent extraction        │
 ├─────────────────────────────────────────────────────┤
 │                     BRAIN                           │
-│  LLM (Ollama/OpenAI/GitHub) + Memory + Planning     │
+│  LLM (Ollama/OpenAI/GitHub/Groq/Gemini/DeepSeek/    │
+│       Mistral/Anthropic/xAI) + Memory + Planning    │
 ├─────────────────────────────────────────────────────┤
 │                     ACTION                          │
 │  Tools: OCR, click, type, key, scroll, command      │
@@ -85,24 +86,37 @@ Speaker echo may trigger false barge-in (no echo cancellation yet).
 | `init` | `{provider, model, mode, memory}` | Sent on connect |
 | `state` | `{state: "listening"\|"recording"\|...}` | State machine update |
 | `transcript` | `{role, text}` | User or assistant message |
+| `token` | `{text}` | Streaming LLM token |
+| `stream_start` | — | LLM stream beginning |
+| `stream_finalize` | `{text}` | Full assembled response |
 | `volume` | `{level: 0.0–1.0}` | Mic RMS for visualizer |
 | `action` | `{action, params, result}` | Tool call result |
 | `screenshot` | `{data: base64jpeg}` | Screen capture |
+| `thinking` | `{text}` | Reasoning/thinking tokens (think-mode models) |
 | `model_changed` | `{provider, model}` | After model switch |
 | `memory_updated` | `{memory}` | After memory change |
+| `key_saved` | `{provider}` | After API key stored |
+| `voice_settings` | `{voice_id, rate, ...}` | After voice settings change |
+| `el_agent` | `{status, agent_id}` | ElevenLabs ConvAI agent state |
+| `partial_transcript` | `{text}` | Partial STT result during recording |
 
 ### Client → Server
 
 | Type | Payload | Description |
 |---|---|---|
+| `text` or `input` | `{text}` | Send typed message |
 | `mute` | `{muted: bool}` | Toggle mic |
-| `set_continuous` | `{enabled: bool}` | Toggle always-listening mode |
 | `mode` | `{mode: "chat"\|"operator"}` | Switch mode |
-| `text` | `{text}` | Send typed message |
-| `clear` | — | Clear history |
+| `set_model` | `{provider, model}` | Switch active provider/model |
+| `set_api_key` | `{provider, key}` | Store API key securely |
+| `set_voice_settings` | `{voice_id?, rate?, volume?}` | Update TTS settings |
+| `execute_tool` | `{name, parameters}` | Run a tool directly via WebSocket |
 | `add_fact` | `{fact}` | Add memory fact |
 | `del_fact` | `{fact}` | Remove memory fact |
+| `clear` | — | Clear conversation history |
 | `log` | `{event, detail}` | Browser event logging |
+| `el_agent_start` | — | Start ElevenLabs ConvAI agent |
+| `el_agent_stop` | — | Stop ElevenLabs ConvAI agent |
 
 ---
 
@@ -148,5 +162,11 @@ client = AsyncOpenAI(
 | Provider | base_url | Notes |
 |---|---|---|
 | Ollama | `http://localhost:11434/v1` | No internet, any installed model |
-| OpenAI | `https://api.openai.com/v1` | Requires OPENAI_API_KEY |
+| OpenAI | `https://api.openai.com/v1` | Requires OPENAI_API_KEY; Responses API for o-series/computer-use |
 | GitHub | `https://models.inference.ai.azure.com` | Requires GITHUB_TOKEN |
+| DeepSeek | `https://api.deepseek.com/v1` | Requires DEEPSEEK_API_KEY |
+| Groq | `https://api.groq.com/openai/v1` | Requires GROQ_API_KEY; also used for Whisper STT |
+| Mistral | `https://api.mistral.ai/v1` | Requires MISTRAL_API_KEY |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | Requires GEMINI_API_KEY |
+| Anthropic | native SDK (not OpenAI-compatible) | Requires ANTHROPIC_API_KEY; requires `pip install anthropic` |
+| xAI (Grok) | `https://api.x.ai/v1` | Requires XAI_API_KEY; vision via grok-2-vision-1212 |
