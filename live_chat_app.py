@@ -10,6 +10,7 @@ Providers:
 
 import asyncio
 import base64
+import contextlib
 import fnmatch
 import io
 import json
@@ -19,6 +20,7 @@ import shutil
 import tempfile
 import threading
 import time
+import traceback
 import warnings
 import webbrowser
 from collections.abc import AsyncGenerator
@@ -1401,9 +1403,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         if not groq_key:
             return None
         try:
-            import openai as _oai
-
-            client = _oai.OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
+            client = openai.OpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key)
 
             def _groq_stt():
                 with open(path, "rb") as fh:
@@ -3247,22 +3247,19 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "execute_python":
         code = args.get("code", "")
         timeout = int(args.get("timeout", 30))
-        import contextlib as _cl
-        import io as _io
-        import traceback as _tb
 
         def _run_code():
-            stdout_buf = _io.StringIO()
+            stdout_buf = io.StringIO()
             local_ns: dict = {}
             try:
-                with _cl.redirect_stdout(stdout_buf), _cl.redirect_stderr(stdout_buf):
+                with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stdout_buf):
                     exec(compile(code, "<vision_exec>", "exec"), local_ns)
                 result_val = local_ns.get("result")
                 output = stdout_buf.getvalue()
                 if result_val is not None:
                     output = (output + f"\nresult = {result_val}").strip()
             except Exception:
-                output = stdout_buf.getvalue() + _tb.format_exc()
+                output = stdout_buf.getvalue() + traceback.format_exc()
             return output[:4000] or "(code ran with no output)"
 
         return await asyncio.wait_for(loop.run_in_executor(None, _run_code), timeout=timeout)
