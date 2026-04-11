@@ -5,6 +5,7 @@ Multi-provider AI backend with voice, vision, memory, and computer control.
 
 Providers:
   Ollama (local) | OpenAI | GitHub Models | DeepSeek | Groq | Mistral | Gemini
+  Anthropic | xAI (Grok)
 """
 
 import asyncio
@@ -76,6 +77,13 @@ try:
     HAS_GPU = True
 except Exception:
     HAS_GPU = False
+
+try:
+    import anthropic
+
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
 
 # ── Paths & constants ─────────────────────────────────────────────────────────
 
@@ -841,6 +849,8 @@ async def api_health():
     result["gpu"] = HAS_GPU
     # Playwright (browser)
     result["browser"] = _pw_page is not None
+    # Optional SDK availability
+    result["anthropic_sdk"] = HAS_ANTHROPIC
     # Cloud providers — report which keys are configured
     result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
     return JSONResponse(result)
@@ -2696,8 +2706,6 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     old = pyperclip.paste()
                     pyperclip.copy(text)
                     pyautogui.hotkey("ctrl", "v")
-                    import time
-
                     time.sleep(0.1)
                     pyperclip.copy(old)  # restore clipboard
                 except Exception:
@@ -2838,22 +2846,20 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── System info ────────────────────────────────────────────────────────────
     elif name in ("get_time", "get_date"):
-        from datetime import datetime as _dt
-
         tz_name = args.get("timezone", "")
         try:
             if tz_name:
                 import zoneinfo
 
                 tz = zoneinfo.ZoneInfo(tz_name)
-                now = _dt.now(tz)
+                now = datetime.now(tz)
             else:
-                now = _dt.now()
+                now = datetime.now()
             if name == "get_date":
                 return now.strftime("%A, %B %d %Y")
             return now.strftime("%A, %B %d %Y  %I:%M:%S %p") + (f" ({tz_name})" if tz_name else "")
         except Exception as e:
-            return _dt.now().strftime("%Y-%m-%d %H:%M:%S") + f" (tz error: {e})"
+            return datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f" (tz error: {e})"
 
     elif name == "get_system_info":
         lines: list[str] = []
@@ -3895,14 +3901,12 @@ async def _llm_stream_responses_api(user_text: str):
     - other Responses API models: function tool calling via Responses API
     Yields text tokens as an async generator.
     """
-    from openai import AsyncOpenAI as _AsyncOpenAI
-
     api_key = PROVIDERS["openai"]["api_key"]
     if not api_key:
         yield "OpenAI API key not configured. Add it in ⚙ Settings."
         return
 
-    oai = _AsyncOpenAI(api_key=api_key, timeout=120.0)
+    oai = AsyncOpenAI(api_key=api_key, timeout=120.0)
     screen_w, screen_h = pyautogui.size()
     is_cua = current_model == "computer-use-preview"
     system = build_system_prompt()
@@ -4430,14 +4434,16 @@ async def _llm_stream_anthropic(user_text: str):
     Supports extended thinking for claude-3-7 models.
     """
     global _last_screenshot_b64
-    import anthropic as _ant
+    if not HAS_ANTHROPIC:
+        yield "Anthropic SDK not installed. Run: pip install anthropic"
+        return
 
     api_key = PROVIDERS["anthropic"]["api_key"]
     if not api_key:
         yield "Anthropic API key not configured. Add it in ⚙ Settings."
         return
 
-    client = _ant.AsyncAnthropic(api_key=api_key)
+    client = anthropic.AsyncAnthropic(api_key=api_key)
     system = build_system_prompt()
     full = ""
     actions_taken: list[str] = []
@@ -4518,10 +4524,10 @@ async def _llm_stream_anthropic(user_text: str):
                             if tool_use_blocks:
                                 tool_use_blocks[-1]["input"] += getattr(delta, "partial_json", "")
 
-        except _ant.APIStatusError as e:
+        except anthropic.APIStatusError as e:
             yield f"Anthropic error {e.status_code}: {str(e.message)[:100]}"
             break
-        except _ant.APIConnectionError:
+        except anthropic.APIConnectionError:
             yield "Anthropic connection error — check your internet."
             break
         except Exception as e:
