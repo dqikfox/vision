@@ -752,6 +752,8 @@ async def api_health():
     result["gpu"] = HAS_GPU
     # Playwright (browser)
     result["browser"] = _pw_page is not None
+    # Cloud providers — report which keys are configured
+    result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
     return JSONResponse(result)
 
 @app.get("/screenshot")
@@ -3381,6 +3383,44 @@ _CONTEXT_KEEP_RECENT = 6        # keep last N message pairs (user+assistant) ver
 
 from typing import AsyncGenerator, Any  # noqa: E402
 
+# Fast model preferences for background tasks (memory, compression)
+_FAST_MODEL_MAP: dict[str, str] = {
+    "openai":    "gpt-4.1-mini",
+    "github":    "gpt-4o-mini",
+    "groq":      "llama-3.1-8b-instant",
+    "gemini":    "gemini-2.0-flash-lite",
+    "deepseek":  "deepseek-chat",
+    "mistral":   "mistral-small-latest",
+    "anthropic": "claude-haiku-4-5",
+}
+
+
+async def _fast_completion(prompt: str, max_tokens: int = 200) -> str | None:
+    """Run a cheap, non-streaming completion on any available cloud provider.
+
+    Returns the response text, or None if no provider is reachable.
+    Skips Ollama — background inference should not block the real-time voice loop.
+    """
+    provider = (
+        current_provider
+        if current_provider != "ollama" and current_provider in PROVIDERS and _provider_has_key(current_provider)
+        else _choose_fallback_provider()
+    )
+    if not provider:
+        return None
+    model = _FAST_MODEL_MAP.get(provider) or _provider_default_model(provider)
+    client = AsyncOpenAI(
+        base_url=PROVIDERS[provider]["base_url"],
+        api_key=PROVIDERS[provider]["api_key"],
+    )
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+    )
+    return resp.choices[0].message.content or ""
+
+
 def _estimate_tokens(history_list: list[dict]) -> int:
     """
     Roughly estimate token count of message history for context management.
@@ -3410,14 +3450,11 @@ async def _compress_history_if_needed() -> None:
     global history
     if _estimate_tokens(history) < _CONTEXT_TOKEN_LIMIT:
         return
-    # Separate system-like messages from conversation turns
-    # Keep the last N user+assistant exchanges verbatim; summarise the rest
     keep_n = _CONTEXT_KEEP_RECENT * 2  # each pair = 2 messages
     if len(history) <= keep_n + 2:
         return  # not enough history to compress
     old_msgs = history[:-keep_n]
     recent_msgs = history[-keep_n:]
-    # Build a summary via the current LLM (non-streaming, one-shot)
     summary_prompt = (
         "Summarize the following conversation history in 3-5 concise bullet points, "
         "focusing on tasks completed, key facts learned, and important context. "
@@ -3429,21 +3466,14 @@ async def _compress_history_if_needed() -> None:
         )
     )
     try:
-        api_key = _load_key("openai", "OPENAI_API_KEY")
-        if api_key:
-            client = AsyncOpenAI(api_key=api_key)
-            resp = await client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "user", "content": summary_prompt}],
-                max_tokens=300,
-            )
-            summary_text = resp.choices[0].message.content or ""
-        else:
-            # Fallback: extract key lines from old messages
-            lines = []
-            for m in old_msgs:
-                if isinstance(m.get("content"), str) and m["role"] in ("user", "assistant"):
-                    lines.append(f"• [{m['role']}] {m['content'][:100]}")
+        summary_text = await _fast_completion(summary_prompt, max_tokens=300)
+        if not summary_text:
+            # Graceful degradation: extract key lines without an LLM call
+            lines = [
+                f"• [{m['role']}] {m['content'][:100]}"
+                for m in old_msgs
+                if isinstance(m.get("content"), str) and m["role"] in ("user", "assistant")
+            ]
             summary_text = "\n".join(lines[:10])
         compressed = [{"role": "system", "content": f"[Conversation summary]\n{summary_text}"}]
         history = compressed + list(recent_msgs)
@@ -3455,10 +3485,7 @@ async def _compress_history_if_needed() -> None:
 
 
 async def _always_learn_step(user_text: str, assistant_text: str) -> None:
-    """
-    Elite 'Always Learning' mechanism.
-    Analyses the interaction to extract new facts or user preferences.
-    """
+    """Extract new permanent facts from an exchange and store them in memory."""
     if not user_text or not assistant_text:
         return
     memory.learn_from_exchange(user_text, assistant_text)
@@ -3471,23 +3498,8 @@ async def _always_learn_step(user_text: str, assistant_text: str) -> None:
         f"ASSISTANT: {assistant_text}"
     )
     try:
-        if current_provider == "ollama":
-            return
-        provider = current_provider if current_provider in PROVIDERS and _provider_has_key(current_provider) else _choose_fallback_provider()
-        if not provider:
-            return
-        model = "gpt-4o-mini" if provider in {"openai", "github"} and "gpt-4o-mini" in PROVIDERS[provider]["models"] else _provider_default_model(provider)
-        client = AsyncOpenAI(
-            base_url=PROVIDERS[provider]["base_url"],
-            api_key=PROVIDERS[provider]["api_key"],
-        )
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150,
-        )
-        fact = resp.choices[0].message.content or "NONE"
-        if "NONE" not in fact.upper():
+        fact = await _fast_completion(prompt, max_tokens=150)
+        if fact and "NONE" not in fact.upper():
             for f in fact.split("\n"):
                 f = f.strip("•- ").strip()
                 if f:
