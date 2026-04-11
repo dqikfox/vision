@@ -2439,7 +2439,7 @@ _tool_last_elapsed_ms: dict[str, float] = {}  # tool_name → last elapsed ms (s
 
 # ── Vision capability detection ───────────────────────────────────────────────
 
-_VISION_PROVIDERS = {"openai", "github", "anthropic", "gemini", "groq"}
+_VISION_PROVIDERS = {"openai", "github", "anthropic", "gemini", "groq", "xai"}
 _OLLAMA_VISION_KEYWORDS = (
     "llava",
     "bakllava",

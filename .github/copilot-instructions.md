@@ -40,6 +40,8 @@ This includes:
 | Groq | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
 | Mistral | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `GEMINI_API_KEY` |
+| Anthropic | native SDK (sentinel `"anthropic"`) | `ANTHROPIC_API_KEY` |
+| xAI (Grok) | `https://api.x.ai/v1` | `XAI_API_KEY` |
 
 Keys live in `.env` (gitignored). Never print or log key values.
 
@@ -185,9 +187,13 @@ VAD thresholds (calibrated — do NOT change casually):
 ## LLM Routing
 
 - **Ollama**: native `ollama.AsyncClient` with streaming + tool calling + think mode for reasoning models
+- **Anthropic**: native `anthropic.AsyncAnthropic` SDK with tool-use loop (`_llm_stream_anthropic`)
 - **OpenAI Responses API**: used for `computer-use-preview`, `gpt-4.1`, `gpt-4.1-mini`, `o4-mini`, `o3`
-- **All others**: OpenAI-compatible Chat Completions streaming
-- **Fallback**: if Ollama errors → auto-cascade to OpenAI if key present
+- **All others** (GitHub, Groq, Mistral, Gemini, DeepSeek, xAI): OpenAI-compatible Chat Completions streaming
+- **Fallback**: if Ollama errors → auto-cascade to next provider in `_FALLBACK_PROVIDER_ORDER`
+- **Fallback order**: `github → groq → gemini → deepseek → openai → mistral → anthropic → xai`
+- **`_fast_completion`**: cheap background inference via `_FAST_MODEL_MAP` (skips Ollama to avoid blocking voice loop)
+- **`_FAST_MODEL_MAP`**: `openai→gpt-4.1-mini`, `github→gpt-4o-mini`, `groq→llama-3.1-8b-instant`, `gemini→gemini-2.0-flash-lite`, `deepseek→deepseek-chat`, `mistral→mistral-small-latest`, `anthropic→claude-haiku-4-5`, `xai→grok-3-mini`
 - **Prompt-based tool calling**: fallback for models without native FC
 
 ---
