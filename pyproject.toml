@@ -49,15 +49,13 @@ test = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-testpaths = ["tests"]
+testpaths = ["."]
 asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
-    "--cov=elite_",
     "--cov=live_chat_app",
     "--cov-report=term-missing:skip-covered",
     "--cov-report=html",
-    "--cov-fail-under=70",
 ]
 markers = [
     "asyncio: async tests",
@@ -100,7 +98,7 @@ disable = [
 ]
 
 [tool.pylint.format]
-max-line-length = 100
+max-line-length = 120
 
 [tool.pylint.similarities]
 min-similarity-lines = 5

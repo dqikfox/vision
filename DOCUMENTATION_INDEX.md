@@ -44,6 +44,7 @@
 | `.github/skills/vision-context-ops/SKILL.md` | Improve Copilot itself in this repo | Repo-awareness and context upgrades |
 | `.github/skills/vision-documentation-ops/SKILL.md` | Keep docs aligned with the real system | Documentation maintenance |
 | `.github/skills/vision-home-ops/SKILL.md` | Home PC/network/security/backup operations | Operational maintenance workflows |
+| Session `plan.md` + SQL todos | Working memory for multi-step tasks | Long tasks that need recoverable execution state |
 
 ---
 
@@ -53,12 +54,18 @@
 |---|---|
 | Start or verify the operator | `vision-runtime-ops` |
 | Debug voice, provider, WebSocket, OCR, or tool failures | `vision-debugging` |
+| Run operator-focused workflow checks | `vision-operator` |
 | Audit tool-calling behavior | `vision-tool-audit` |
 | Add new tool support | `vision-tool-dev` |
 | Improve Copilot context/memory workflow | `vision-context-ops` |
 | Work on home PC, network, security, backup, or automation tasks | `vision-home-ops` |
 | Keep docs synchronized | `vision-documentation-ops` |
 | Expand MCP wiring | `vision-mcp-builder` |
+| Work effectively with active MCP servers | `vision-mcp-tools` |
+| Research current external information | `vision-web-research` |
+| Profile or optimize operator performance | `vision-performance` |
+| Handle multi-monitor operator setups | `vision-multi-monitor` |
+| Control Android devices over ADB | `vision-adb-control` |
 | Repair MCP setup | `mcp-recovery` |
 | Work with OpenClaw | `openclaw-getting-started` |
 
@@ -104,6 +111,7 @@ Current important MCP surfaces include:
 3. `chat_events.log` should be checked before guessing at runtime failures.
 4. Docs should be updated when skills, agents, MCP servers, runtime thresholds, or memory behavior change.
 5. When documentation drifts from code, prefer updating the docs rather than preserving stale explanations.
+6. For multi-step work, keep the session `plan.md` and SQL todo state aligned so the next context window can resume cleanly.
 
 ---
 
