@@ -93,6 +93,7 @@ BASE = Path(__file__).parent
 UI_FILE = BASE / "live_chat_ui.html"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
+SETTINGS_FILE = BASE / "settings.json"
 PORT = 8765
 
 # ── Auto-load .env file into environment ─────────────────────────────────────
@@ -308,6 +309,44 @@ last_tts_provider: str = ""  # last TTS provider that succeeded
 tts_rate: int = 175  # pyttsx3 words-per-minute
 tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
+
+# ── Voice settings persistence ────────────────────────────────────────────────
+
+def _load_settings() -> None:
+    """Load persisted voice/STT/TTS settings from settings.json into globals."""
+    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
+    try:
+        if SETTINGS_FILE.exists():
+            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            preferred_stt = data.get("preferred_stt", preferred_stt)
+            preferred_tts = data.get("preferred_tts", preferred_tts)
+            tts_rate = int(data.get("tts_rate", tts_rate))
+            tts_voice_idx = int(data.get("tts_voice_idx", tts_voice_idx))
+    except Exception as e:
+        print(f"[settings] Failed to load {SETTINGS_FILE}: {e}")
+
+
+def _save_settings() -> None:
+    """Persist current voice/STT/TTS settings to settings.json."""
+    try:
+        SETTINGS_FILE.write_text(
+            json.dumps(
+                {
+                    "preferred_stt": preferred_stt,
+                    "preferred_tts": preferred_tts,
+                    "tts_rate": tts_rate,
+                    "tts_voice_idx": tts_voice_idx,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        print(f"[settings] Failed to save {SETTINGS_FILE}: {e}")
+
+
+# Load persisted settings immediately at import time so all handlers see them
+_load_settings()
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
 AGENT_ID = "agent_7201kmxc5trte9tarb626ed8dgt1"
@@ -1211,6 +1250,7 @@ async def ws_ep(websocket: WebSocket):
                 tts_rate = int(msg.get("tts_rate", tts_rate))
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
+                _save_settings()
                 await broadcast(
                     {
                         "type": "voice_settings",
