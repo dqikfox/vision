@@ -4,17 +4,9 @@
     "preferences": []
   },
   "facts": [],
-  "session_count": 49,
-  "last_session": "2026-04-11T08:44:10.501292",
+  "session_count": 65,
+  "last_session": "2026-04-14T18:19:56.891043",
   "task_history": [
-    {
-      "task": "test",
-      "ts": "2026-04-10T17:04:14.974882"
-    },
-    {
-      "task": "--- Yeah?",
-      "ts": "2026-04-11T03:56:45.521380"
-    },
     {
       "task": "[REDACTED]",
       "ts": "2026-04-11T08:01:37.908944"
@@ -40,44 +32,12 @@
       "ts": "2026-04-11T08:15:49.153013"
     },
     {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:18:55.569753"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:21:17.805057"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:25:14.415133"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:28:50.043671"
-    },
-    {
-      "task": "(00:01:47 - 00:01:48) Yeah.",
-      "ts": "2026-04-11T08:29:16.855478"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:31:10.823042"
-    },
-    {
-      "task": "Reply with exactly OK again",
-      "ts": "2026-04-11T08:31:25.290648"
-    },
-    {
       "task": "ElevenLabs, um, uh, the OpenAI, um, real time-",
       "ts": "2026-04-11T08:32:10.020781"
     },
     {
       "task": "is a hard to get much.",
       "ts": "2026-04-11T08:37:20.706637"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:37:37.821470"
     },
     {
       "task": "and now it's our quality to have this in the oil.",
@@ -104,24 +64,12 @@
       "ts": "2026-04-11T08:40:22.691932"
     },
     {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:40:57.857249"
-    },
-    {
       "task": "Please open Firefox.",
       "ts": "2026-04-11T08:41:18.665344"
     },
     {
       "task": "waiting for five pop children.",
       "ts": "2026-04-11T08:41:51.726339"
-    },
-    {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:42:05.182074"
-    },
-    {
-      "task": "open firefox",
-      "ts": "2026-04-11T08:42:21.049453"
     },
     {
       "task": "the application for our folks.",
@@ -140,72 +88,13 @@
       "ts": "2026-04-11T08:43:37.690399"
     },
     {
-      "task": "Reply with exactly OK",
-      "ts": "2026-04-11T08:44:52.653381"
+      "task": "level of vision.",
+      "ts": "2026-04-14T18:15:45.840899"
     },
     {
-      "task": "take a screenshot and tell me what you see",
-      "ts": "2026-04-11T09:33:52.455092"
-    },
-    {
-      "task": "open google.com in the browser",
-      "ts": "2026-04-11T09:34:04.918215"
-    },
-    {
-      "task": "Run the echo command to output the word TOOLCALL_OK",
-      "ts": "2026-04-11T09:34:32.749518"
-    },
-    {
-      "task": "take a screenshot and tell me what you see",
-      "ts": "2026-04-11T14:31:29.893049"
-    },
-    {
-      "task": "open google.com in the browser",
-      "ts": "2026-04-11T14:33:29.963833"
-    },
-    {
-      "task": "Reply with exactly this text and nothing else: VISION_TEST_OK",
-      "ts": "2026-04-11T14:35:22.227987"
-    },
-    {
-      "task": "Run the echo command to output the word TOOLCALL_OK",
-      "ts": "2026-04-11T14:36:45.396094"
-    },
-    {
-      "task": "take a screenshot and tell me what you see",
-      "ts": "2026-04-11T14:38:45.682018"
-    },
-    {
-      "task": "Reply with exactly this text and nothing else: VISION_TEST_OK",
-      "ts": "2026-04-11T14:38:57.238868"
-    },
-    {
-      "task": "open google.com in the browser",
-      "ts": "2026-04-11T14:40:45.905555"
-    },
-    {
-      "task": "Run the echo command to output the word TOOLCALL_OK",
-      "ts": "2026-04-11T14:41:32.151744"
-    },
-    {
-      "task": "take a screenshot and tell me what you see",
-      "ts": "2026-04-11T14:41:57.406881"
-    },
-    {
-      "task": "Reply with exactly this text and nothing else: VISION_TEST_OK",
-      "ts": "2026-04-11T14:42:08.435500"
-    },
-    {
-      "task": "Run the echo command to output the word TOOLCALL_OK",
-      "ts": "2026-04-11T14:43:27.762429"
-    },
-    {
-      "task": "open google.com in the browser",
-      "ts": "2026-04-11T14:43:57.426188"
-    },
-    {
-      "task": "take a screenshot and tell me what you see",
-      "ts": "2026-04-11T14:44:14.693211"
+      "task": "Reply with a short hello.",
+      "ts": "2026-04-14T18:20:19.283056"
     }
-  ]
+  ],
+  "context_summary": ""
 }

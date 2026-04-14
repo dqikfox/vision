@@ -325,6 +325,33 @@ def write_log(event: str, detail: str) -> None:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
 
+_ocr_checked = False
+_ocr_ready = False
+
+
+def _ocr_available() -> bool:
+    """True only when pytesseract is importable and the Tesseract binary is callable."""
+    global _ocr_checked, _ocr_ready
+    if not HAS_OCR:
+        return False
+    if _ocr_checked:
+        return _ocr_ready
+    try:
+        pytesseract.get_tesseract_version()
+        _ocr_ready = True
+    except Exception as e:
+        _ocr_ready = False
+        write_log("ocr", f"unavailable: {e}")
+    _ocr_checked = True
+    return _ocr_ready
+
+
+def _ocr_unavailable_message() -> str:
+    if not HAS_OCR:
+        return "OCR unavailable — pytesseract is not installed."
+    return "OCR unavailable — the Tesseract executable is missing or not on PATH."
+
+
 # ── Memory ────────────────────────────────────────────────────────────────────
 
 
@@ -692,6 +719,17 @@ def _provider_has_key(provider: str) -> bool:
 def _provider_default_model(provider: str) -> str:
     """Return the best default model for a provider."""
     models = PROVIDERS.get(provider, {}).get("models", [])
+    if provider == "ollama" and models:
+        preferred_families = ("llama3.2", "llama3.1", "qwen2.5", "qwen2", "smollm2")
+        for family in preferred_families:
+            for model in models:
+                if model.startswith(family):
+                    return model
+        for model in models:
+            if any(model.startswith(family) for family in _OLLAMA_TOOL_FAMILIES):
+                return model
+        if current_model in models:
+            return current_model
     return models[0] if models else current_model
 
 
@@ -846,7 +884,7 @@ async def api_health():
     # ElevenLabs key
     result["elevenlabs"] = bool(API_11 and API_11 not in ("", "none"))
     # OCR
-    result["ocr"] = HAS_OCR
+    result["ocr"] = _ocr_available()
     # GPU
     result["gpu"] = HAS_GPU
     # Playwright (browser)
@@ -864,11 +902,17 @@ async def screenshot_ep():
 
     def _snap():
         img = pyautogui.screenshot()
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=55)
-        return base64.b64encode(buf.getvalue()).decode()
+        buf_hq = io.BytesIO()
+        img.save(buf_hq, format="JPEG", quality=85)
+        buf_ui = io.BytesIO()
+        img.save(buf_ui, format="JPEG", quality=55)
+        return (
+            base64.b64encode(buf_hq.getvalue()).decode(),
+            base64.b64encode(buf_ui.getvalue()).decode(),
+        )
 
-    return JSONResponse({"data": await loop.run_in_executor(None, _snap)})
+    hd, data = await loop.run_in_executor(None, _snap)
+    return JSONResponse({"data": data, "hd": hd})
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -1520,30 +1564,35 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 # ── Operator tools ────────────────────────────────────────────────────────────
 
 # Playwright browser singleton
+_pw_driver = None
 _pw_browser = None
 _pw_page = None
+_pw_lock: asyncio.Lock | None = None
 _PW_PROFILE = str(BASE / ".pw_profile")  # persistent user data dir (cookies, logins, etc.)
 
 
 async def get_browser_page():
     """Lazy-init a persistent Playwright Chromium browser with saved profile."""
-    global _pw_browser, _pw_page
+    global _pw_driver, _pw_browser, _pw_page, _pw_lock
     try:
         from playwright.async_api import async_playwright
 
-        if _pw_browser is None:
-            _pw = await async_playwright().start()
-            os.makedirs(_PW_PROFILE, exist_ok=True)
-            _pw_browser = await _pw.chromium.launch_persistent_context(
-                _PW_PROFILE,
-                headless=False,
-                args=["--start-maximized"],
-                no_viewport=True,
-            )
-        if _pw_page is None or _pw_page.is_closed():
-            pages = _pw_browser.pages
-            _pw_page = pages[0] if pages else await _pw_browser.new_page()
-        return _pw_page
+        if _pw_lock is None:
+            _pw_lock = asyncio.Lock()
+        async with _pw_lock:
+            if _pw_browser is None:
+                _pw_driver = await async_playwright().start()
+                os.makedirs(_PW_PROFILE, exist_ok=True)
+                _pw_browser = await _pw_driver.chromium.launch_persistent_context(
+                    _PW_PROFILE,
+                    headless=False,
+                    args=["--start-maximized"],
+                    no_viewport=True,
+                )
+            if _pw_page is None or _pw_page.is_closed():
+                pages = _pw_browser.pages
+                _pw_page = pages[0] if pages else await _pw_browser.new_page()
+            return _pw_page
     except Exception as e:
         print(f"[playwright] {e}")
         return None
@@ -2600,11 +2649,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
         _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
-        await broadcast({"type": "screenshot", "data": snap_ui_b64})
+        await broadcast({"type": "screenshot", "data": snap_ui_b64, "hd": snap_b64})
         if name == "screenshot":
             return "(screenshot captured)"
         # read_screen: return OCR text; vision image is injected into tool result by LLM stream
-        if HAS_OCR:
+        if _ocr_available():
 
             def _ocr(im):
                 from PIL import Image as _Image
@@ -2621,7 +2670,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             header = f"[Screen {screen_w}×{screen_h}px | image sent to vision model]\n"
             return header + (text[:3000] if text else "(no text detected via OCR)")
         screen_w, screen_h = pyautogui.size()
-        return f"Screenshot captured ({screen_w}×{screen_h}px). Use the image to identify UI elements."
+        return (
+            f"Screenshot captured ({screen_w}×{screen_h}px). Image sent to vision model. "
+            f"{_ocr_unavailable_message()}"
+        )
 
     # ── Screenshot region (zoom in for precision) ──────────────────────────────
     elif name == "screenshot_region":
@@ -2641,8 +2693,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap_r)
         _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
-        await broadcast({"type": "screenshot", "data": snap_ui_b64})
-        if HAS_OCR:
+        await broadcast({"type": "screenshot", "data": snap_ui_b64, "hd": snap_b64})
+        if _ocr_available():
 
             def _ocr_r(im):
                 from PIL import Image as _Image
@@ -2655,7 +2707,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
             ocr_text = await loop.run_in_executor(None, lambda: _ocr_r(img))
             return f"Region ({x},{y}) {w}×{h}px | OCR: {ocr_text[:1500] or '(no text)'}"
-        return f"Region ({x},{y}) {w}×{h}px captured."
+        return f"Region ({x},{y}) {w}×{h}px captured. {_ocr_unavailable_message()}"
 
     # ── Mouse ──────────────────────────────────────────────────────────────────
     elif name == "click":
@@ -3222,8 +3274,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _ocr_region():
             img = pyautogui.screenshot(region=(x, y, w, h))
-            if not HAS_OCR:
-                return "(OCR not available)"
+            if not _ocr_available():
+                return f"({_ocr_unavailable_message()})"
             from PIL import Image as _Image
             from PIL import ImageFilter, ImageOps
 
@@ -3271,7 +3323,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _find():
             img = pyautogui.screenshot()
-            if not HAS_OCR:
+            if not _ocr_available():
                 return None
             from PIL import Image as _Image
             from PIL import ImageOps
@@ -3537,8 +3589,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         region = args.get("region")
         if not target:
             return "Error: 'text' argument required"
-        if not HAS_OCR:
-            return "Error: pytesseract not installed"
+        if not _ocr_available():
+            return f"Error: {_ocr_unavailable_message()}"
         deadline = time.monotonic() + timeout
         interval = 0.5
         while time.monotonic() < deadline:
@@ -3813,13 +3865,18 @@ async def _take_screenshot_b64() -> str:
 
     def _snap():
         img = pyautogui.screenshot()
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=70)
-        return base64.b64encode(buf.getvalue()).decode()
+        buf_hq = io.BytesIO()
+        img.save(buf_hq, format="JPEG", quality=85)
+        buf_ui = io.BytesIO()
+        img.save(buf_ui, format="JPEG", quality=70)
+        return (
+            base64.b64encode(buf_hq.getvalue()).decode(),
+            base64.b64encode(buf_ui.getvalue()).decode(),
+        )
 
-    b64 = await loop.run_in_executor(None, _snap)
-    await broadcast({"type": "screenshot", "data": b64})
-    return b64
+    b64_hq, b64_ui = await loop.run_in_executor(None, _snap)
+    await broadcast({"type": "screenshot", "data": b64_ui, "hd": b64_hq})
+    return b64_hq
 
 
 async def _execute_computer_action(action) -> dict:
@@ -4890,6 +4947,16 @@ async def speak(text_gen):
             # Wrap text_gen: broadcast each token to UI as it arrives so the
             # console shows streaming text in real-time (not just after TTS finishes)
             stream_started = False
+            finalized_text = False
+
+            async def _finalize_text() -> None:
+                nonlocal finalized_text
+                if finalized_text or not collected:
+                    return
+                finalized_text = True
+                full_text = "".join(collected)
+                await broadcast({"type": "stream_finalize", "text": full_text})
+                await add_transcript("assistant", full_text)
 
             async def _broadcasting_gen():
                 nonlocal stream_started
@@ -4937,11 +5004,17 @@ async def speak(text_gen):
                         await _fallback_tts(sentence)
 
                 # Run both concurrently: collector produces, speaker consumes
-                await asyncio.gather(_collect_sentences(), _speak_sentences())
+                collector_task = asyncio.create_task(_collect_sentences())
+                speaker_task = asyncio.create_task(_speak_sentences())
+                await collector_task
+                await _finalize_text()
+                await speaker_task
             else:
                 _eleven_gen = _broadcasting_gen()
+                eleven_gen_started = False
 
                 async def _patched_eleven() -> bool:
+                    nonlocal eleven_gen_started
                     api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
                     if not api_11:
                         return False
@@ -4972,9 +5045,11 @@ async def speak(text_gen):
                             got_audio = False
 
                             async def _send():
+                                nonlocal eleven_gen_started
                                 # Sentence-chunk tokens before sending — stable prosody with auto_mode.
                                 # Buffer until sentence boundary, then flush whole sentence at once.
                                 buf = ""
+                                eleven_gen_started = True
                                 async for chunk in _eleven_gen:
                                     if not chunk:
                                         continue
@@ -5007,7 +5082,11 @@ async def speak(text_gen):
                                         break
 
                             try:
-                                await asyncio.gather(_send(), _recv())
+                                send_task = asyncio.create_task(_send())
+                                recv_task = asyncio.create_task(_recv())
+                                await send_task
+                                await _finalize_text()
+                                await recv_task
                             finally:
                                 out.stop()
                                 out.close()
@@ -5024,7 +5103,7 @@ async def speak(text_gen):
                     # _eleven_gen was already consuming text_gen — continue draining
                     # it rather than creating a new _broadcasting_gen() which would
                     # try to iterate text_gen from a second coroutine and crash.
-                    if not collected:
+                    if not collected and not eleven_gen_started:
                         async for chunk in _eleven_gen:
                             collected.append(chunk)
                             if chunk.strip():
@@ -5035,15 +5114,12 @@ async def speak(text_gen):
                     if collected:
                         last_tts_provider = "local"
                         await broadcast({"type": "tts_active", "provider": "local"})
+                        await _finalize_text()
                         await _fallback_tts("".join(collected))
         except asyncio.CancelledError:
             return
 
-        if collected:
-            full_text = "".join(collected)
-            # stream_finalize tells the UI to lock the streaming bubble into the chat
-            await broadcast({"type": "stream_finalize", "text": full_text})
-            await add_transcript("assistant", full_text)
+        await _finalize_text()
 
         speak.last_duration = time.monotonic() - tts_start
 
@@ -5398,7 +5474,7 @@ async def startup():
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
     if ollama_models:
-        current_model = ollama_models[0]
+        current_model = _provider_default_model("ollama")
     elif current_provider == "ollama":
         fallback_provider = _choose_fallback_provider()
         if fallback_provider:
