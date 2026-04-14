@@ -64,6 +64,28 @@ python live_chat_app.py
 ```
 The operator can now route commands to OpenClaw agents, access gateway tools, and participate in multi-agent workflows.
 
+### Fast voice path: ElevenLabs widget
+
+For the fastest browser voice interaction, Vision now exposes an ElevenLabs widget path in the **AGENT** panel of `http://localhost:8765`.
+
+Use these environment variables if you want the widget path to target a specific public ElevenLabs agent:
+
+```powershell
+set ELEVENLABS_WIDGET_AGENT_ID=agent_0701knwqnqy9e1aa3a3drdh30cva
+set ELEVENLABS_API_KEY=sk_...
+```
+
+Then sync the current Vision tool schema and operator prompt into that ElevenLabs agent:
+
+```powershell
+python setup_el_agent_tools.py
+```
+
+Notes:
+- The widget itself uses the public agent ID and does not expose your API key in the browser.
+- The target ElevenLabs agent must be **public** with **auth disabled** for the embed widget to work.
+- Vision also applies a runtime `override-prompt` and registers Vision client tools in the page so widget sessions can route through the local backend tool executor.
+
 ---
 
 ## Agent & Skill Customizations
@@ -80,11 +102,18 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 ### Skills (On-Demand Workflows)
 - **vision-runtime-ops** — Start the app, verify endpoints, check provider readiness
 - **vision-debugging** — Debug voice, WebSocket, provider, OCR, and tool-call issues
+- **vision-operator** — Drive the operator workflow and endpoint-level validation
 - **vision-tool-audit** — Audit direct tool execution and natural-language tool routing
+- **vision-tool-dev** — Add or evolve tool support safely across schema, handlers, and docs
 - **vision-context-ops** — Improve Copilot repo awareness, context refresh, and memory workflow (`.github/skills/vision-context-ops/SKILL.md`)
 - **vision-home-ops** — Apply Vision to home PC administration, networking, security, backups, and automation
 - **vision-documentation-ops** — Keep docs, skills, agents, and runtime notes aligned
 - **vision-mcp-builder** — Expand repo-local MCP servers and customization wiring
+- **vision-mcp-tools** — Work effectively with the active MCP server stack in this workspace
+- **vision-web-research** — Pull in current external information with web and fetch tooling
+- **vision-performance** — Profile and reduce latency or resource overhead in the operator pipeline
+- **vision-multi-monitor** — Handle multi-display capture, placement, and targeting flows
+- **vision-adb-control** — Control Android devices through ADB from the Vision environment
 - **openclaw-getting-started** — Install and bootstrap OpenClaw (Windows, WSL2, macOS, Linux)
 - **mcp-recovery** — Diagnose and restore MCP server configurations
 
@@ -188,6 +217,8 @@ Memory is stored in `memory.json` — delete to reset.
 | `START_FRAMES` | 3 | Frames of loud audio to start recording (~90ms) |
 | `END_FRAMES` | 33 | Frames of silence to stop recording (~1s) |
 
+For local Windows TTS, Vision now defaults to **Microsoft Ava** when that voice is installed.
+
 ---
 
 ## Keyboard Shortcuts (in browser)
@@ -241,14 +272,21 @@ C:\project\vision\
 │   └── skills/
 │       ├── vision-runtime-ops/       ← Run/verify the operator
 │       ├── vision-debugging/         ← Debug failures
+│       ├── vision-operator/          ← Operator workflow guidance
 │       ├── vision-tool-audit/        ← Audit tool-calling
+│       ├── vision-tool-dev/          ← Add or evolve tools safely
 │       ├── vision-context-ops/       ← Improve Copilot context discipline
 │       ├── vision-home-ops/          ← Home PC/network/security workflows
 │       ├── vision-documentation-ops/ ← Keep docs aligned
 │       ├── vision-mcp-builder/       ← Expand MCP capabilities
+│       ├── vision-mcp-tools/         ← Use active MCP servers well
+│       ├── vision-web-research/      ← Web and fetch research workflow
+│       ├── vision-performance/       ← Performance and latency profiling
+│       ├── vision-multi-monitor/     ← Multi-display operator workflow
+│       ├── vision-adb-control/       ← Android device control via ADB
 │       ├── openclaw-getting-started/ ← Install OpenClaw
 │       ├── mcp-recovery/             ← Restore MCP config
-│       └── (+ other community skills)
+│       └── (+ additional local skills as the repo evolves)
 │
 ├── README.md                          ← This file
 ├── live_chat_app.py                   ← Main backend server

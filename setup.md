@@ -46,12 +46,36 @@ GITHUB_TOKEN=ghp_...                         # Optional: GitHub Copilot provider
 ```bash
 cd C:\project\vision
 set ELEVENLABS_API_KEY=sk_...
+set ELEVENLABS_WIDGET_AGENT_ID=agent_0701knwqnqy9e1aa3a3drdh30cva
 python live_chat_app.py
 ```
 
 Or double-click **Live Chat** on desktop.
 
 Browser opens at `http://localhost:8765`.
+
+### 4b. ElevenLabs widget-first voice setup
+
+The UI includes an ElevenLabs widget in the **AGENT** panel for the fastest browser voice path.
+
+Requirements:
+- `ELEVENLABS_API_KEY` must be valid for syncing tools/prompt to ElevenLabs
+- `ELEVENLABS_WIDGET_AGENT_ID` should point at your public widget agent
+- That agent must have **authentication disabled** in ElevenLabs widget settings
+
+Sync the live Vision tool set and operator prompt into the widget agent:
+
+```bash
+python setup_el_agent_tools.py
+```
+
+After launch:
+1. Open `http://localhost:8765`
+2. Open the **AGENT** panel
+3. Click **SHOW / HIDE WIDGET**
+4. Start talking to the ElevenLabs widget
+
+The page injects a runtime operator prompt and registers Vision client tools so widget-triggered actions can execute through the local Vision backend.
 
 ---
 
@@ -154,6 +178,13 @@ Vision will now:
 - Check ELEVENLABS_API_KEY is correct
 - Check internet connection (ElevenLabs is cloud-based)
 - Try slow internet mode: set TTS_MODEL = "eleven_flash_v2_5"
+- If you switch TTS to `LOCAL`, Vision will prefer **Microsoft Ava** when it is installed on Windows
+
+**ElevenLabs widget loads but tools do not fire:**
+- Re-run `python setup_el_agent_tools.py`
+- Verify `ELEVENLABS_API_KEY` is valid (`python test_keys.py`)
+- Verify the widget agent is public and auth is disabled
+- Verify `ELEVENLABS_WIDGET_AGENT_ID` points at the intended ElevenLabs agent
 
 **AI doesn't hear me:**
 - Lower RMS_THRESH in live_chat_app.py (try 150 or 100)

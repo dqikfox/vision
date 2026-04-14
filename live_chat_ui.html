@@ -22,6 +22,31 @@
   --panel-border:rgba(29,78,216,.28);
   --metal:#04060e;--metal2:#080f1a;
   --font-ui:'Orbitron',monospace;--font-mono:'Share Tech Mono',monospace;
+  --safe-left:max(0px,env(safe-area-inset-left));
+  --safe-right:max(0px,env(safe-area-inset-right));
+  --safe-top:max(0px,env(safe-area-inset-top));
+  --safe-bottom:max(0px,env(safe-area-inset-bottom));
+  --edge-pad:14px;
+}
+body[data-skin="copilot"]{
+  --bg:#0a0c18;--bg2:#0d1225;
+  --p:#7c3aed;--p2:#a78bfa;--p3:#c4b5fd;
+  --c:#2563eb;--c2:#60a5fa;--c3:#93c5fd;
+  --g:#10b981;--g2:#34d399;
+  --gold:#f59e0b;--gold2:#fcd34d;
+  --dim:#334155;--tx:#dde7ff;--tx2:#7c8db5;
+  --panel-bg:rgba(8,10,26,.94);
+  --panel-border:rgba(124,58,237,.30);
+}
+body[data-skin="github"]{
+  --bg:#05070a;--bg2:#0b1118;
+  --p:#24292f;--p2:#58a6ff;--p3:#a5d6ff;
+  --c:#2ea043;--c2:#56d364;--c3:#7ee787;
+  --g:#2ea043;--g2:#56d364;
+  --gold:#d29922;--gold2:#f2cc60;
+  --dim:#6e7681;--tx:#c9d1d9;--tx2:#8b949e;
+  --panel-bg:rgba(11,17,24,.94);
+  --panel-border:rgba(88,166,255,.24);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
@@ -174,7 +199,10 @@ body::before{
 
 /* LEFT PANEL — Console/Chat */
 #panelLeft{
-  left:0;top:0;bottom:0;width:380px;
+  left:calc(var(--safe-left) + var(--edge-pad));
+  top:calc(var(--safe-top) + var(--edge-pad));
+  bottom:calc(var(--safe-bottom) + var(--edge-pad));
+  width:380px;
   flex-direction:row;
   transform:translateX(calc(-100% + 36px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
@@ -196,7 +224,10 @@ body::before{
 
 /* RIGHT PANEL — Actions */
 #panelRight{
-  right:0;top:0;bottom:0;width:340px;
+  right:calc(var(--safe-right) + var(--edge-pad));
+  top:calc(var(--safe-top) + var(--edge-pad));
+  bottom:calc(var(--safe-bottom) + var(--edge-pad));
+  width:340px;
   flex-direction:row-reverse;
   transform:translateX(calc(100% - 36px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
@@ -217,7 +248,10 @@ body::before{
 
 /* TOP PANEL — Settings */
 #panelTop{
-  top:0;left:0;right:0;height:320px;
+  top:calc(var(--safe-top) + var(--edge-pad));
+  left:calc(var(--safe-left) + var(--edge-pad));
+  right:calc(var(--safe-right) + var(--edge-pad));
+  height:320px;
   flex-direction:column;
   transform:translateY(calc(-100% + 36px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
@@ -367,14 +401,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .comp-led.ok{background:var(--g2);box-shadow:0 0 6px var(--g)}
 .comp-led.warn{background:var(--gold);box-shadow:0 0 6px var(--gold)}
 .comp-led.off{background:var(--r);box-shadow:0 0 4px rgba(239,68,68,.4)}
+.comp-item.summary{color:var(--tx2);min-width:78px;justify-content:flex-end}
+.comp-item.summary.ok{color:var(--g2)}
+.comp-item.summary.warn{color:var(--gold2)}
+.comp-item.summary.off{color:var(--r2)}
 
 /* ═══════ CORNER BUTTONS ═══════ */
 #cornerBL{
-  position:fixed;bottom:95px;left:52px;z-index:200;
+  position:fixed;
+  bottom:calc(var(--safe-bottom) + 95px);
+  left:calc(var(--safe-left) + var(--edge-pad));
+  z-index:200;
   display:flex;flex-direction:column;gap:8px;pointer-events:all;
 }
 #cornerBR{
-  position:fixed;bottom:95px;right:52px;z-index:200;
+  position:fixed;
+  bottom:calc(var(--safe-bottom) + 95px);
+  right:calc(var(--safe-right) + var(--edge-pad));
+  z-index:200;
   display:flex;flex-direction:column;gap:8px;pointer-events:all;align-items:flex-end;
 }
 .corner-btn{
@@ -393,7 +437,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 /* ═══════ MODEL BADGE ═══════ */
 #modelBadge{
-  position:fixed;top:16px;right:80px;z-index:200;pointer-events:all;
+  position:fixed;
+  top:calc(var(--safe-top) + 16px);
+  right:calc(var(--safe-right) + 80px);
+  z-index:200;
+  pointer-events:all;
   font-family:var(--font-ui);font-size:9px;letter-spacing:.15em;
   background:rgba(8,6,0,.88);backdrop-filter:blur(12px);
   border:1px solid rgba(29,78,216,.2);border-radius:4px;
@@ -497,6 +545,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 }
 .model-chip:hover{border-color:var(--p);color:var(--p2);background:rgba(29,78,216,.1)}
 .model-chip.sel{border-color:var(--g);color:var(--g2);background:rgba(16,185,129,.1)}
+.model-chip.dis{opacity:.45;cursor:not-allowed;border-style:dashed}
+.model-chip.dis:hover{border-color:rgba(29,78,216,.12);color:var(--tx2);background:rgba(29,78,216,.03)}
 .pk-key-row{display:flex;gap:8px;margin-top:6px}
 .pk-key-inp{
   flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);
@@ -510,7 +560,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 /* ═══════ ELEVENLABS WIDGET ═══════ */
 #elevenWidget{
-  position:fixed;bottom:95px;right:18px;z-index:300;
+  position:fixed;
+  bottom:calc(var(--safe-bottom) + 95px);
+  right:calc(var(--safe-right) + var(--edge-pad));
+  z-index:300;
   display:none;
 }
 
@@ -605,7 +658,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 /* ═══════ LATENCY BADGE ═══════ */
 #latencyBadge{
-  position:fixed;top:16px;left:20px;z-index:200;
+  position:fixed;
+  top:calc(var(--safe-top) + 16px);
+  left:calc(var(--safe-left) + var(--edge-pad));
+  z-index:200;
   font-family:var(--font-ui);font-size:9px;letter-spacing:.15em;
   background:rgba(8,6,0,.88);backdrop-filter:blur(12px);
   border:1px solid rgba(245,158,11,.2);border-radius:4px;
@@ -658,9 +714,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ BOOT ═══ -->
 <div id="boot">
-  <div class="boot-logo">VISION</div>
-  <div class="boot-sub">UNIVERSAL ACCESSIBILITY OPERATOR</div>
-  <div class="boot-tagline">
+  <div class="boot-logo" id="bootLogo">VISION</div>
+  <div class="boot-sub" id="bootSub">UNIVERSAL ACCESSIBILITY OPERATOR</div>
+  <div class="boot-tagline" id="bootTagline">
     Giving <span>independence</span> to everyone —<br>
     full computer control through <span>natural language</span>
   </div>
@@ -708,6 +764,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="comp-item"><div class="comp-led" id="led-gpu"></div>GPU</div>
   <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
   <div class="comp-item"><div class="comp-led" id="led-ocr"></div>OCR</div>
+  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-item summary warn" id="pollStatus">POLLING</div>
 </div>
 
 <!-- ═══ MODEL BADGE ═══ -->
@@ -747,7 +805,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   </div>
   <div class="panel-body">
     <div class="panel-header" style="color:var(--p2)">
-      ⬡ VISION CONSOLE
+      <span id="consoleTitle">⬡ VISION CONSOLE</span>
       <button onclick="clearChat()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--dim);font-size:10px;letter-spacing:.15em;font-family:var(--font-ui)">CLEAR</button>
     </div>
     <div class="panel-scroll" id="consoleMessages"></div>
@@ -838,15 +896,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
             <span style="font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--tx2)">STATUS:</span>
             <span style="font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--c2);margin-left:5px" id="elAgentStatus">INACTIVE</span>
           </div>
-          <div style="font-size:10px;color:var(--dim);line-height:1.6" id="elAgentMsg">ConvAI agent not started.</div>
+          <div style="font-size:10px;color:var(--dim);line-height:1.6" id="elAgentMsg">Loading ElevenLabs widget config…</div>
           <div class="el-btn-row">
-            <button class="el-btn" onclick="startElAgent()">▶ ACTIVATE</button>
-            <button class="el-btn stop" onclick="stopElAgent()">■ STOP</button>
+            <button class="el-btn" onclick="startElAgent()">▶ LOCAL SDK</button>
+            <button class="el-btn stop" onclick="stopElAgent()">■ STOP SDK</button>
           </div>
-          <button class="el-btn wide" onclick="toggleElevenWidgetInPanel()">🔲 SHOW / HIDE WIDGET</button>
+          <button class="el-btn wide" onclick="toggleElevenWidgetInPanel()">🎙 SHOW / HIDE WIDGET</button>
         </div>
         <div id="elConvWidget" style="display:none;margin-bottom:10px">
-          <elevenlabs-convai agent-id="agent_7201kmxc5trte9tarb626ed8dgt1"></elevenlabs-convai>
+          <elevenlabs-convai id="elWidget" agent-id="" variant="expanded" dismissible="true" action-text="Talk to Vision" start-call-text="Start voice" end-call-text="End voice" expand-text="Open voice"></elevenlabs-convai>
         </div>
         <div class="section-label">📝 AGENT LOG</div>
         <div class="el-conv-log" id="elConvLog">Agent log will appear here…</div>
@@ -908,8 +966,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div class="cfg-block">
         <div class="cfg-lbl">🗣 LOCAL VOICE</div>
         <div class="radio-row" id="voiceRadios">
-          <div class="r-opt on" data-val="0" onclick="selectRadio(this,'voiceRadios')">DAVID ♂</div>
-          <div class="r-opt" data-val="1" onclick="selectRadio(this,'voiceRadios')">ZIRA ♀</div>
+          <div class="r-opt on" data-val="0" onclick="selectRadio(this,'voiceRadios')">LOADING…</div>
         </div>
         <div style="font-family:var(--font-ui);font-size:8px;color:var(--dim);margin-top:4px;letter-spacing:.1em" id="voiceLoadHint">Loading voices…</div>
         <div class="cfg-lbl" style="margin-top:10px">⚡ SPEECH RATE</div>
@@ -922,6 +979,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
           <div class="r-opt" onclick="toggleElevenWidget(true)">SHOW</div>
           <div class="r-opt" onclick="toggleElevenWidget(false)">HIDE</div>
         </div>
+        <div class="cfg-lbl" style="margin-top:10px">🎨 ASSISTANT SKIN</div>
+        <div class="radio-row" id="skinRadios">
+          <div class="r-opt on" data-val="vision" onclick="selectSkin('vision')">VISION</div>
+          <div class="r-opt" data-val="copilot" onclick="selectSkin('copilot')">COPILOT</div>
+          <div class="r-opt" data-val="github" onclick="selectSkin('github')">GITHUB</div>
+        </div>
+        <div style="font-family:var(--font-ui);font-size:8px;color:var(--dim);margin-top:4px;letter-spacing:.1em" id="skinHint">Vision default skin active.</div>
       </div>
       <div class="cfg-block">
         <div class="cfg-lbl">🔑 API KEYS</div>
@@ -995,7 +1059,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ ELEVENLABS WIDGET (standalone — kept for fallback; main widget in AGENT tab) ═══ -->
-<div id="elevenWidget" style="position:fixed;bottom:95px;right:70px;z-index:300;display:none">
+<div id="elevenWidget">
   <!-- widget instance is inside the AGENT tab -->
 </div>
 <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
@@ -1036,20 +1100,147 @@ let streamEl = null;   // active streaming assistant bubble
 let startTime = Date.now();
 let listenTimestamp = null, latencyShown = false;
 let elAgentStatus = 'inactive';
+let elAgentConfig = { agentId:'', prompt:'', toolNames:[] };
+let currentSkin = 'vision';
+
+const SKINS = {
+  vision: {
+    label: 'VISION',
+    icon: '⬡',
+    subtitle: 'UNIVERSAL ACCESSIBILITY OPERATOR',
+    hint: 'Vision default skin active.',
+    tagline: 'Giving <span>independence</span> to everyone —<br>full computer control through <span>natural language</span>',
+    consoleTitle: 'VISION CONSOLE',
+    bootLines: [
+      '◆ Neural interface initializing…',
+      '◆ Loading AI models…',
+      '◆ Voice systems online…',
+      '<span class=\"ok\">✓ All systems operational</span>',
+    ],
+    widget: { orb1: '#1d4ed8', orb2: '#22d3ee', action: 'Talk to Vision' },
+  },
+  copilot: {
+    label: 'COPILOT',
+    icon: '✦',
+    subtitle: 'GITHUB COPILOT OPERATOR',
+    hint: 'Copilot skin active.',
+    tagline: 'Pairing <span>developer flow</span> with fast voice control —<br>an operator shell for <span>GitHub Copilot</span>',
+    consoleTitle: 'COPILOT CONSOLE',
+    bootLines: [
+      '◆ Loading Copilot persona…',
+      '◆ Priming coding context…',
+      '◆ Voice tooling online…',
+      '<span class=\"ok\">✓ Copilot operator ready</span>',
+    ],
+    widget: { orb1: '#7c3aed', orb2: '#60a5fa', action: 'Talk to Copilot' },
+  },
+  github: {
+    label: 'GITHUB',
+    icon: '🐙',
+    subtitle: 'GITHUB OPERATOR CONSOLE',
+    hint: 'GitHub skin active.',
+    tagline: 'Bringing <span>repos</span>, workflows, and local control together —<br>a voice shell for <span>GitHub operations</span>',
+    consoleTitle: 'GITHUB CONSOLE',
+    bootLines: [
+      '◆ Connecting repository graph…',
+      '◆ Loading workflow context…',
+      '◆ Operator channels online…',
+      '<span class=\"ok\">✓ GitHub operations ready</span>',
+    ],
+    widget: { orb1: '#58a6ff', orb2: '#56d364', action: 'Talk to GitHub' },
+  },
+};
+let skinPalette = null;
 
 /* ═══════════════════════════════════════
    BOOT
 ═══════════════════════════════════════ */
 setTimeout(() => {
   document.getElementById('bootEnter').style.display = 'block';
-  document.getElementById('bootEnter').textContent = '[ CLICK TO ENTER ]';
+  document.getElementById('bootEnter').textContent = `[ ENTER ${getSkinMeta().label} ]`;
 }, 2600);
 
 function dismissBoot() {
   document.getElementById('boot').classList.add('out');
   setTimeout(() => { document.getElementById('boot').style.display = 'none'; }, 900);
   startBgCanvas();
+  loadElAgentConfig();
   connect();
+}
+
+function getSkinMeta() {
+  return SKINS[currentSkin] || SKINS.vision;
+}
+
+function selectSkin(name) {
+  applySkin(name, true);
+}
+
+function applySkin(name, persist) {
+  currentSkin = SKINS[name] ? name : 'vision';
+  document.body.dataset.skin = currentSkin;
+  if (persist) localStorage.setItem('vision.skin', currentSkin);
+  updateSkinUI();
+}
+
+function updateSkinUI() {
+  const meta = getSkinMeta();
+  const bootLogo = document.getElementById('bootLogo');
+  const bootSub = document.getElementById('bootSub');
+  const bootTagline = document.getElementById('bootTagline');
+  const bootLines = document.getElementById('bootLines');
+  const consoleTitle = document.getElementById('consoleTitle');
+  const hint = document.getElementById('skinHint');
+  if (bootLogo) bootLogo.textContent = meta.label;
+  if (bootSub) bootSub.textContent = meta.subtitle;
+  if (bootTagline) bootTagline.innerHTML = meta.tagline;
+  if (bootLines) bootLines.innerHTML = meta.bootLines.map(line => `<div>${line}</div>`).join('');
+  if (consoleTitle) consoleTitle.textContent = `${meta.icon} ${meta.consoleTitle}`;
+  if (hint) hint.textContent = meta.hint;
+  const group = document.getElementById('skinRadios');
+  if (group) group.querySelectorAll('.r-opt').forEach(r => r.classList.toggle('on', r.dataset.val === currentSkin));
+  skinPalette = computeSkinPalette();
+  updateBrandText();
+  applyElevenWidgetConfig();
+}
+
+function loadSavedSkin() {
+  applySkin(localStorage.getItem('vision.skin') || 'vision', false);
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex || '').trim().replace('#', '');
+  if (clean.length !== 6) return { r: 29, g: 78, b: 216 };
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+function rgbaFromHex(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function computeSkinPalette() {
+  const css = getComputedStyle(document.body);
+  return {
+    idle1: css.getPropertyValue('--p').trim() || '#1d4ed8',
+    idle2: css.getPropertyValue('--p2').trim() || '#3b82f6',
+    idle3: css.getPropertyValue('--bg2').trim() || '#03050f',
+    listen1: css.getPropertyValue('--c').trim() || '#0891b2',
+    listen2: css.getPropertyValue('--c2').trim() || '#22d3ee',
+    listen3: css.getPropertyValue('--c3').trim() || '#67e8f9',
+    speak1: css.getPropertyValue('--g').trim() || '#16a34a',
+    speak2: css.getPropertyValue('--g2').trim() || '#4ade80',
+    gold1: css.getPropertyValue('--gold').trim() || '#d97706',
+    gold2: css.getPropertyValue('--gold2').trim() || '#fbbf24',
+    muted1: '#374151',
+    muted2: '#6b7280',
+    muted3: '#111827',
+    bg: css.getPropertyValue('--bg').trim() || '#020209',
+  };
 }
 
 /* ═══════════════════════════════════════
@@ -1086,25 +1277,27 @@ function startBgCanvas() {
 
   // Nebula gradient (static, drawn once)
   function drawNebula() {
+    const pal = skinPalette || computeSkinPalette();
     const g1 = ctx.createRadialGradient(W*.3, H*.35, 0, W*.3, H*.35, W*.45);
-    g1.addColorStop(0, 'rgba(29,78,216,.05)');
+    g1.addColorStop(0, rgbaFromHex(pal.idle1, .07));
     g1.addColorStop(1, 'transparent');
     ctx.fillStyle = g1; ctx.fillRect(0,0,W,H);
 
     const g2 = ctx.createRadialGradient(W*.72, H*.6, 0, W*.72, H*.6, W*.35);
-    g2.addColorStop(0, 'rgba(34,197,94,.03)');
+    g2.addColorStop(0, rgbaFromHex(pal.speak1, .04));
     g2.addColorStop(1, 'transparent');
     ctx.fillStyle = g2; ctx.fillRect(0,0,W,H);
 
     const g3 = ctx.createRadialGradient(W*.5, H*.9, 0, W*.5, H*.9, W*.3);
-    g3.addColorStop(0, 'rgba(34,197,94,.03)');
+    g3.addColorStop(0, rgbaFromHex(pal.listen1, .035));
     g3.addColorStop(1, 'transparent');
     ctx.fillStyle = g3; ctx.fillRect(0,0,W,H);
   }
 
   function anim() {
+    const pal = skinPalette || computeSkinPalette();
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#020209';
+    ctx.fillStyle = pal.bg;
     ctx.fillRect(0, 0, W, H);
 
     drawNebula();
@@ -1140,10 +1333,10 @@ function startBgCanvas() {
           ctx.beginPath();
           ctx.moveTo(a2.x, a2.y);
           ctx.lineTo(b.x, b.y);
-          const c = state === 'thinking' ? `rgba(245,158,11,${alpha})` :
-                    state === 'speaking' ? `rgba(16,185,129,${alpha})` :
-                    state === 'listening' || state === 'recording' ? `rgba(6,182,212,${alpha})` :
-                    `rgba(29,78,216,${alpha})`;
+          const c = state === 'thinking' ? rgbaFromHex(pal.gold1, alpha) :
+                    state === 'speaking' ? rgbaFromHex(pal.speak1, alpha) :
+                    state === 'listening' || state === 'recording' ? rgbaFromHex(pal.listen1, alpha) :
+                    rgbaFromHex(pal.idle1, alpha);
           ctx.strokeStyle = c;
           ctx.lineWidth = .6;
           ctx.stroke();
@@ -1155,9 +1348,9 @@ function startBgCanvas() {
       const baseAlpha = active ? .4 + .3*pulse : .15 + .1*pulse;
       ctx.beginPath();
       ctx.arc(a2.x, a2.y, a2.r * (active ? 1 + .4*pulse : 1), 0, 6.28);
-      const nc = state === 'thinking' ? `rgba(251,191,36,${baseAlpha})` :
-                 state === 'speaking' ? `rgba(52,211,153,${baseAlpha})` :
-                 `rgba(59,130,246,${baseAlpha})`;
+      const nc = state === 'thinking' ? rgbaFromHex(pal.gold2, baseAlpha) :
+                 state === 'speaking' ? rgbaFromHex(pal.speak2, baseAlpha) :
+                 rgbaFromHex(pal.idle2, baseAlpha);
       ctx.fillStyle = nc;
       ctx.fill();
     });
@@ -1175,19 +1368,22 @@ function startBgCanvas() {
   const ctx = canvas.getContext('2d');
   const W = 320, H = 320, cx = 160, cy = 160;
   let t = 0, orbState = 'idle', volume = 0;
-
-  const colors = {
-    idle:      { c1:'#1d4ed8', c2:'#3b82f6', c3:'#1e3a8a', glow:'rgba(29,78,216,' },
-    thinking:  { c1:'#d97706', c2:'#fbbf24', c3:'#78350f', glow:'rgba(217,119,6,' },
-    speaking:  { c1:'#16a34a', c2:'#4ade80', c3:'#14532d', glow:'rgba(22,163,74,' },
-    listening: { c1:'#0891b2', c2:'#22d3ee', c3:'#0c4a6e', glow:'rgba(8,145,178,' },
-    recording: { c1:'#0891b2', c2:'#67e8f9', c3:'#0c4a6e', glow:'rgba(8,145,178,' },
-    muted:     { c1:'#374151', c2:'#6b7280', c3:'#111827', glow:'rgba(55,65,81,' },
-  };
+  function getOrbColors() {
+    const pal = skinPalette || computeSkinPalette();
+    return {
+      idle:      { c1:pal.idle1, c2:pal.idle2, c3:pal.idle3, glow:(a) => rgbaFromHex(pal.idle1, a) },
+      thinking:  { c1:pal.gold1, c2:pal.gold2, c3:'#78350f', glow:(a) => rgbaFromHex(pal.gold1, a) },
+      speaking:  { c1:pal.speak1, c2:pal.speak2, c3:'#14532d', glow:(a) => rgbaFromHex(pal.speak1, a) },
+      listening: { c1:pal.listen1, c2:pal.listen2, c3:'#0c4a6e', glow:(a) => rgbaFromHex(pal.listen1, a) },
+      recording: { c1:pal.listen1, c2:pal.listen3, c3:'#0c4a6e', glow:(a) => rgbaFromHex(pal.listen1, a) },
+      muted:     { c1:pal.muted1, c2:pal.muted2, c3:pal.muted3, glow:(a) => rgbaFromHex(pal.muted1, a) },
+    };
+  }
 
   function draw() {
     ctx.clearRect(0,0,W,H);
     t += 0.018;
+    const colors = getOrbColors();
     const col = colors[orbState] || colors.idle;
     const amp = orbState === 'idle' ? 1 : orbState === 'thinking' ? 2 : 2.5;
     const speed = orbState === 'idle' ? 1 : orbState === 'thinking' ? 3 : 4;
@@ -1196,14 +1392,14 @@ function startBgCanvas() {
 
     // Outer atmospheric glow
     const atmo = ctx.createRadialGradient(cx, cy, 60, cx, cy, 155);
-    atmo.addColorStop(0, col.glow + '08)');
-    atmo.addColorStop(.5, col.glow + '04)');
+    atmo.addColorStop(0, col.glow(.08));
+    atmo.addColorStop(.5, col.glow(.04));
     atmo.addColorStop(1, 'transparent');
     ctx.fillStyle = atmo; ctx.fillRect(0,0,W,H);
 
     // Mid glow ring
     const midGlow = ctx.createRadialGradient(cx, cy, 50, cx, cy, 100);
-    midGlow.addColorStop(0, col.glow + ((.1 + .08*pulse).toFixed(2)) + ')');
+    midGlow.addColorStop(0, col.glow((.1 + .08 * pulse).toFixed(2)));
     midGlow.addColorStop(1, 'transparent');
     ctx.fillStyle = midGlow; ctx.beginPath(); ctx.arc(cx,cy,100,0,6.28); ctx.fill();
 
@@ -1303,9 +1499,7 @@ function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj))
 function handleMsg(msg) {
   switch(msg.type) {
     case 'init':
-      currentProvider = msg.provider || '';
-      currentModel    = msg.model    || '';
-      updateModelBadge();
+      syncActiveModel(msg.provider || '', msg.model || '');
       if (msg.memory) renderMemory(msg.memory);
       if (msg.voice)  applyVoiceSettings(msg.voice);
       if (msg.wake_word !== undefined) {
@@ -1336,6 +1530,9 @@ function handleMsg(msg) {
         if (wLbl) wLbl.textContent = wakeWordEnabled ? 'WAKE ON' : 'WAKE'; }
       break;
     case 'state':
+      if (msg.provider || msg.model) {
+        syncActiveModel(msg.provider || currentProvider, msg.model || currentModel);
+      }
       setState(msg.state);
       break;
     case 'transcript':
@@ -1361,7 +1558,7 @@ function handleMsg(msg) {
       showTyping();
       break;
     case 'screenshot':
-      showScreenshot(msg.data);
+      showScreenshot(msg);
       break;
     case 'action':
       document.getElementById('actionResult').textContent =
@@ -1382,9 +1579,7 @@ function handleMsg(msg) {
       applyVoiceSettings(msg);
       break;
     case 'model_changed':
-      currentProvider = msg.provider;
-      currentModel    = msg.model;
-      updateModelBadge();
+      syncActiveModel(msg.provider, msg.model);
       toast(`Model: ${msg.provider}/${msg.model}`, 'purple');
       break;
     case 'volume':
@@ -1452,9 +1647,84 @@ function setMetricBar(id, barId, val) {
   bar.className = 'metric-bar-fill' + (val > 90 ? ' crit' : val > 70 ? ' warn' : '');
 }
 
+const HEALTH_STALE_MS = 20000;
+const METRICS_STALE_MS = 12000;
+let lastHealthOkAt = 0;
+let lastMetricsOkAt = 0;
+let healthPollFailed = false;
+let metricsPollFailed = false;
+
+function setLedState(id, state) {
+  const el = document.getElementById('led-' + id);
+  if (!el) return;
+  const resolved = state === true ? 'ok' : state === false ? 'off' : (state || 'warn');
+  el.className = 'comp-led ' + resolved;
+}
+
+function setPollStatus(text, state) {
+  const el = document.getElementById('pollStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'comp-item summary ' + state;
+}
+
+function refreshPollStatus() {
+  const now = Date.now();
+  if (healthPollFailed) {
+    setPollStatus('HEALTH LOST', 'off');
+    return;
+  }
+  if (metricsPollFailed) {
+    setPollStatus('METRICS LOST', 'warn');
+    return;
+  }
+  if ((lastHealthOkAt && now - lastHealthOkAt > HEALTH_STALE_MS) || (lastMetricsOkAt && now - lastMetricsOkAt > METRICS_STALE_MS)) {
+    setPollStatus('POLL STALE', 'warn');
+    return;
+  }
+  if (lastHealthOkAt || lastMetricsOkAt) {
+    setPollStatus('POLL OK', 'ok');
+    return;
+  }
+  setPollStatus('POLLING', 'warn');
+}
+
+function noteHealthPollSuccess() {
+  lastHealthOkAt = Date.now();
+  if (healthPollFailed) toast('Health polling restored', 'green');
+  healthPollFailed = false;
+  refreshPollStatus();
+}
+
+function noteMetricsPollSuccess() {
+  lastMetricsOkAt = Date.now();
+  if (metricsPollFailed) toast('Metrics polling restored', 'green');
+  metricsPollFailed = false;
+  refreshPollStatus();
+}
+
+function noteHealthPollFailure() {
+  if (!healthPollFailed) {
+    addMessage('system', '⚠ Health polling lost. Component status may be stale.');
+    toast('Health polling lost', 'purple');
+  }
+  healthPollFailed = true;
+  refreshPollStatus();
+}
+
+function noteMetricsPollFailure() {
+  if (!metricsPollFailed) {
+    addMessage('system', '⚠ Metrics polling lost. Resource graphs may be stale.');
+    toast('Metrics polling lost', 'purple');
+  }
+  metricsPollFailed = true;
+  refreshPollStatus();
+}
+
 async function fetchMetrics() {
   try {
     const r = await fetch(API_URL + '/api/metrics');
+    if (!r.ok) throw new Error('metrics request failed');
     const d = await r.json();
     setMetricBar('cpuVal', 'cpuBar', d.cpu);
     setMetricBar('ramVal', 'ramBar', d.ram);
@@ -1463,23 +1733,31 @@ async function fetchMetrics() {
       setMetricBar('gpuVal', 'gpuBar', d.gpu);
       setMetricBar('vramVal', 'vramBar', d.gpu_mem);
     }
-  } catch(e) {}
+    noteMetricsPollSuccess();
+  } catch(e) {
+    noteMetricsPollFailure();
+  }
 }
 
 async function fetchHealth() {
   try {
     const r = await fetch(API_URL + '/api/health');
+    if (!r.ok) throw new Error('health request failed');
     const d = await r.json();
-    const setLed = (id, ok) => {
-      const el = document.getElementById('led-' + id);
-      if (el) { el.className = 'comp-led ' + (ok ? 'ok' : 'off'); }
-    };
-    setLed('ollama', d.ollama);
-    setLed('elevenlabs', d.elevenlabs);
-    setLed('browser', d.browser);
-    setLed('gpu', d.gpu);
-    setLed('ocr', d.ocr);
-  } catch(e) {}
+    setLedState('ollama', d.ollama);
+    setLedState('elevenlabs', d.elevenlabs);
+    setLedState('browser', d.browser);
+    setLedState('gpu', d.gpu);
+    setLedState('ocr', d.ocr);
+    noteHealthPollSuccess();
+  } catch(e) {
+    setLedState('ollama', 'warn');
+    setLedState('elevenlabs', 'warn');
+    setLedState('browser', 'warn');
+    setLedState('gpu', 'warn');
+    setLedState('ocr', 'warn');
+    noteHealthPollFailure();
+  }
 }
 
 let _pollingStarted = false;
@@ -1487,9 +1765,11 @@ let _pollingStarted = false;
 function startPolling() {
   if (_pollingStarted) return;
   _pollingStarted = true;
+  refreshPollStatus();
   fetchMetrics(); fetchHealth(); loadVoices();
   setInterval(fetchMetrics, 3000);
   setInterval(fetchHealth, 8000);
+  setInterval(refreshPollStatus, 5000);
 }
 
 // Drive equalizer animation even when no audio signal
@@ -1500,11 +1780,18 @@ setInterval(() => {
 /* ═══════════════════════════════════════
    STATE MACHINE
 ═══════════════════════════════════════ */
-const stateLabels = {
-  idle:'◆ VISION ONLINE', thinking:'◈ PROCESSING…',
-  speaking:'◉ SPEAKING…', listening:'◎ LISTENING…',
-  recording:'● RECORDING…', muted:'○ MUTED'
-};
+function getStateLabel(s) {
+  const meta = getSkinMeta();
+  const labels = {
+    idle:`◆ ${meta.label} ONLINE`,
+    thinking:'◈ PROCESSING…',
+    speaking:'◉ SPEAKING…',
+    listening:'◎ LISTENING…',
+    recording:'● RECORDING…',
+    muted:'○ MUTED',
+  };
+  return labels[s] || s.toUpperCase();
+}
 const stateColors = {
   idle:'var(--p2)', thinking:'var(--gold)', speaking:'var(--g2)',
   listening:'var(--c2)', recording:'var(--c)', muted:'var(--dim)'
@@ -1513,7 +1800,7 @@ function setState(s) {
   state = s;
   setOrbState(s);
   const lbl = document.getElementById('stateLabel');
-  lbl.textContent = stateLabels[s] || s.toUpperCase();
+  lbl.textContent = getStateLabel(s);
   lbl.style.color = stateColors[s] || 'var(--p2)';
   if (s === 'thinking') showTyping(); else removeTyping();
   // Transcript bar: keep visible during thinking (shows what was heard), hide on speaking/listening
@@ -1568,10 +1855,11 @@ function addMessage(role, text) {
   const console_ = document.getElementById('consoleMessages');
   const el = document.createElement('div');
   el.className = `msg msg-${role}`;
+  const meta = getSkinMeta();
   if (role === 'user') {
     el.innerHTML = `<div class="msg-avatar usr">👤</div><div><div class="msg-role">YOU</div><div class="msg-bubble">${escHtml(text)}</div></div>`;
   } else if (role === 'assistant') {
-    el.innerHTML = `<div class="msg-avatar ai">⬡</div><div><div class="msg-role">VISION</div><div class="msg-bubble">${escHtml(text)}</div></div>`;
+    el.innerHTML = `<div class="msg-avatar ai">${escHtml(meta.icon)}</div><div><div class="msg-role">${escHtml(meta.label)}</div><div class="msg-bubble">${escHtml(text)}</div></div>`;
   } else {
     el.innerHTML = `<div class="msg-bubble" style="border-color:rgba(245,158,11,.2);background:rgba(245,158,11,.05);color:var(--gold2);font-size:11px;border-radius:8px;max-width:100%">${escHtml(text)}</div>`;
   }
@@ -1588,9 +1876,10 @@ function addMessage(role, text) {
 function showTyping() {
   if (typingEl) return;
   const console_ = document.getElementById('consoleMessages');
+  const meta = getSkinMeta();
   typingEl = document.createElement('div');
   typingEl.className = 'msg msg-assistant';
-  typingEl.innerHTML = '<div class="msg-avatar ai">⬡</div><div class="typing-dots"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  typingEl.innerHTML = `<div class="msg-avatar ai">${escHtml(meta.icon)}</div><div class="typing-dots"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>`;
   console_.appendChild(typingEl);
   console_.scrollTop = console_.scrollHeight;
 }
@@ -1599,9 +1888,10 @@ function removeTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } 
 function startStreamBubble() {
   if (streamEl) return; // already streaming
   const console_ = document.getElementById('consoleMessages');
+  const meta = getSkinMeta();
   streamEl = document.createElement('div');
   streamEl.className = 'msg msg-assistant';
-  streamEl.innerHTML = '<div class="msg-avatar ai">⬡</div><div><div class="msg-role">VISION</div><div class="msg-bubble" id="streamBubble"></div></div>';
+  streamEl.innerHTML = `<div class="msg-avatar ai">${escHtml(meta.icon)}</div><div><div class="msg-role">${escHtml(meta.label)}</div><div class="msg-bubble" id="streamBubble"></div></div>`;
   console_.appendChild(streamEl);
   console_.scrollTop = console_.scrollHeight;
   document.getElementById('panelLeft').style.transform = 'translateX(0)';
@@ -1696,7 +1986,9 @@ function requestScreen() {
   send({ type:'execute_tool', tool:'screenshot', args:{} });
 }
 function showScreenshot(b64) {
-  document.getElementById('screenshotImg').src = 'data:image/jpeg;base64,' + b64;
+  const payload = typeof b64 === 'string' ? { data: b64 } : (b64 || {});
+  const source = payload.hd || payload.data || '';
+  document.getElementById('screenshotImg').src = source ? 'data:image/jpeg;base64,' + source : '';
   document.getElementById('screenshotModal').classList.add('open');
 }
 
@@ -1731,7 +2023,24 @@ let continuousEnabled = false;
 
 function updateActiveCoreDisplay() {
   const el = document.getElementById('activeCore');
-  if (el) el.textContent = `${currentProvider.toUpperCase()} / ${currentModel.toUpperCase()}`;
+  if (!el) return;
+  el.textContent = currentModel ? `${(currentProvider || '').toUpperCase()} / ${currentModel}` : 'LOADING...';
+}
+
+function syncActiveModel(provider, model) {
+  currentProvider = provider || '';
+  currentModel = model || '';
+  updateModelBadge();
+}
+
+function updateBrandText() {
+  const meta = getSkinMeta();
+  const bootEnter = document.getElementById('bootEnter');
+  if (bootEnter && !document.getElementById('boot')?.classList.contains('out')) {
+    bootEnter.textContent = `[ ENTER ${meta.label} ]`;
+  }
+  if (state === 'idle') setState('idle');
+  updateModelBadge();
 }
 
 function toggleContinuous() {
@@ -1758,7 +2067,9 @@ function updateContinuousUI(enabled) {
 
 function updateModelBadge() {
   const b = document.getElementById('modelBadge');
-  b.textContent = currentModel ? `⬡ ${currentProvider.toUpperCase()} / ${currentModel}` : '⬡ SELECT MODEL';
+  const meta = getSkinMeta();
+  b.textContent = currentModel ? `${meta.icon} ${(currentProvider || '').toUpperCase()} / ${currentModel}` : `${meta.icon} SELECT MODEL`;
+  updateActiveCoreDisplay();
 }
 async function openPicker() {
   document.getElementById('pickerModal').classList.add('open');
@@ -1775,8 +2086,12 @@ function escAttr(s) { return String(s).replace(/"/g,'&quot;'); }
 
 function renderPicker(data) {
   const body = document.getElementById('pickerBody');
+  syncActiveModel(data.current_provider || currentProvider, data.current_model || currentModel);
   const provs = data.providers || {};
   let html = '';
+  const orderedCloudProviders = ['openai','github','anthropic','groq','deepseek','mistral','gemini','xai'];
+  const extraCloudProviders = Object.keys(provs).filter(key => !['ollama','elevenlabs', ...orderedCloudProviders].includes(key));
+  const cloudProviders = [...orderedCloudProviders, ...extraCloudProviders];
 
   // Ollama first
   if (provs.ollama) {
@@ -1796,7 +2111,7 @@ function renderPicker(data) {
   }
 
   // Cloud providers
-  ['openai','github','groq','deepseek','mistral','gemini'].forEach(key => {
+  cloudProviders.forEach(key => {
     const p = provs[key]; if (!p) return;
     const isActive = currentProvider === key;
     const hasKey = p.has_key;
@@ -1808,8 +2123,9 @@ function renderPicker(data) {
         <span class="key-badge ${hasKey?'ok':'no'}" style="margin-left:auto">${hasKey?'✓ KEY':'✗ NO KEY'}</span>
       </div>
       <div class="model-chips">
-        ${(p.models||[]).map(m=>`<div class="model-chip ${isActive&&currentModel===m?'sel':''}" onclick="selectModel('${key}','${escAttr(m)}')">${escHtml(m)}</div>`).join('')||'<span style="color:var(--dim);font-size:11px">No models</span>'}
+        ${(p.models||[]).map(m=>`<div class="model-chip ${isActive&&currentModel===m?'sel':''} ${hasKey?'':'dis'}" ${hasKey ? `onclick="selectModel('${key}','${escAttr(m)}')"` : 'title="Save an API key to enable model switching"'}>${escHtml(m)}</div>`).join('')||'<span style="color:var(--dim);font-size:11px">No models</span>'}
       </div>
+      ${hasKey ? '' : '<div style="font-size:10px;color:var(--dim);margin-top:6px">Save an API key to enable switching.</div>'}
       <div class="pk-key-row">
         <input class="pk-key-inp" id="pk_${key}" type="password" placeholder="${hasKey?'Key saved — paste to update':'Paste API key…'}"/>
         <button class="pk-key-save" onclick="saveKey('${key}')">SAVE</button>
@@ -1835,10 +2151,20 @@ function renderPicker(data) {
 }
 
 function selectModel(provider, model) {
-  send({ type:'set_model', provider, model });
-  currentProvider = provider; currentModel = model;
-  updateModelBadge(); closePicker();
-  toast(`Switched to ${provider}/${model}`, 'purple');
+  fetch(API_URL + '/api/model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  })
+    .then(async r => {
+      const data = await r.json();
+      if (!r.ok || data.ok === false) throw new Error(data.error || `HTTP ${r.status}`);
+      syncActiveModel(data.provider || provider, data.model || model);
+      closePicker();
+    })
+    .catch(err => {
+      toast(`Model switch failed: ${err.message}`, 'red');
+    });
 }
 async function saveKey(provider) {
   const inp = document.getElementById('pk_' + provider);
@@ -1927,13 +2253,94 @@ document.getElementById('factInput').addEventListener('keydown', e => { if(e.key
 let elevenVisible = false;
 function toggleElevenPanel() { openRPanelTab('agent'); }
 function toggleElevenWidget(show) {
-  document.getElementById('elevenWidget').style.display = show ? 'block' : 'none';
+  const panelWidget = document.getElementById('elConvWidget');
+  if (!panelWidget) return;
+  panelWidget.style.display = show ? 'block' : 'none';
+  if (show) openRPanelTab('agent');
   elevenVisible = show;
 }
 function toggleElevenWidgetInPanel() {
   const w = document.getElementById('elConvWidget');
   if (!w) return;
   w.style.display = w.style.display === 'none' ? 'block' : 'none';
+  if (w.style.display !== 'none') openRPanelTab('agent');
+}
+
+function getElevenWidget() {
+  return document.getElementById('elWidget');
+}
+
+async function loadElAgentConfig() {
+  try {
+    const r = await fetch(API_URL + '/api/el-agent/config');
+    const cfg = await r.json();
+    elAgentConfig = {
+      agentId: cfg.agent_id || '',
+      prompt: cfg.prompt || '',
+      toolNames: Array.isArray(cfg.tool_names) ? cfg.tool_names : [],
+      widgetNote: cfg.widget_note || '',
+      hasApiKey: !!cfg.has_api_key,
+      hasConvaiSdk: !!cfg.has_convai_sdk,
+    };
+    applyElevenWidgetConfig();
+    updateElAgentStatus('idle', 'Widget ready — direct ElevenLabs voice/text with Vision tool access.');
+    logElAgent(`⚙ Widget agent: ${elAgentConfig.agentId || 'not configured'}`);
+    logElAgent(`🧰 Registered ${elAgentConfig.toolNames.length} Vision tools for widget sessions`);
+    if (elAgentConfig.widgetNote) logElAgent(`ℹ ${elAgentConfig.widgetNote}`);
+  } catch (e) {
+    updateElAgentStatus('error', 'Failed to load widget config');
+    logElAgent(`⚠ Widget config error: ${e.message}`);
+  }
+}
+
+function applyElevenWidgetConfig() {
+  const widget = getElevenWidget();
+  if (!widget || !elAgentConfig.agentId) return;
+  const meta = getSkinMeta();
+  widget.setAttribute('agent-id', elAgentConfig.agentId);
+  widget.setAttribute('override-prompt', elAgentConfig.prompt || '');
+  widget.setAttribute('avatar-orb-color-1', meta.widget.orb1);
+  widget.setAttribute('avatar-orb-color-2', meta.widget.orb2);
+  widget.setAttribute('action-text', meta.widget.action);
+  widget.setAttribute('expand-text', `Open ${meta.label.toLowerCase()}`);
+  bindElevenWidgetTools();
+}
+
+function bindElevenWidgetTools() {
+  const widget = getElevenWidget();
+  if (!widget || widget.dataset.visionBound === '1') return;
+  widget.addEventListener('elevenlabs-convai:call', event => {
+    const detail = event.detail || {};
+    detail.config = detail.config || {};
+    detail.config.clientTools = buildElevenClientTools();
+  });
+  widget.addEventListener('message', event => {
+    const text = event?.detail?.responseText;
+    if (text) logElAgent(`🗣 ${text}`);
+  });
+  widget.dataset.visionBound = '1';
+}
+
+function buildElevenClientTools() {
+  const clientTools = {};
+  for (const toolName of elAgentConfig.toolNames || []) {
+    clientTools[toolName] = async (parameters = {}) => executeElevenTool(toolName, parameters || {});
+  }
+  return clientTools;
+}
+
+async function executeElevenTool(toolName, parameters) {
+  const preview = JSON.stringify(parameters || {});
+  logElAgent(`⚙ ${toolName} ${preview === '{}' ? '' : preview}`.trim());
+  const r = await fetch(API_URL + '/api/tool/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: toolName, parameters }),
+  });
+  const data = await r.json();
+  const result = String(data.result ?? '');
+  logElAgent(`✓ ${toolName} → ${result.slice(0, 180)}`);
+  return result;
 }
 
 async function startElAgent() {
@@ -2041,13 +2448,16 @@ async function loadVoices() {
     const container = document.getElementById('voiceRadios');
     const hint = document.getElementById('voiceLoadHint');
     if (!container) return;
-    container.innerHTML = voices.map((v, i) => {
-      const isNeural = v.type === 'onecore';
+    const selectedIdx = Number.isInteger(voiceSettings.tts_voice_idx) ? voiceSettings.tts_voice_idx : (voices[0]?.index ?? 0);
+    container.innerHTML = voices.map((v) => {
       const shortName = v.name.replace('Microsoft ','').replace(' Desktop','');
       const label = shortName;  // backend adds ⚡ prefix for onecore voices
-      const isFirst = i === 0;
-      return `<div class="r-opt ${isFirst?'on':''}" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${label}</div>`;
+      const isSelected = v.index === selectedIdx;
+      return `<div class="r-opt ${isSelected?'on':''}" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${label}</div>`;
     }).join('');
+    if (!container.querySelector('.r-opt.on')) {
+      container.querySelector('.r-opt')?.classList.add('on');
+    }
     if (hint) hint.style.display = 'none';
   } catch(e) {
     const hint = document.getElementById('voiceLoadHint');
@@ -2118,6 +2528,7 @@ function toast(msg, type) {
 /* ═══════════════════════════════════════
    INIT
 ═══════════════════════════════════════ */
+loadSavedSkin();
 updateModelBadge();
 buildKeysList();
 </script>
