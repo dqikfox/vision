@@ -13,7 +13,7 @@ ollama --version  # Check Ollama is installed
 Tesseract OCR (for read_screen tool):
 - Download: https://github.com/UB-Mannheim/tesseract/wiki
 - Install to default path: `C:\Program Files\Tesseract-OCR\tesseract.exe`
-- Add to PATH or set in code: `pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"`
+- Vision auto-detects common Windows install paths; if you use a custom location, add it to PATH or set `TESSERACT_CMD`
 
 ## 2. Ollama (local models)
 

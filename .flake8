@@ -1,0 +1,27 @@
+[flake8]
+# Project-wide line length — matches Black/Google style.
+max-line-length = 120
+
+# Exclude generated/vendored paths
+exclude =
+    .git,
+    __pycache__,
+    .pw_profile,
+    node_modules,
+    .venv,
+    venv
+
+# E402: module level import not at top of file.
+# All third-party imports in live_chat_app.py intentionally follow
+# warnings.filterwarnings("ignore") to suppress noisy deprecation output
+# from sounddevice, pyautogui, numpy etc. on import. This is correct.
+#
+# E501: live_chat_app.py contains hundreds of long JSON tool-description
+# strings in the TOOLS list that cannot be meaningfully wrapped.
+#
+# F401: traceback is imported at module level and used inside
+# execute_python string literals passed to exec().
+extend-ignore = E402, F401
+
+per-file-ignores =
+    live_chat_app.py: E501

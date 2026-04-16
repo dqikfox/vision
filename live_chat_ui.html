@@ -1036,6 +1036,7 @@ let streamEl = null;   // active streaming assistant bubble
 let startTime = Date.now();
 let listenTimestamp = null, latencyShown = false;
 let elAgentStatus = 'inactive';
+let bootStarted = false;
 
 /* ═══════════════════════════════════════
    BOOT
@@ -1045,12 +1046,21 @@ setTimeout(() => {
   document.getElementById('bootEnter').textContent = '[ CLICK TO ENTER ]';
 }, 2600);
 
-function dismissBoot() {
-  document.getElementById('boot').classList.add('out');
-  setTimeout(() => { document.getElementById('boot').style.display = 'none'; }, 900);
+function ensureBootServices() {
+  if (bootStarted) return;
+  bootStarted = true;
   startBgCanvas();
   connect();
 }
+
+function dismissBoot() {
+  document.getElementById('boot').classList.add('out');
+  setTimeout(() => { document.getElementById('boot').style.display = 'none'; }, 900);
+  ensureBootServices();
+}
+
+window.addEventListener('DOMContentLoaded', ensureBootServices);
+ensureBootServices();
 
 /* ═══════════════════════════════════════
    BACKGROUND PARTICLE CANVAS
@@ -1305,6 +1315,7 @@ function handleMsg(msg) {
     case 'init':
       currentProvider = msg.provider || '';
       currentModel    = msg.model    || '';
+      currentMode     = msg.mode || currentMode;
       updateModelBadge();
       if (msg.memory) renderMemory(msg.memory);
       if (msg.voice)  applyVoiceSettings(msg.voice);
@@ -1315,7 +1326,8 @@ function handleMsg(msg) {
         if (wBtn) { wBtn.textContent = wakeWordEnabled ? '🔒' : '🔓'; wBtn.style.color = wakeWordEnabled ? 'var(--gold)' : 'var(--tx2)'; }
         if (wLbl) wLbl.textContent = wakeWordEnabled ? 'WAKE ON' : 'WAKE';
       }
-      document.getElementById('hudSession').textContent = msg.memory?.session_count || 1;
+      const hudSession = document.getElementById('hudSession');
+      if (hudSession) hudSession.textContent = msg.memory?.session_count || 1;
       buildKeysList();
       // Default always-listening: add green dot to mic button unless muted
       const initMuted = msg.muted === true;
@@ -1328,6 +1340,8 @@ function handleMsg(msg) {
       }
       muted = initMuted;
       continuousEnabled = initContinuous;
+      if (msg.state) setState(msg.state);
+      updateModeUI();
       break;
     case 'wake_word_state':
       wakeWordEnabled = !!msg.enabled;
@@ -1678,14 +1692,17 @@ function toggleWakeWord() {
 }
 const modes = ['chat','operator'];
 const modeIcons = { chat:'💬', operator:'🖥' };
-function cycleMode() {
-  const idx = (modes.indexOf(currentMode)+1) % modes.length;
-  currentMode = modes[idx];
-  send({ type:'set_mode', mode:currentMode });
+function updateModeUI() {
   document.getElementById('modeBtn').textContent = modeIcons[currentMode];
   document.getElementById('modeLbl').textContent = currentMode.toUpperCase();
   const isOp = currentMode === 'operator';
   document.getElementById('modeBtn').classList.toggle('mode-op', isOp);
+}
+function cycleMode() {
+  const idx = (modes.indexOf(currentMode)+1) % modes.length;
+  currentMode = modes[idx];
+  send({ type:'set_mode', mode:currentMode });
+  updateModeUI();
   toast(`Mode: ${currentMode.toUpperCase()}`);
 }
 
@@ -1884,7 +1901,9 @@ function buildKeysList() {
   // Quick API key inputs in settings panel
   const providers = ['openai','github','groq','deepseek','mistral','gemini','anthropic','xai','elevenlabs'];
   const labels = {openai:'OpenAI',github:'GitHub',groq:'Groq',deepseek:'DeepSeek',mistral:'Mistral',gemini:'Gemini',anthropic:'Anthropic',xai:'xAI (Grok)',elevenlabs:'ElevenLabs'};
-  document.getElementById('keysList').innerHTML = providers.map(k => `
+  const keysList = document.getElementById('keysList');
+  if (!keysList) return;
+  keysList.innerHTML = providers.map(k => `
     <div style="margin-bottom:6px">
       <div style="font-family:var(--font-ui);font-size:8px;letter-spacing:.2em;color:var(--dim);margin-bottom:3px">${labels[k]}</div>
       <div class="key-row">
@@ -1908,6 +1927,7 @@ function saveCfgKey(provider) {
 ═══════════════════════════════════════ */
 function renderMemory(mem) {
   const fl = document.getElementById('factList');
+  if (!fl) return;
   fl.innerHTML = (mem.facts||[]).map((f,i) =>
     `<div class="fact-chip">${escHtml(f)}<span class="rm" onclick="delFact(${i})">✕</span></div>`
   ).join('') || '<div style="color:var(--dim);font-size:11px;padding:4px">No facts stored yet.</div>';

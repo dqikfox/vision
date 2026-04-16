@@ -257,12 +257,13 @@ def helper():
 ## 5. Testing & Quality Checks
 
 ### Test Structure
-- Place tests in `tests/` folder matching source structure
-- Use `pytest` with async support (`pytest-asyncio`)
-- Name tests: `test_<function>_<scenario>.py`
+- Follow the repo's current pytest layout: tests may live at the repo root
+  (`test_vision.py`, `test_tools.py`, `conftest.py`) rather than a dedicated `tests/` folder
+- Use the existing repo test entrypoints first (`python test_tools.py`, `python test_vision.py`)
+- Name new pytest-style tests `test_<area>.py` or `test_<function>_<scenario>.py` to match the current repo mix
 
 ```python
-# ✅ tests/test_elite_tools.py
+# ✅ test_elite_tools.py
 import pytest
 from elite_tools import SafeToolExecutor
 
@@ -276,14 +277,14 @@ async def test_execute_with_timeout():
 ### Quality Gates (CI/CD)
 - **Type checking**: `mypy --strict`
 - **Linting**: `pylint` (min score 8.0)
-- **Formatting**: `black` (auto-fix)
+- **Formatting**: `ruff format` with 120-character line length
 - **Security**: `bandit` (no high/critical issues)
 - **Test coverage**: `pytest --cov` (min 80%)
 
 ### Pre-commit Hooks
 ```bash
 # .git/hooks/pre-commit
-black .
+ruff format .
 mypy elite_*.py
 pylint elite_*.py
 pytest --cov=elite_
@@ -399,7 +400,7 @@ Before submitting code:
 - [ ] No blocking calls in async functions
 - [ ] Error handling with context
 - [ ] Tests added for new functionality
-- [ ] `mypy`, `pylint`, `black`, `bandit` pass
+- [ ] Repo checks pass (`python -m py_compile`, `python test_tools.py`, `python test_vision.py`, plus any targeted lint/type checks in use)
 - [ ] Logging at decision points
 - [ ] Performance impact assessed (especially LLM calls, tool execution)
 

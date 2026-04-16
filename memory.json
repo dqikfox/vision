@@ -1,11 +1,13 @@
 {
   "user": {
     "name": null,
-    "preferences": []
+    "preferences": [
+      "User prefers VS Code as their favorite editor"
+    ]
   },
   "facts": [],
-  "session_count": 65,
-  "last_session": "2026-04-14T18:19:56.891043",
+  "session_count": 105,
+  "last_session": "2026-04-15T19:23:39.249838",
   "task_history": [
     {
       "task": "[REDACTED]",
@@ -94,7 +96,19 @@
     {
       "task": "Reply with a short hello.",
       "ts": "2026-04-14T18:20:19.283056"
+    },
+    {
+      "task": "I'm going to bring back Robb.",
+      "ts": "2026-04-15T12:42:12.763483"
+    },
+    {
+      "task": "Reply with OK only.",
+      "ts": "2026-04-15T18:55:37.417099"
     }
   ],
-  "context_summary": ""
+  "context_summary": "",
+  "voice": {
+    "continuous_listening": false,
+    "wake_word": false
+  }
 }

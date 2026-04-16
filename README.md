@@ -29,7 +29,7 @@ Anyone — regardless of mobility, disability, or technical ability — should b
 **Prerequisites**
 ```
 pip install fastapi uvicorn websockets sounddevice numpy scipy pyautogui pytesseract elevenlabs openai httpx pillow
-ollama pull llama3.2  # or any model you prefer
+ollama pull gpt-oss:20b  # preferred local default
 ```
 
 **Launch**

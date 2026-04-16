@@ -75,8 +75,6 @@ Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
 | Server | Purpose |
 |---|---|
 | `github` | GitHub Copilot MCP — PRs, issues, code search |
-| `openclaw` | OpenClaw agent orchestration |
-| `openclaw-acp` | OpenClaw ACP session bridge |
 | `filesystem` | Read/write `C:\project`, Desktop, Documents |
 | `lmstudio-rag` | Filesystem access to the user's LM Studio plugin workspace at `F:\rag-v1` |
 | `git` | Repo-aware git inspection and history |
@@ -210,10 +208,10 @@ python test_vision.py   # full integration tests
 ## Context Discipline
 
 - When the user wants to improve **Copilot itself**, prefer evolving `.github/` instructions, skills, agents, MCP, and workflow guidance before changing application code.
-- Before major tasks or after context compaction, refresh the most relevant context sources: current `plan.md`, SQL todos, `.github/copilot-instructions.md`, the nearest skill/agent doc, and the authoritative runtime file.
+- Before major tasks or after context compaction, refresh the most relevant real context sources for the task: `.github/copilot-instructions.md`, the nearest skill/agent doc, the authoritative runtime file, and any active session plan or todo tracker if the current tool environment provides one.
 - When the task touches LM Studio or local retrieval, include `F:\rag-v1` in the context refresh set.
-- Treat SQL todos as short-term working memory and keep statuses current during execution.
-- Persist only durable, verified repo facts; keep transient notes in the session plan rather than long-term memory.
+- Treat any session todos or plan files as short-term working memory only when they exist in the active tool environment.
+- Persist only durable, verified repo facts; keep transient notes in session-scoped tracking rather than long-term memory.
 - Whenever you add or rename a skill or agent, update the matching README/HIVE documentation in the same change to avoid drift.
 
 ---
