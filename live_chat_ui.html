@@ -2608,13 +2608,16 @@ async function loadVoices() {
     const container = document.getElementById('voiceRadios');
     const hint = document.getElementById('voiceLoadHint');
     if (!container) return;
-    container.innerHTML = voices.map((v, i) => {
-      const isNeural = v.type === 'onecore';
+    container.innerHTML = voices.map((v) => {
       const shortName = v.name.replace('Microsoft ','').replace(' Desktop','');
-      const label = shortName;  // backend adds ⚡ prefix for onecore voices
-      const isFirst = i === 0;
-      return `<div class="r-opt ${isFirst?'on':''}" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${label}</div>`;
+      return `<div class="r-opt" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${shortName}</div>`;
     }).join('');
+    // Restore the saved voice selection; fall back to the first voice
+    const savedIdx = String(voiceSettings.tts_voice_idx ?? 0);
+    const match = container.querySelector(`[data-val="${savedIdx}"]`);
+    const first = container.querySelector('.r-opt');
+    if (match) match.classList.add('on');
+    else if (first) first.classList.add('on');
     if (hint) hint.style.display = 'none';
   } catch(e) {
     const hint = document.getElementById('voiceLoadHint');
