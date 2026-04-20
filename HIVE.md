@@ -9,7 +9,7 @@ This project is managed by a **Hive Mind** (Gemini CLI) and an **Elite Swarm** o
 | Agent | Purpose | Optimization Focus |
 |---|---|---|
 | **@analysis-agent** | Context Architect. | Type Hints & Project Mapping |
-| **@coding-agent** | Completion Refiner. | Idiomatic PEP 8 & Modularity |
+| **@coding-agent** | Autonomous Coder. | End-to-end feature impl, tool registration, lint/test/verify loop |
 | **@maintenance-agent** | Workflow Automator. | Snippets & Tool Integration |
 | **@security-agent** | Safe Auditor. | Zero-Trust AI Completions |
 | **@debug-agent** | Mistake Tracker. | Corrective Prompt Engineering |
@@ -59,6 +59,7 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 - **`mcp-recovery`**: Diagnose and restore MCP server configuration
 
 ### Specialized Agents (invoke via Copilot Chat)
+- **Coding Agent**: Autonomous coding agent for end-to-end feature implementation, tool registration, bugfixing, and refactoring. Runs the full plan → implement → lint → test → verify → document cycle independently.
 - **Vision Maintainer**: Focused handler for operator runtime, WebSocket protocol, tool calling, and code changes to `live_chat_app.py`
 - **OpenClaw Operator**: Dedicated agent for OpenClaw installation, daemon setup, gateway bootstrapping, and multi-agent orchestration
 - **MCP Builder**: Dedicated agent for MCP server wiring, repo-local bridges, and Copilot customization changes
