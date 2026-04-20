@@ -106,7 +106,7 @@ Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
 | MCP Builder | `.github/agents/mcp-builder.agent.md` | MCP wiring, skills, and agent customization |
 | Context Steward | `.github/agents/context-steward.agent.md` | Copilot memory, repo awareness, and context discipline |
 | Home Ops Steward | `.github/agents/home-ops-steward.agent.md` | Home PC, network, security, backup, and automation workflows |
-| Coding Agent | `.gemini/agents/coding.md` | Features, refactoring, TDD |
+| Coding Agent | `.github/agents/coding-agent.agent.md` | Autonomous features, tool registration, lint/test/verify loop |
 | Debug Agent | `.gemini/agents/debug.md` | Root cause, log analysis |
 | Analysis Agent | `.gemini/agents/analysis.md` | Architecture, security, perf |
 | Deploy Agent | `.gemini/agents/deploy.md` | CI/CD, git, releases |
