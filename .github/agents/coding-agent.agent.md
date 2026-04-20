@@ -66,7 +66,7 @@ Your job is to **plan, implement, validate, and document** code changes end-to-e
 3. **Read before writing** — read each target file (or the relevant section of large files) before editing. Never assume structure.
 4. **Implement** — make surgical, minimal edits. Prefer `replace` over full rewrites.
 5. **Lint** — run `ruff format live_chat_app.py && ruff check live_chat_app.py` (or the relevant module) and fix any issues.
-6. **Test** — run `python test_tools.py` for tool changes, `python test_vision.py` for integration changes. Fix any failures before proceeding.
+6. **Test** — run `python test_tools.py` after any `exec_tool` handler, `TOOLS` schema, or `_EL_TOOL_NAMES` change; run `python test_vision.py` after changes to providers, WebSocket routing, voice pipeline, or endpoint logic. Run both when unsure.
 7. **Runtime verify** — after any backend change, confirm `GET /api/health` returns all-green, then execute a targeted tool test via the `/api/tool/execute` endpoint.
 8. **Document** — if the change adds an endpoint, tool, provider, or architectural concept, update the nearest authoritative doc in the same commit.
 9. **Audit tool integrity** — after any tool registration change, cross-check `TOOLS` schema vs `exec_tool` handler vs `_EL_TOOL_NAMES` using `grep_search`.

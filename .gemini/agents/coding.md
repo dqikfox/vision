@@ -1,5 +1,5 @@
 ---
-name: coding-agent
+name: autonomous-coding-agent
 description: Autonomous Vision coding agent. Plans, implements, lints, tests, and documents features, tools, and bugfixes end-to-end without iterative prompting.
 tools:
   - write_file
@@ -43,7 +43,7 @@ Your mission is to plan, implement, validate, and document code changes end-to-e
 3. **Read first** — read the relevant file sections before any edit.
 4. **Implement** — surgical edits via `replace`; avoid full-file rewrites.
 5. **Lint** — `ruff format <file> && ruff check <file>`; fix issues.
-6. **Test** — `python test_tools.py` for tools, `python test_vision.py` for integration; fix failures.
+6. **Test** — run `python test_tools.py` after any `exec_tool` handler, `TOOLS` schema, or `_EL_TOOL_NAMES` change; run `python test_vision.py` after changes to providers, WebSocket routing, voice pipeline, or endpoint logic. Run both if unsure.
 7. **Verify** — `GET /api/health`, then tool smoke test.
 8. **Document** — update nearest authoritative doc if public surface changed.
 9. **Audit** — after tool changes, cross-check `TOOLS` / `exec_tool` / `_EL_TOOL_NAMES` alignment.
