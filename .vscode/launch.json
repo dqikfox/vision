@@ -1,0 +1,72 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Vision: Debug Backend (live_chat_app.py)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/live_chat_app.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Vision: Debug Uvicorn (module)",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "live_chat_app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8765",
+        "--reload"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Vision: Attach (debugpy :5678)",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Vision: Debug test_vision.py",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_vision.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "name": "Vision: Debug test_tools.py",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_tools.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false,
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Vision: Start backend + open browser",
+      "configurations": [
+        "Vision: Debug Backend (live_chat_app.py)"
+      ],
+      "preLaunchTask": "Vision: Open UI"
+    }
+  ]
+}

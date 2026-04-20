@@ -39,6 +39,12 @@ Create `.env` or set in your shell / launch bat:
 ELEVENLABS_API_KEY=sk_5f2c93b54654c98...   # Required for STT + TTS
 OPENAI_API_KEY=sk-...                        # Optional: OpenAI provider
 GITHUB_TOKEN=ghp_...                         # Optional: GitHub Copilot provider
+ANTHROPIC_API_KEY=sk-ant-...                 # Optional: Anthropic provider
+DEEPSEEK_API_KEY=sk-...                      # Optional: DeepSeek provider
+GROQ_API_KEY=gsk_...                         # Optional: Groq provider + fast Whisper fallback
+MISTRAL_API_KEY=...                          # Optional: Mistral provider
+GEMINI_API_KEY=...                           # Optional: Google Gemini provider
+XAI_API_KEY=xai-...                          # Optional: xAI provider
 ```
 
 ## 4. Launch Vision

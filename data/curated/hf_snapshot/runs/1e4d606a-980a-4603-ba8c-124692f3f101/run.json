@@ -1,0 +1,26 @@
+{
+  "id": "1e4d606a-980a-4603-ba8c-124692f3f101",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "Reorganize the board to make everything as done.",
+  "status": "failed",
+  "startedAt": "2026-03-28T14:42:52.934Z",
+  "completedAt": "2026-03-28T14:42:57.068Z",
+  "durationMs": 4134,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "400 Unsupported parameter: 'reasoning.effort' is not supported with this model."
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

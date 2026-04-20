@@ -28,24 +28,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Format check (black)
-        run: black . --check --diff
+      - name: Format check (ruff format)
+        run: python -m ruff format --check .
         continue-on-error: true
 
-      - name: Import sort check (isort)
-        run: isort . --check-only --diff
+      - name: Lint (ruff)
+        run: python -m ruff check .
         continue-on-error: true
 
-      - name: Type check (mypy)
-        run: mypy elite_*.py --strict
-        continue-on-error: true
-
-      - name: Lint (pylint)
-        run: pylint elite_*.py --fail-under=8.0
+      - name: Type check (pyright)
+        run: python -m pyright
         continue-on-error: true
 
       - name: Security scan (bandit)
-        run: bandit elite_*.py -f json -o bandit.json
+        run: python -m bandit -r . -f json -o bandit.json
         continue-on-error: true
 
       - name: Upload bandit results
@@ -76,13 +72,7 @@ jobs:
           pip install -e ".[test]"
 
       - name: Run unit tests
-        run: |
-          pytest tests/ \
-            -v \
-            --cov=elite_ \
-            --cov-report=xml \
-            --cov-report=term \
-            --junit-xml=junit.xml
+        run: pytest -v --cov-report=xml --junit-xml=junit.xml
         continue-on-error: true
 
       - name: Upload coverage to Codecov
@@ -135,22 +125,16 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const fs = require('fs');
-
             let comment = '## 📊 Vision Quality Report\n\n';
-            comment += '| Check | Status |\n';
-            comment += '|-------|--------|\n';
-
-            // Quality checks
-            comment += '| 🔍 Type Check (mypy) | ✅ Passed |\n';
-            comment += '| 🎨 Format (black) | ✅ Passed |\n';
-            comment += '| 📦 Imports (isort) | ✅ Passed |\n';
-            comment += '| ⚙️ Lint (pylint) | ✅ Passed |\n';
-            comment += '| 🔒 Security (bandit) | ✅ Passed |\n';
-
-            // Tests
-            comment += '| ✅ Unit Tests | ✅ Passed |\n';
-            comment += '| 📈 Coverage | 85% |\n';
+            comment += 'This workflow uses the repo\\'s current Python toolchain. Review the job logs and uploaded artifacts for exact pass/fail details.\n\n';
+            comment += '| Check | Where to look |\n';
+            comment += '|-------|---------------|\n';
+            comment += '| 🎨 Format (`ruff format --check`) | `Code Quality Checks` job |\n';
+            comment += '| ⚙️ Lint (`ruff check`) | `Code Quality Checks` job |\n';
+            comment += '| 🔍 Type Check (`pyright`) | `Code Quality Checks` job |\n';
+            comment += '| 🔒 Security (`bandit`) | `bandit-results-*` artifact |\n';
+            comment += '| ✅ Tests (`pytest`) | `Unit & Integration Tests` job |\n';
+            comment += '| 📈 Coverage (`coverage.xml`) | Codecov upload / test artifacts |\n';
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,

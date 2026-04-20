@@ -1,0 +1,26 @@
+{
+  "id": "6daf2684-3fd0-4a50-9f57-4124c55cabe7",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-5.4",
+  "maxResponseTurns": 24,
+  "prompt": "Reorganize the board to make everything as done.",
+  "status": "failed",
+  "startedAt": "2026-03-28T14:23:05.615Z",
+  "completedAt": "2026-03-28T14:23:08.973Z",
+  "durationMs": 3358,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "401 Incorrect API key provided: sk-proj-**************************************************************************************************************************************************************************************************0OR9. You can find your API key at https://platform.openai.com/account/api-keys."
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

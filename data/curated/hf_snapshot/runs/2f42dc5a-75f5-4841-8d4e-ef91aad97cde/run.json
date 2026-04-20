@@ -1,0 +1,26 @@
+{
+  "id": "2f42dc5a-75f5-4841-8d4e-ef91aad97cde",
+  "scenarioId": "paint-draw-poster",
+  "labId": "paint",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-5.4",
+  "maxResponseTurns": 24,
+  "prompt": "Draw me a smiley face.",
+  "status": "failed",
+  "startedAt": "2026-03-28T14:04:49.547Z",
+  "completedAt": "2026-03-28T14:04:55.760Z",
+  "durationMs": 6213,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "401 Incorrect API key provided: sk-proj-**************************************************************************************************************************************************************************************************0OR9. You can find your API key at https://platform.openai.com/account/api-keys."
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

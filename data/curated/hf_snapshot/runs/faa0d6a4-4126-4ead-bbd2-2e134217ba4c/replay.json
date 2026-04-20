@@ -1,0 +1,170 @@
+{
+  "artifacts": {
+    "commandResultsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\command-results",
+    "eventsPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\events.jsonl",
+    "patchesDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\patches",
+    "replayPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\replay.json",
+    "runPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\run.json",
+    "screenshotsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\screenshots",
+    "workspacePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c"
+  },
+  "browser": {
+    "currentUrl": "http://127.0.0.1:58620/index.html",
+    "mode": "headful",
+    "pageTitle": "Launch Planner",
+    "screenshots": [
+      {
+        "capturedAt": "2026-03-28T16:59:46.020Z",
+        "id": "screenshot-1",
+        "label": "kanban-loaded",
+        "mimeType": "image/png",
+        "pageTitle": "Launch Planner",
+        "pageUrl": "http://127.0.0.1:58620/index.html",
+        "path": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c\\screenshots\\001-kanban-loaded.png",
+        "url": "/api/runs/faa0d6a4-4126-4ead-bbd2-2e134217ba4c/artifacts/screenshots/001-kanban-loaded.png"
+      }
+    ],
+    "targetLabel": "run-scoped kanban lab",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  "events": [
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:0",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 0,
+      "type": "run_started",
+      "level": "ok",
+      "message": "Run faa0d6a4-4126-4ead-bbd2-2e134217ba4c started.",
+      "detail": "Launch Planner · native · headful · 24 turns",
+      "createdAt": "2026-03-28T16:59:39.548Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:1",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 1,
+      "type": "workspace_prepared",
+      "level": "ok",
+      "message": "Workspace copied into mutable run directory.",
+      "detail": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "createdAt": "2026-03-28T16:59:39.550Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:2",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 2,
+      "type": "run_progress",
+      "level": "ok",
+      "message": "Using the live Responses API native computer loop for the kanban lab.",
+      "detail": "gpt-4o",
+      "createdAt": "2026-03-28T16:59:39.556Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:3",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 3,
+      "type": "lab_started",
+      "level": "ok",
+      "message": "HTTP lab server booted from the mutable workspace.",
+      "detail": "http://127.0.0.1:58620/index.html",
+      "createdAt": "2026-03-28T16:59:44.822Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:4",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 4,
+      "type": "browser_session_started",
+      "level": "ok",
+      "message": "Browser session launched and bound to the run.",
+      "detail": "run-scoped kanban lab",
+      "createdAt": "2026-03-28T16:59:44.882Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:5",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 5,
+      "type": "browser_navigated",
+      "level": "ok",
+      "message": "Browser navigated to the kanban lab.",
+      "detail": "http://127.0.0.1:58620/index.html",
+      "createdAt": "2026-03-28T16:59:44.896Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:6",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 6,
+      "type": "screenshot_captured",
+      "level": "ok",
+      "message": "Screenshot captured (kanban-loaded).",
+      "detail": "/api/runs/faa0d6a4-4126-4ead-bbd2-2e134217ba4c/artifacts/screenshots/001-kanban-loaded.png",
+      "createdAt": "2026-03-28T16:59:46.020Z"
+    },
+    {
+      "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c:7",
+      "runId": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+      "sequence": 7,
+      "type": "run_failed",
+      "level": "error",
+      "message": "Run failed during execution.",
+      "detail": "400 Tool 'computer' is not supported with gpt-4o.",
+      "createdAt": "2026-03-28T16:59:58.535Z"
+    }
+  ],
+  "run": {
+    "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+    "scenarioId": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "mode": "native",
+    "browserMode": "headful",
+    "verificationEnabled": false,
+    "model": "gpt-4o",
+    "maxResponseTurns": 24,
+    "prompt": "run cmd dxdiag\n",
+    "status": "failed",
+    "startedAt": "2026-03-28T16:59:39.525Z",
+    "completedAt": "2026-03-28T16:59:58.535Z",
+    "durationMs": 19010,
+    "summary": {
+      "commandCount": 0,
+      "notes": [
+        "400 Tool 'computer' is not supported with gpt-4o."
+      ],
+      "outcome": "failure",
+      "patchCount": 0,
+      "screenshotCount": 1,
+      "stepCount": 8,
+      "verificationPassed": false
+    }
+  },
+  "scenario": {
+    "id": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "category": "productivity",
+    "title": "Launch Planner",
+    "description": "Move cards across columns and reorder the sprint board to match the final board state written in the operator prompt.",
+    "defaultPrompt": "Reorganize the board to make everything as done.",
+    "workspaceTemplatePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\labs\\kanban-lab-template",
+    "startTarget": {
+      "kind": "remote_url",
+      "label": "run-scoped HTTP kanban lab",
+      "url": "http://127.0.0.1:3102"
+    },
+    "defaultMode": "code",
+    "supportsCodeEdits": false,
+    "verification": [
+      {
+        "id": "kanban-board-state",
+        "kind": "board_state",
+        "description": "The final board state matches the required card ordering and column placement."
+      }
+    ],
+    "tags": [
+      "hero",
+      "productivity",
+      "drag-drop"
+    ]
+  },
+  "version": 1
+}

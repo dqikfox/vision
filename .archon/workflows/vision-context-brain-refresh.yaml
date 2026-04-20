@@ -1,0 +1,23 @@
+name: vision-context-brain-refresh
+description: |
+  Use when: A task is broad, context was compacted, or an external agent needs a structured bootstrap.
+  Input: A task or prompt that would benefit from a deep repo refresh.
+  Does: Regenerates the machine-readable context brain, reads it, and uses it to choose the next repo surfaces before implementation.
+
+nodes:
+  - id: generate-brain
+    bash: python hive_tools/context_mapper.py --output .archon/artifacts/project_context.json
+
+  - id: refresh-context
+    depends_on: [generate-brain]
+    context: fresh
+    prompt: |
+      Read .archon/artifacts/project_context.json.
+      Use refresh.primary_order, catalog.skills, catalog.agents, integration.mcp_servers, and automation.validation_commands to choose the next repo surfaces for this task.
+      If the context brain is missing an important surface, say exactly what is missing and update the repo accordingly.
+
+  - id: summarize
+    depends_on: [refresh-context]
+    context: fresh
+    prompt: |
+      Summarize the refreshed context, the next recommended repo surfaces, and any brain drift that was detected.

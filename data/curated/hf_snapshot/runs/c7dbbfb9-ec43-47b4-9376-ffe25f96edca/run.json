@@ -1,0 +1,26 @@
+{
+  "id": "c7dbbfb9-ec43-47b4-9376-ffe25f96edca",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-5.4",
+  "maxResponseTurns": 24,
+  "prompt": "Reorganize the board to make everything as done.",
+  "status": "failed",
+  "startedAt": "2026-03-28T14:31:32.202Z",
+  "completedAt": "2026-03-28T14:31:37.052Z",
+  "durationMs": 4850,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "403 Project `proj_hKLZKFrOynu4SCUm6nspR1PY` does not have access to model `gpt-5.4`"
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "mode": "aligned",
+  "include_sensitive": false,
+  "max_chars_per_record": 8000,
+  "min_chars_per_record": 80,
+  "redact_emails": true,
+  "redact_ips": true,
+  "allow_patterns": [
+    "**/*.txt",
+    "**/*.md",
+    "**/*.json",
+    "**/*.jsonl",
+    "**/*.csv",
+    "**/*.log"
+  ],
+  "ignore_patterns": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "**/*.bin",
+    "**/*.exe",
+    "**/*.dll"
+  ]
+}

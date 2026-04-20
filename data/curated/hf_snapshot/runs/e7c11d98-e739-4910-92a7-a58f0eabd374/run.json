@@ -1,0 +1,26 @@
+{
+  "id": "e7c11d98-e739-4910-92a7-a58f0eabd374",
+  "scenarioId": "paint-draw-poster",
+  "labId": "paint",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-5.4",
+  "maxResponseTurns": 2,
+  "prompt": "Draw a single dot.",
+  "status": "failed",
+  "startedAt": "2026-03-28T14:35:30.082Z",
+  "completedAt": "2026-03-28T14:35:36.903Z",
+  "durationMs": 6821,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "403 Project `proj_hKLZKFrOynu4SCUm6nspR1PY` does not have access to model `gpt-5.4`"
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

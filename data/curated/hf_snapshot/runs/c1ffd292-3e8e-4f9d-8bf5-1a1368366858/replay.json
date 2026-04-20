@@ -1,0 +1,212 @@
+{
+  "artifacts": {
+    "commandResultsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\command-results",
+    "eventsPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\events.jsonl",
+    "patchesDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\patches",
+    "replayPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\replay.json",
+    "runPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\run.json",
+    "screenshotsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\screenshots",
+    "workspacePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858"
+  },
+  "browser": {
+    "currentUrl": "http://127.0.0.1:53022/index.html",
+    "mode": "headless",
+    "pageTitle": "Launch Planner",
+    "screenshots": [
+      {
+        "capturedAt": "2026-03-28T16:58:46.939Z",
+        "id": "screenshot-1",
+        "label": "kanban-loaded",
+        "mimeType": "image/png",
+        "pageTitle": "Launch Planner",
+        "pageUrl": "http://127.0.0.1:53022/index.html",
+        "path": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\screenshots\\001-kanban-loaded.png",
+        "url": "/api/runs/c1ffd292-3e8e-4f9d-8bf5-1a1368366858/artifacts/screenshots/001-kanban-loaded.png"
+      },
+      {
+        "capturedAt": "2026-03-28T16:58:57.889Z",
+        "id": "screenshot-2",
+        "label": "kanban-verified",
+        "mimeType": "image/png",
+        "pageTitle": "Launch Planner",
+        "pageUrl": "http://127.0.0.1:53022/index.html",
+        "path": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858\\screenshots\\002-kanban-verified.png",
+        "url": "/api/runs/c1ffd292-3e8e-4f9d-8bf5-1a1368366858/artifacts/screenshots/002-kanban-verified.png"
+      }
+    ],
+    "targetLabel": "run-scoped kanban lab",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  "events": [
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:0",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 0,
+      "type": "run_started",
+      "level": "ok",
+      "message": "Run c1ffd292-3e8e-4f9d-8bf5-1a1368366858 started.",
+      "detail": "Launch Planner · code · headless · 24 turns",
+      "createdAt": "2026-03-28T16:58:46.680Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:1",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 1,
+      "type": "workspace_prepared",
+      "level": "ok",
+      "message": "Workspace copied into mutable run directory.",
+      "detail": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "createdAt": "2026-03-28T16:58:46.682Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:2",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 2,
+      "type": "run_progress",
+      "level": "ok",
+      "message": "Using the live Responses API code loop for the kanban lab.",
+      "detail": "gpt-4o",
+      "createdAt": "2026-03-28T16:58:46.686Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:3",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 3,
+      "type": "lab_started",
+      "level": "ok",
+      "message": "HTTP lab server booted from the mutable workspace.",
+      "detail": "http://127.0.0.1:53022/index.html",
+      "createdAt": "2026-03-28T16:58:46.853Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:4",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 4,
+      "type": "browser_session_started",
+      "level": "ok",
+      "message": "Browser session launched and bound to the run.",
+      "detail": "run-scoped kanban lab",
+      "createdAt": "2026-03-28T16:58:46.881Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:5",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 5,
+      "type": "browser_navigated",
+      "level": "ok",
+      "message": "Browser navigated to the kanban lab.",
+      "detail": "http://127.0.0.1:53022/index.html",
+      "createdAt": "2026-03-28T16:58:46.887Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:6",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 6,
+      "type": "screenshot_captured",
+      "level": "ok",
+      "message": "Screenshot captured (kanban-loaded).",
+      "detail": "/api/runs/c1ffd292-3e8e-4f9d-8bf5-1a1368366858/artifacts/screenshots/001-kanban-loaded.png",
+      "createdAt": "2026-03-28T16:58:46.940Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:7",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 7,
+      "type": "run_progress",
+      "level": "ok",
+      "message": "Responses API turn 1 completed.",
+      "detail": "resp_0260362c6cf6a59e0069c808cb47ec8190b06dfc2cfdb50dfc · 207 in · 44 out · 0 reasoning",
+      "createdAt": "2026-03-28T16:58:57.803Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:8",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 8,
+      "type": "run_progress",
+      "level": "ok",
+      "message": "Model returned a final response.",
+      "detail": "I can't run native system commands like `dxdiag`. My capabilities are limited to browser interactions. If you need help with your system's DirectX settings, I can guide you on how to do it manually.",
+      "createdAt": "2026-03-28T16:58:57.806Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:9",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 9,
+      "type": "screenshot_captured",
+      "level": "ok",
+      "message": "Screenshot captured (kanban-verified).",
+      "detail": "/api/runs/c1ffd292-3e8e-4f9d-8bf5-1a1368366858/artifacts/screenshots/002-kanban-verified.png",
+      "createdAt": "2026-03-28T16:58:57.889Z"
+    },
+    {
+      "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858:10",
+      "runId": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+      "sequence": 10,
+      "type": "run_completed",
+      "level": "ok",
+      "message": "Run completed and replay bundle persisted.",
+      "detail": "/api/runs/c1ffd292-3e8e-4f9d-8bf5-1a1368366858/replay",
+      "createdAt": "2026-03-28T16:58:57.894Z"
+    }
+  ],
+  "run": {
+    "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+    "scenarioId": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "mode": "code",
+    "browserMode": "headless",
+    "verificationEnabled": false,
+    "model": "gpt-4o",
+    "maxResponseTurns": 24,
+    "prompt": "run cmd dxdiag\n",
+    "status": "completed",
+    "startedAt": "2026-03-28T16:58:46.662Z",
+    "completedAt": "2026-03-28T16:58:57.894Z",
+    "durationMs": 11232,
+    "summary": {
+      "commandCount": 0,
+      "notes": [
+        "Executed the scenario through a live Responses API code loop.",
+        "Model final response: I can't run native system commands like `dxdiag`. My capabilities are limited to browser interactions. If you need help with your system's DirectX settings, I can guide you on how to do it manually.",
+        "Verification checks were skipped for this run."
+      ],
+      "outcome": "success",
+      "patchCount": 0,
+      "screenshotCount": 2,
+      "stepCount": 11,
+      "verificationPassed": false
+    }
+  },
+  "scenario": {
+    "id": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "category": "productivity",
+    "title": "Launch Planner",
+    "description": "Move cards across columns and reorder the sprint board to match the final board state written in the operator prompt.",
+    "defaultPrompt": "Reorganize the board to make everything as done.",
+    "workspaceTemplatePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\labs\\kanban-lab-template",
+    "startTarget": {
+      "kind": "remote_url",
+      "label": "run-scoped HTTP kanban lab",
+      "url": "http://127.0.0.1:3102"
+    },
+    "defaultMode": "code",
+    "supportsCodeEdits": false,
+    "verification": [
+      {
+        "id": "kanban-board-state",
+        "kind": "board_state",
+        "description": "The final board state matches the required card ordering and column placement."
+      }
+    ],
+    "tags": [
+      "hero",
+      "productivity",
+      "drag-drop"
+    ]
+  },
+  "version": 1
+}

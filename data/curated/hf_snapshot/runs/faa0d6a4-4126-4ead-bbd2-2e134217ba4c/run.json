@@ -1,0 +1,26 @@
+{
+  "id": "faa0d6a4-4126-4ead-bbd2-2e134217ba4c",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "native",
+  "browserMode": "headful",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "run cmd dxdiag\n",
+  "status": "failed",
+  "startedAt": "2026-03-28T16:59:39.525Z",
+  "completedAt": "2026-03-28T16:59:58.535Z",
+  "durationMs": 19010,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "400 Tool 'computer' is not supported with gpt-4o."
+    ],
+    "outcome": "failure",
+    "patchCount": 0,
+    "screenshotCount": 1,
+    "stepCount": 8,
+    "verificationPassed": false
+  }
+}

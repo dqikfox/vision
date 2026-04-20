@@ -1,0 +1,170 @@
+{
+  "artifacts": {
+    "commandResultsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\command-results",
+    "eventsPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\events.jsonl",
+    "patchesDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\patches",
+    "replayPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\replay.json",
+    "runPath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\run.json",
+    "screenshotsDirectory": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\screenshots",
+    "workspacePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\91daf796-ac88-4da9-84f1-8f4c88043ff4"
+  },
+  "browser": {
+    "currentUrl": "http://127.0.0.1:65077/index.html",
+    "mode": "headless",
+    "pageTitle": "Launch Planner",
+    "screenshots": [
+      {
+        "capturedAt": "2026-03-28T14:21:08.759Z",
+        "id": "screenshot-1",
+        "label": "kanban-loaded",
+        "mimeType": "image/png",
+        "pageTitle": "Launch Planner",
+        "pageUrl": "http://127.0.0.1:65077/index.html",
+        "path": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\runs\\91daf796-ac88-4da9-84f1-8f4c88043ff4\\screenshots\\001-kanban-loaded.png",
+        "url": "/api/runs/91daf796-ac88-4da9-84f1-8f4c88043ff4/artifacts/screenshots/001-kanban-loaded.png"
+      }
+    ],
+    "targetLabel": "run-scoped kanban lab",
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    }
+  },
+  "events": [
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:0",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 0,
+      "type": "run_started",
+      "level": "ok",
+      "message": "Run 91daf796-ac88-4da9-84f1-8f4c88043ff4 started.",
+      "detail": "Launch Planner · code · headless · 24 turns",
+      "createdAt": "2026-03-28T14:21:08.487Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:1",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 1,
+      "type": "workspace_prepared",
+      "level": "ok",
+      "message": "Workspace copied into mutable run directory.",
+      "detail": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\data\\workspaces\\91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "createdAt": "2026-03-28T14:21:08.490Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:2",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 2,
+      "type": "run_progress",
+      "level": "ok",
+      "message": "Using the live Responses API code loop for the kanban lab.",
+      "detail": "gpt-5.4",
+      "createdAt": "2026-03-28T14:21:08.493Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:3",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 3,
+      "type": "lab_started",
+      "level": "ok",
+      "message": "HTTP lab server booted from the mutable workspace.",
+      "detail": "http://127.0.0.1:65077/index.html",
+      "createdAt": "2026-03-28T14:21:08.649Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:4",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 4,
+      "type": "browser_session_started",
+      "level": "ok",
+      "message": "Browser session launched and bound to the run.",
+      "detail": "run-scoped kanban lab",
+      "createdAt": "2026-03-28T14:21:08.680Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:5",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 5,
+      "type": "browser_navigated",
+      "level": "ok",
+      "message": "Browser navigated to the kanban lab.",
+      "detail": "http://127.0.0.1:65077/index.html",
+      "createdAt": "2026-03-28T14:21:08.687Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:6",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 6,
+      "type": "screenshot_captured",
+      "level": "ok",
+      "message": "Screenshot captured (kanban-loaded).",
+      "detail": "/api/runs/91daf796-ac88-4da9-84f1-8f4c88043ff4/artifacts/screenshots/001-kanban-loaded.png",
+      "createdAt": "2026-03-28T14:21:08.759Z"
+    },
+    {
+      "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4:7",
+      "runId": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+      "sequence": 7,
+      "type": "run_failed",
+      "level": "error",
+      "message": "Run failed during execution.",
+      "detail": "401 Incorrect API key provided: sk-proj-**************************************************************************************************************************************************************************************************0OR9. You can find your API key at https://platform.openai.com/account/api-keys.",
+      "createdAt": "2026-03-28T14:21:09.277Z"
+    }
+  ],
+  "run": {
+    "id": "91daf796-ac88-4da9-84f1-8f4c88043ff4",
+    "scenarioId": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "mode": "code",
+    "browserMode": "headless",
+    "verificationEnabled": false,
+    "model": "gpt-5.4",
+    "maxResponseTurns": 24,
+    "prompt": "Reorganize the board to make everything as done.",
+    "status": "failed",
+    "startedAt": "2026-03-28T14:21:08.469Z",
+    "completedAt": "2026-03-28T14:21:09.277Z",
+    "durationMs": 808,
+    "summary": {
+      "commandCount": 0,
+      "notes": [
+        "401 Incorrect API key provided: sk-proj-**************************************************************************************************************************************************************************************************0OR9. You can find your API key at https://platform.openai.com/account/api-keys."
+      ],
+      "outcome": "failure",
+      "patchCount": 0,
+      "screenshotCount": 1,
+      "stepCount": 8,
+      "verificationPassed": false
+    }
+  },
+  "scenario": {
+    "id": "kanban-reprioritize-sprint",
+    "labId": "kanban",
+    "category": "productivity",
+    "title": "Launch Planner",
+    "description": "Move cards across columns and reorder the sprint board to match the final board state written in the operator prompt.",
+    "defaultPrompt": "Reorganize the board to make everything as done.",
+    "workspaceTemplatePath": "C:\\Users\\msiul\\Projects\\openai-cua-sample-app\\labs\\kanban-lab-template",
+    "startTarget": {
+      "kind": "remote_url",
+      "label": "run-scoped HTTP kanban lab",
+      "url": "http://127.0.0.1:3102"
+    },
+    "defaultMode": "code",
+    "supportsCodeEdits": false,
+    "verification": [
+      {
+        "id": "kanban-board-state",
+        "kind": "board_state",
+        "description": "The final board state matches the required card ordering and column placement."
+      }
+    ],
+    "tags": [
+      "hero",
+      "productivity",
+      "drag-drop"
+    ]
+  },
+  "version": 1
+}

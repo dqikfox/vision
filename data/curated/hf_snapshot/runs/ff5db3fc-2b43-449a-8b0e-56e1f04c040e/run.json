@@ -1,0 +1,13 @@
+{
+  "id": "ff5db3fc-2b43-449a-8b0e-56e1f04c040e",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "use computer tools open cmd and dxdiag\n",
+  "status": "running",
+  "startedAt": "2026-03-28T17:22:15.870Z"
+}

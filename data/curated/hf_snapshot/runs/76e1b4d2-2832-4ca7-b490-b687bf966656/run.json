@@ -1,0 +1,13 @@
+{
+  "id": "76e1b4d2-2832-4ca7-b490-b687bf966656",
+  "scenarioId": "paint-draw-poster",
+  "labId": "paint",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "Draw me a smiley face.",
+  "status": "running",
+  "startedAt": "2026-03-28T15:41:33.515Z"
+}

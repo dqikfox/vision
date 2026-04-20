@@ -1,0 +1,124 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Vision: Run backend",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"live_chat_app.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Open UI",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Start-Process http://localhost:8765"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Run test_vision.py",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"test_vision.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Run test_tools.py",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"test_tools.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Start debugpy listener (5678)",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"debugpy",
+				"--listen",
+				"5678",
+				"--wait-for-client",
+				"live_chat_app.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Verify OpenClaw API",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\copilot-openclaw.ps1",
+				"-Verify"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Vision: Copilot CLI via OpenClaw",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"${workspaceFolder}\\scripts\\copilot-openclaw.ps1"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "sqlproj: Build sql",
+			"type": "process",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"c:/project/vision/sql/sql.sqlproj"
+			],
+			"problemMatcher": "$sqlproj-problem-matcher",
+			"isBackground": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "Builds the sql SQL project"
+		}
+	]
+}

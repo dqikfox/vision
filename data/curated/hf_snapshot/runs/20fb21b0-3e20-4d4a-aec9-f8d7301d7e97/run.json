@@ -1,0 +1,28 @@
+{
+  "id": "20fb21b0-3e20-4d4a-aec9-f8d7301d7e97",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "open firefox",
+  "status": "completed",
+  "startedAt": "2026-03-28T16:57:07.376Z",
+  "completedAt": "2026-03-28T16:57:18.009Z",
+  "durationMs": 10633,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "Executed the scenario through a live Responses API code loop.",
+      "Model final response: A new Firefox page has been opened.",
+      "Verification checks were skipped for this run."
+    ],
+    "outcome": "success",
+    "patchCount": 0,
+    "screenshotCount": 3,
+    "stepCount": 15,
+    "verificationPassed": false
+  }
+}

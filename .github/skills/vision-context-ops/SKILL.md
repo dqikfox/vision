@@ -15,7 +15,7 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 - `.github/skills/` - on-demand workflows that teach Copilot how to work here
 - `README.md` and `HIVE.md` - human-facing documentation for the customization layer
 - Session `plan.md` and SQL todos - short-term working memory during multi-step work
-- `RAG_PLUGIN_WORKSPACE` (env var) - configurable path to the user-owned LM Studio plugin workspace for local RAG/plugin context (example: `F:\rag-v1` on Windows, `/home/user/rag-v1` on Linux/macOS). If unset, use a documented fallback default per environment.
+- `RAG_PLUGIN_WORKSPACE` (env var) - preferred path to the user-owned LM Studio plugin workspace for local RAG/plugin context. If unset, use the documented fallback: `F:\rag-v1` on Windows and `~/rag-v1` elsewhere.
 
 ## What This Skill Optimizes
 1. Repo awareness
@@ -36,7 +36,7 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
    - Read relevant skill and agent docs
    - Read the current `plan.md` if the task spans multiple steps
    - Query SQL todos so active work is visible
-   - If the task involves LM Studio or local retrieval, inspect `RAG_PLUGIN_WORKSPACE` before proposing changes
+   - If the task involves LM Studio or local retrieval, inspect `RAG_PLUGIN_WORKSPACE` or the documented fallback before proposing changes
 
 2. Decide whether the improvement belongs in:
    - always-on instructions
@@ -60,4 +60,4 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 - Always-on instructions reflect the improved context discipline
 
 ## Maintainer Decision Note
-- Decide whether this skill should be multi-machine or single-environment. Multi-machine setups should require `RAG_PLUGIN_WORKSPACE` (with platform-aware fallback guidance), while single-environment setups may keep one fixed default path in docs.
+- This repo is multi-machine aware: prefer `RAG_PLUGIN_WORKSPACE`, but keep the platform fallback guidance (`F:\rag-v1` on Windows, `~/rag-v1` elsewhere) aligned with the actual launcher configuration.

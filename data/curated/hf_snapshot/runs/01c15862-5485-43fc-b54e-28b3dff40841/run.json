@@ -1,0 +1,28 @@
+{
+  "id": "01c15862-5485-43fc-b54e-28b3dff40841",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "Reorganize the board to make everything as done.",
+  "status": "completed",
+  "startedAt": "2026-03-28T15:38:55.050Z",
+  "completedAt": "2026-03-28T15:40:09.655Z",
+  "durationMs": 74605,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "Executed the scenario through a live Responses API code loop.",
+      "Model final response: I'm encountering issues with completing the action programmatically. Could you please try reorganizing the board manually? If there's anything else you'd like me to assist with, let me know!",
+      "Verification checks were skipped for this run."
+    ],
+    "outcome": "success",
+    "patchCount": 0,
+    "screenshotCount": 6,
+    "stepCount": 27,
+    "verificationPassed": false
+  }
+}
