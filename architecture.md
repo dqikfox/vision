@@ -88,6 +88,8 @@ Speaker echo may trigger false barge-in (no echo cancellation yet).
 
 ## WebSocket Protocol
 
+Connection endpoint: `ws://localhost:8765/ws`
+
 ### Server → Client
 
 | Type | Payload | Description |
@@ -108,6 +110,7 @@ Speaker echo may trigger false barge-in (no echo cancellation yet).
 | `voice_settings` | `{voice_id, rate, ...}` | After voice settings change |
 | `el_agent` | `{status, agent_id}` | ElevenLabs ConvAI agent state |
 | `partial_transcript` | `{text}` | Partial STT result during recording |
+| `pipeline_timing` | `{stt_ms?, ttft_ms, tts_queue_ms, e2e_ms}` | Stage latencies after each voice/text turn |
 
 ### Client → Server
 

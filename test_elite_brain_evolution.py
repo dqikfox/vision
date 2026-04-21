@@ -66,3 +66,38 @@ async def test_self_evolution_engine_persists_and_reinforces_success(tmp_path) -
     hits = loaded.query("This is another ambiguous setup request", top_k=1)
     assert len(hits) == 1
     assert hits[0].successes >= 1
+
+
+async def test_self_evolution_engine_snapshot_surfaces_strongest_rules(tmp_path) -> None:
+    engine = SelfEvolutionEngine(tmp_path / "adaptations.json")
+
+    await engine.observe(
+        user_message="This setup request is ambiguous.",
+        assistant_response="I guessed instead of clarifying.",
+        critique=_weak_critique("The request was ambiguous and needed clarification."),
+        outcome="failure",
+    )
+    await engine.observe(
+        user_message="This setup request is ambiguous too.",
+        assistant_response="I asked one focused question first.",
+        critique=CritiqueResult(
+            score=0.95,
+            confidence=0.96,
+            completeness=0.9,
+            safety=0.92,
+            issues=[],
+            should_revise=False,
+        ),
+        outcome="success",
+    )
+    await engine.observe(
+        user_message="How do I start it on Windows?",
+        assistant_response="I explained but skipped the exact command.",
+        critique=_weak_critique("The answer should lead with the exact command."),
+        outcome="partial",
+    )
+
+    snapshot = engine.snapshot(top_k=2)
+    assert len(snapshot) == 2
+    assert "clarifying question" in snapshot[0]["guidance"].lower()
+    assert snapshot[0]["successes"] >= 1

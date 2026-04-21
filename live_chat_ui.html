@@ -1317,12 +1317,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ LATENCY BADGE ═══ -->
 <div id="latencyBadge"></div>
+<div id="pipelineTimingBar" style="display:none;position:fixed;bottom:58px;left:50%;transform:translateX(-50%);font-family:var(--font-mono);font-size:10px;color:rgba(6,182,212,.7);letter-spacing:.05em;pointer-events:none;z-index:98;"></div>
 
 <!-- ═══ INPUT BAR ═══ -->
 <div id="inputBar">
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false"/>
-    <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic">🎙</button>
+    <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Speak now or toggle mic">🎙</button>
     <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send">➤</button>
@@ -1557,12 +1558,16 @@ function loadElevenLabsWidgetScript() {
   if (document.getElementById('elevenlabsWidgetScript')) return;
   const script = document.createElement('script');
   script.id = 'elevenlabsWidgetScript';
-  script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed';
+  script.src = 'https://unpkg.com/@elevenlabs/convai-widget-embed/dist/index.js';
   script.async = true;
-  script.type = 'text/javascript';
+  script.type = 'module';
   script.onload = () => {
     elevenWidgetLoaded = true;
     setElWidgetNotice('');
+    if (document.getElementById('rpane-agent')?.style.display !== 'none') {
+      const widget = document.getElementById('elConvWidget');
+      if (widget) widget.style.display = 'block';
+    }
   };
   script.onerror = () => {
     setElWidgetNotice('Failed to load the ElevenLabs widget bundle. Check network access to unpkg.com.');
@@ -1951,6 +1956,18 @@ function handleMsg(msg) {
       updateProviderPill('hudTTS', prov, false);
       break;
     }
+    case 'pipeline_timing': {
+      const parts = [];
+      if (msg.stt_ms !== undefined) parts.push(`STT ${msg.stt_ms}ms`);
+      if (msg.ttft_ms !== undefined) parts.push(`TTFT ${msg.ttft_ms}ms`);
+      if (msg.tts_queue_ms !== undefined) parts.push(`TTS-Q ${msg.tts_queue_ms}ms`);
+      if (msg.e2e_ms !== undefined) parts.push(`E2E ${msg.e2e_ms}ms`);
+      if (parts.length) {
+        const el = document.getElementById('pipelineTimingBar');
+        if (el) { el.textContent = parts.join(' · '); el.style.display = 'block'; }
+      }
+      break;
+    }
     case 'continuous_state': {
       const on = msg.enabled !== false;
       updateContinuousUI(on);
@@ -2196,6 +2213,18 @@ function sendText() {
    MIC / MODE
 ═══════════════════════════════════════ */
 function toggleMute() {
+  if (!continuousEnabled && !wakeWordEnabled) {
+    const btn = document.getElementById('micBtn');
+    muted = false;
+    send({ type:'set_mute', muted:false });
+    send({ type:'start_voice_capture' });
+    btn.textContent = '🎙';
+    btn.style.color = 'var(--g2)';
+    btn.classList.remove('always-on');
+    setOrbState('listening');
+    toast('🎙 Speak now', 'green');
+    return;
+  }
   muted = !muted;
   send({ type:'set_mute', muted });
   const btn = document.getElementById('micBtn');
@@ -2497,20 +2526,38 @@ function toggleElevenWidgetInPanel() {
   w.style.display = w.style.display === 'none' ? 'block' : 'none';
 }
 
+function showElevenWidgetInPanel() {
+  const w = document.getElementById('elConvWidget');
+  if (!w) return;
+  const unsupportedMessage = getElevenWidgetRequirementMessage();
+  if (unsupportedMessage) {
+    setElWidgetNotice(`${unsupportedMessage} The desktop ConvAI path uses Vision's local audio stack instead.`);
+    w.style.display = 'none';
+    return;
+  }
+  loadElevenLabsWidgetScript();
+  if (!elevenWidgetLoaded) {
+    setElWidgetNotice('Loading the ElevenLabs widget…');
+    return;
+  }
+  setElWidgetNotice('');
+  w.style.display = 'block';
+}
+
 async function startElAgent() {
   updateElAgentStatus('starting', 'Connecting to ConvAI…');
   try {
     const r = await fetch(API_URL + '/api/el-agent/start', { method:'POST' });
     const d = await r.json();
     if (!r.ok || !d.ok) {
-      const message = d.error || d.message || `Failed to start (${r.status})`;
+      const message = formatElAgentMessage(d.error || d.message || `Failed to start (${r.status})`);
       updateElAgentStatus('error', message);
       logElAgent(`✗ ${message}`);
       return;
     }
     updateElAgentStatus(d.status || 'starting', d.message || 'Connecting to ConvAI…');
     logElAgent('▶ Agent start requested');
-  } catch(e) { updateElAgentStatus('error', e.message); }
+  } catch(e) { updateElAgentStatus('error', formatElAgentMessage(e.message)); }
 }
 
 async function stopElAgent() {
@@ -2521,6 +2568,15 @@ async function stopElAgent() {
   } catch(e) { updateElAgentStatus('error', e.message); }
 }
 
+function formatElAgentMessage(message) {
+  const text = String(message || '').trim();
+  const lower = text.toLowerCase();
+  if (lower.includes('invalid api key') || lower.includes('invalid_api_key')) {
+    return 'ElevenLabs agent start failed: the saved ElevenLabs API key is invalid. The browser widget can still load, but backend ConvAI activation will stay unavailable until the key is replaced.';
+  }
+  return text;
+}
+
 function updateElAgentStatus(status, message) {
   elAgentStatus = status;
   const dot = document.getElementById('elAgentDot');
@@ -2529,7 +2585,7 @@ function updateElAgentStatus(status, message) {
   const colors = { inactive:'var(--dim)', starting:'var(--gold)', active:'var(--g2)', idle:'var(--p2)', error:'var(--r)' };
   if (dot) { dot.className = 'el-status-dot ' + status; dot.style.background = colors[status] || 'var(--dim)'; }
   if (lbl) lbl.textContent = status.toUpperCase();
-  if (msg && message) msg.textContent = message;
+  if (msg && message) msg.textContent = formatElAgentMessage(message);
 }
 
 function logElAgent(text) {
@@ -2555,6 +2611,7 @@ function switchRTab(tab) {
 function openRPanelTab(tab) {
   switchRTab(tab);
   document.getElementById('panelRight').classList.add('pinned');
+  if (tab === 'agent') showElevenWidgetInPanel();
   setTimeout(() => document.getElementById('panelRight').classList.remove('pinned'), 4000);
 }
 

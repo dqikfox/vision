@@ -6,8 +6,8 @@
     ]
   },
   "facts": [],
-  "session_count": 131,
-  "last_session": "2026-04-21T00:16:02.830673",
+  "session_count": 135,
+  "last_session": "2026-04-21T03:30:43.968795",
   "task_history": [
     {
       "task": "[REDACTED]",
@@ -132,7 +132,7 @@
   ],
   "context_summary": "",
   "voice": {
-    "continuous_listening": false,
+    "continuous_listening": true,
     "wake_word": false
   }
 }

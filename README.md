@@ -312,6 +312,7 @@ Vision now includes a local RAG indexing and retrieval pipeline wired into the r
 
 ### New API Endpoints
 
+- `GET /api/brain/status` — self-evolving brain counters, success rate, and top learned adaptations
 - `GET /api/rag/status` — index status and metadata
 - `POST /api/rag/index` — build/rebuild SQLite FTS index
 - `POST /api/rag/search` — retrieve grounded chunks

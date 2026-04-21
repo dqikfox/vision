@@ -108,7 +108,6 @@ COMMAND_CENTER_CONFIG_FILE = BASE / "vision_command_center_config.json"
 AUTOMATION_STATE_FILE = BASE / "vision_automation_state.json"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
-SETTINGS_FILE = BASE / "settings.json"
 PORT = 8765
 
 RAG_SOURCE_ROOT = Path(os.environ.get("VISION_RAG_SOURCE", r"F:\rag-v1\data")).expanduser()
@@ -123,8 +122,8 @@ DEFAULT_COMMAND_CENTER_CONFIG: dict[str, Any] = {
         "open_primary_ui": True,
         "open_command_center": False,
         "prefer_app_window": True,
-        "ollama_access_mode": "local",
-        "ollama_host": "127.0.0.1:11434",
+        "ollama_access_mode": "lan",
+        "ollama_host": "0.0.0.0:11434",
         "ollama_origins": "http://localhost:8765,http://127.0.0.1:8765",
         "ollama_models_path": r"F:\models",
     },
@@ -391,8 +390,12 @@ PROVIDERS = {
 
 # ── Mutable state ─────────────────────────────────────────────────────────────
 
-current_provider = "ollama"
-current_model = "gpt-oss:20b"
+DEFAULT_PROVIDER = "ollama"
+DEFAULT_MODEL = "cogito:latest"
+DEFAULT_MODE = "chat"
+
+current_provider = DEFAULT_PROVIDER
+current_model = DEFAULT_MODEL
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -400,30 +403,30 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 clients: set[WebSocket] = set()
 history: list[dict[str, Any]] = []
 _session_histories: dict[WebSocket, list[dict[str, Any]]] = {}
+_session_modes: dict[WebSocket, str] = {}
+_session_providers: dict[WebSocket, str] = {}
+_session_models: dict[WebSocket, str] = {}
 _session_target_var: contextvars.ContextVar[WebSocket | None] = contextvars.ContextVar("session_target", default=None)
 _session_history_var: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
     "session_history", default=None
 )
 _USE_CONTEXT_TARGET = object()
-_VOICE_REQUEST_TARGET = object()
-_session_input_busy: dict[WebSocket, bool] = {}
-_session_input_locks: dict[WebSocket, asyncio.Lock] = {}
-_session_speak_tasks: dict[WebSocket, asyncio.Task[None]] = {}
-_active_request_targets: set[object] = set()
 
 audio_q: asyncio.Queue[Any] | None = None
 muted: bool = False
-mode: str = "operator"
+mode: str = DEFAULT_MODE
 speak_task: asyncio.Task[None] | None = None
 _tts_silence_until: float = 0.0  # ignore VAD input until this timestamp
 _input_busy: bool = False  # True while handle_input is running (gate voice loop)
 wake_word_active: bool = False  # True = wake-word mode; requires trigger phrase
 continuous_listening: bool = False  # False = press-to-talk mode
+manual_voice_capture: bool = False  # True = capture exactly one utterance on demand
 _input_lock: asyncio.Lock = asyncio.Lock()
 _response_lock: asyncio.Lock = asyncio.Lock()
 runtime_state: str = "idle"
 _voice_capture_active: bool = False
 _mic_hold_until: float = 0.0
+_pipeline_timing: dict[str, float] = {}  # stage → perf_counter timestamp
 
 
 @contextlib.contextmanager
@@ -473,104 +476,33 @@ def _resolve_target(target: object | WebSocket | None) -> WebSocket | None:
     return target if isinstance(target, WebSocket) else None
 
 
-def _request_target_key(target: WebSocket | None) -> object:
-    """Return a stable request-lane key for the target."""
-    return target if target is not None else _VOICE_REQUEST_TARGET
-
-
-def _session_input_lock(target: WebSocket | None) -> asyncio.Lock:
-    """Return the input lock for a websocket session, or the global voice lock."""
-    if target is None:
-        return _input_lock
-    return _session_input_locks.setdefault(target, asyncio.Lock())
-
-
-def _session_speak_task(target: WebSocket | None) -> asyncio.Task[None] | None:
-    """Return the active speak task for a target, dropping completed session tasks."""
-    if target is None:
-        return speak_task
-    task = _session_speak_tasks.get(target)
-    if task and task.done():
-        _session_speak_tasks.pop(target, None)
-        return None
-    return task
-
-
-def _set_session_speak_task(target: WebSocket | None, task: asyncio.Task[None] | None) -> None:
-    """Persist the active speak task for a target."""
-    global speak_task
-    if target is None:
-        speak_task = task
-        return
-    if task is None:
-        _session_speak_tasks.pop(target, None)
-    else:
-        _session_speak_tasks[target] = task
-
-
-def _set_request_lane_busy(target: WebSocket | None, busy: bool) -> None:
-    """Track request-lane occupancy per session while keeping a global voice gate."""
-    global _input_busy
-    key = _request_target_key(target)
-    if busy:
-        _active_request_targets.add(key)
-    else:
-        _active_request_targets.discard(key)
+def _active_mode() -> str:
+    target = _session_target_var.get()
     if target is not None:
-        _session_input_busy[target] = busy
-    _input_busy = bool(_active_request_targets)
+        return _session_modes.get(target, DEFAULT_MODE)
+    return mode
 
 
-def _any_input_busy() -> bool:
-    """Return True when any active request should gate microphone capture."""
-    return bool(_active_request_targets)
+def _active_provider() -> str:
+    target = _session_target_var.get()
+    if target is not None:
+        return _session_providers.get(target, DEFAULT_PROVIDER)
+    return current_provider
 
 
-def _any_speak_active() -> bool:
-    """Return True when any session or voice response is still speaking."""
-    if speak_task and not speak_task.done():
-        return True
-    dead_targets = [target for target, task in _session_speak_tasks.items() if task.done()]
-    for target in dead_targets:
-        _session_speak_tasks.pop(target, None)
-    return any(not task.done() for task in _session_speak_tasks.values())
+def _active_model() -> str:
+    target = _session_target_var.get()
+    if target is not None:
+        return _session_models.get(target, DEFAULT_MODEL)
+    return current_model
 
 
-async def _cancel_task(task: asyncio.Task[None] | None) -> None:
-    """Cancel and await a task when it is still running."""
-    if not task or task.done():
-        return
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
-async def _cancel_all_speak_tasks() -> None:
-    """Cancel all active speech tasks across voice and websocket sessions."""
-    await _cancel_task(speak_task)
-    _set_session_speak_task(None, None)
-    for target, task in list(_session_speak_tasks.items()):
-        await _cancel_task(task)
-        _session_speak_tasks.pop(target, None)
-
-
-def _request_lane_busy(target: WebSocket | None = None) -> bool:
-    """Return True only when the relevant request lane is genuinely occupied."""
+def _request_lane_busy() -> bool:
+    """Return True only when a request lane is genuinely occupied."""
     global _input_busy
-    if target is None:
-        if _input_busy and runtime_state in {"idle", "listening", "muted"} and not _any_speak_active():
-            _set_request_lane_busy(None, False)
-        return _any_input_busy() or _input_lock.locked()
-
-    lock = _session_input_locks.get(target)
-    busy = _session_input_busy.get(target, False)
-    task = _session_speak_task(target)
-    if busy and (lock is None or not lock.locked()) and not (task and not task.done()):
-        _set_request_lane_busy(target, False)
-        busy = False
-    return busy or bool(lock and lock.locked())
+    if _input_busy and runtime_state in {"idle", "listening", "muted"} and not (speak_task and not speak_task.done()):
+        _input_busy = False
+    return _input_busy or _input_lock.locked()
 
 
 # ── Voice provider preferences (user-configurable at runtime) ─────────────────
@@ -582,44 +514,6 @@ tts_rate: int = 175  # pyttsx3 words-per-minute
 tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
 _elevenlabs_auth_failed: bool = False
-
-# ── Voice settings persistence ────────────────────────────────────────────────
-
-def _load_settings() -> None:
-    """Load persisted voice/STT/TTS settings from settings.json into globals."""
-    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
-    try:
-        if SETTINGS_FILE.exists():
-            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-            preferred_stt = data.get("preferred_stt", preferred_stt)
-            preferred_tts = data.get("preferred_tts", preferred_tts)
-            tts_rate = int(data.get("tts_rate", tts_rate))
-            tts_voice_idx = int(data.get("tts_voice_idx", tts_voice_idx))
-    except Exception as e:
-        print(f"[settings] Failed to load {SETTINGS_FILE}: {e}")
-
-
-def _save_settings() -> None:
-    """Persist current voice/STT/TTS settings to settings.json."""
-    try:
-        SETTINGS_FILE.write_text(
-            json.dumps(
-                {
-                    "preferred_stt": preferred_stt,
-                    "preferred_tts": preferred_tts,
-                    "tts_rate": tts_rate,
-                    "tts_voice_idx": tts_voice_idx,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-    except Exception as e:
-        print(f"[settings] Failed to save {SETTINGS_FILE}: {e}")
-
-
-# Load persisted settings immediately at import time so all handlers see them
-_load_settings()
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
 AGENT_ID = "agent_7201kmxc5trte9tarb626ed8dgt1"
@@ -637,10 +531,67 @@ def write_log(event: str, detail: str) -> None:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
 
+def _pt_set(stage: str) -> None:
+    """Record a pipeline stage timestamp."""
+    _pipeline_timing[stage] = time.perf_counter()
+
+
+async def _emit_pipeline_timing() -> None:
+    """Compute, log, and broadcast per-stage latencies for the current utterance."""
+    t = _pipeline_timing
+    anchor = t.get("stt_done") or t.get("input_start")
+    if anchor is None:
+        _pipeline_timing.clear()
+        return
+    stages: dict[str, float] = {}
+    if "vad_end" in t and "stt_done" in t:
+        stages["stt_ms"] = round((t["stt_done"] - t["vad_end"]) * 1000, 1)
+    if "llm_first_token" in t:
+        stages["ttft_ms"] = round((t["llm_first_token"] - anchor) * 1000, 1)
+    if "tts_start" in t and "llm_first_token" in t:
+        stages["tts_queue_ms"] = round((t["tts_start"] - t["llm_first_token"]) * 1000, 1)
+    if "tts_start" in t:
+        stages["e2e_ms"] = round((t["tts_start"] - anchor) * 1000, 1)
+    if stages:
+        await broadcast({"type": "pipeline_timing", **stages})
+        write_log("perf", " | ".join(f"{k}={v}" for k, v in sorted(stages.items())))
+    _pipeline_timing.clear()
+
+
 def _is_invalid_elevenlabs_auth(error_text: str) -> bool:
     """Return True when an ElevenLabs error indicates invalid credentials."""
     lowered = error_text.lower()
     return "invalid api key" in lowered or "401" in lowered or "unauthorized" in lowered
+
+
+def _elevenlabs_voice_available() -> bool:
+    api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
+    return bool(api_11 and api_11 not in ("", "none") and not _elevenlabs_auth_failed)
+
+
+def _groq_stt_available() -> bool:
+    groq_key = _load_key("groq", "GROQ_API_KEY")
+    return bool(groq_key and groq_key not in ("", "none"))
+
+
+def _normalize_preferred_stt(choice: str) -> str:
+    normalized = str(choice or "auto").strip().lower()
+    if normalized not in {"auto", "elevenlabs", "groq", "local"}:
+        return "auto"
+    if normalized == "elevenlabs" and not _elevenlabs_voice_available():
+        return "local"
+    if normalized == "groq" and not _groq_stt_available():
+        return "local"
+    return normalized
+
+
+def _normalize_preferred_tts(choice: str) -> str:
+    normalized = str(choice or "auto").strip().lower()
+    if normalized not in {"auto", "elevenlabs", "local"}:
+        return "auto"
+    if normalized == "elevenlabs" and not _elevenlabs_voice_available():
+        return "local"
+    return normalized
 
 
 async def _broadcast_voice_settings_update() -> None:
@@ -887,34 +838,9 @@ def _fact_is_grounded_in_user_text(fact: str, user_text: str) -> bool:
     return len(fact_tokens & user_tokens) >= 2
 
 
-_SAFE_DIRECT_APP_COMMANDS: dict[str, tuple[str, str]] = {
-    "calculator": ("start \"\" calc.exe", "Opened Calculator."),
-    "calc": ("start \"\" calc.exe", "Opened Calculator."),
-    "notepad": ("start \"\" notepad.exe", "Opened Notepad."),
-    "paint": ("start \"\" mspaint.exe", "Opened Paint."),
-    "mspaint": ("start \"\" mspaint.exe", "Opened Paint."),
-    "file explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
-    "explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
-    "task manager": ("start \"\" taskmgr.exe", "Opened Task Manager."),
-    "taskmgr": ("start \"\" taskmgr.exe", "Opened Task Manager."),
-    "settings": ("start \"\" ms-settings:", "Opened Windows Settings."),
-    "control panel": ("start \"\" control.exe", "Opened Control Panel."),
-}
-
-
-def _normalized_safe_app_target(target: str) -> str:
-    cleaned = target.strip().strip("\"'").lower()
-    cleaned = re.sub(r"\b(?:please|app|application|program)\b", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .!?")
-    if cleaned.startswith("the "):
-        cleaned = cleaned[4:]
-    return cleaned
-
-
 def _direct_operator_tool_request(text: str) -> tuple[str, dict[str, Any], str | None] | None:
     """Return a direct tool execution plan for obvious operator commands."""
     lowered = text.strip().lower()
-    command_text = re.sub(r"\s+", " ", lowered).strip(" .!?")
     echo_match = re.fullmatch(r"run the echo command to output the word\s+([a-z0-9_.-]+)", lowered)
     if echo_match:
         token = echo_match.group(1)
@@ -935,66 +861,6 @@ def _direct_operator_tool_request(text: str) -> tuple[str, dict[str, Any], str |
                 {"url": target},
                 f"Opened {target} in the browser.",
             )
-
-    app_match = re.fullmatch(r"(?:open|launch|start)\s+(.+)", command_text)
-    if app_match:
-        app_target = _normalized_safe_app_target(app_match.group(1))
-        if app_target in _SAFE_DIRECT_APP_COMMANDS:
-            command, reply = _SAFE_DIRECT_APP_COMMANDS[app_target]
-            return ("run_command", {"command": command, "timeout": 5}, reply)
-
-    if command_text in {
-        "what time is it",
-        "what is the time",
-        "current time",
-        "tell me the time",
-        "time",
-    }:
-        return ("get_time", {}, None)
-
-    if command_text in {
-        "what date is it",
-        "what is today's date",
-        "whats today's date",
-        "current date",
-        "today's date",
-        "what day is it",
-    }:
-        return ("get_date", {}, None)
-
-    if any(
-        phrase in command_text
-        for phrase in (
-            "system status",
-            "computer status",
-            "status report",
-            "cpu usage",
-            "memory usage",
-            "ram usage",
-            "disk usage",
-            "gpu usage",
-            "system info",
-            "system information",
-        )
-    ):
-        return ("get_system_info", {}, None)
-
-    if re.fullmatch(
-        r"(?:list|show|display)\s+(?:the\s+)?(?:running\s+)?processes|"
-        r"(?:what|which)\s+processes\s+are\s+running",
-        command_text,
-    ):
-        return ("list_processes", {}, None)
-
-    clipboard_match = re.fullmatch(
-        r"(?:copy|put|set)\s+(.+?)\s+(?:to|on|in)\s+(?:the\s+)?clipboard",
-        text.strip(),
-        re.I,
-    )
-    if clipboard_match:
-        value = clipboard_match.group(1).strip().strip("\"'")
-        if value:
-            return ("set_clipboard", {"text": value}, "Copied that text to the clipboard.")
 
     screen_intent = any(
         phrase in lowered
@@ -1046,7 +912,6 @@ def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -
         "denied",
         "not found",
         "error:",
-        "confirmation required",
     )
     if any(marker in lowered for marker in failure_markers):
         return normalized[:240] if normalized else f"{tool_name} failed."
@@ -1060,18 +925,6 @@ def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -
             return "I captured the screen, but OCR did not find readable text."
         preview = lines[0][:180]
         return f"I captured the screen. Visible text starts with: {preview}"
-    if tool_name == "get_time":
-        return f"The current time is {normalized}." if normalized else "I checked the time."
-    if tool_name == "get_date":
-        return f"Today is {normalized}." if normalized else "I checked the date."
-    if tool_name == "get_system_info":
-        preview = "; ".join(line.strip() for line in (result or "").splitlines()[:5] if line.strip())
-        return preview[:240] if preview else "System information is unavailable."
-    if tool_name == "list_processes":
-        lines = [line.strip() for line in (result or "").splitlines() if line.strip()]
-        if not lines:
-            return "No running processes were found."
-        return "Running processes include: " + "; ".join(lines[:5])[:220]
     return success_reply or (normalized[:240] if normalized else f"{tool_name} completed.")
 
 
@@ -1085,7 +938,7 @@ class Memory:
         "user": {"name": None, "preferences": []},
         "facts": [],
         "context_summary": "",
-        "voice": {"continuous_listening": False, "wake_word": False},
+        "voice": {"continuous_listening": True, "wake_word": False},
         "session_count": 0,
         "last_session": None,
         "task_history": [],
@@ -1110,7 +963,7 @@ class Memory:
         data.setdefault("user", {"name": None, "preferences": []})
         data.setdefault("facts", [])
         data.setdefault("context_summary", "")
-        data.setdefault("voice", {"continuous_listening": False, "wake_word": False})
+        data.setdefault("voice", {"continuous_listening": True, "wake_word": False})
         data.setdefault("session_count", 0)
         data.setdefault("last_session", None)
         data.setdefault("task_history", [])
@@ -1127,7 +980,7 @@ class Memory:
             [f for f in (self._clean_text(x, 160) for x in data["facts"]) if self._is_memorable_fact(f)]
         )[-100:]
         data["context_summary"] = self._clean_text(data.get("context_summary", ""), 600)
-        data["voice"]["continuous_listening"] = bool(data["voice"].get("continuous_listening", False))
+        data["voice"]["continuous_listening"] = bool(data["voice"].get("continuous_listening", True))
         data["voice"]["wake_word"] = bool(data["voice"].get("wake_word", False))
 
         cleaned_tasks: list[dict[str, Any]] = []
@@ -1332,7 +1185,7 @@ class Memory:
 
     def set_voice_flags(self, *, continuous: bool | None = None, wake_word: bool | None = None) -> None:
         """Persist voice standby settings across restarts."""
-        voice = self.data.setdefault("voice", {"continuous_listening": False, "wake_word": False})
+        voice = self.data.setdefault("voice", {"continuous_listening": True, "wake_word": False})
         if continuous is not None:
             voice["continuous_listening"] = bool(continuous)
         if wake_word is not None:
@@ -1342,7 +1195,7 @@ class Memory:
 
 memory = Memory()
 wake_word_active = bool(memory.data.get("voice", {}).get("wake_word", False))
-continuous_listening = bool(memory.data.get("voice", {}).get("continuous_listening", False))
+continuous_listening = bool(memory.data.get("voice", {}).get("continuous_listening", True))
 
 # ── Brain: System prompts ─────────────────────────────────────────────────────
 
@@ -1529,7 +1382,19 @@ def _provider_default_model(provider: str) -> str:
     """Return the best default model for a provider."""
     models = PROVIDERS.get(provider, {}).get("models", [])
     if provider == "ollama" and models:
-        preferred_models = ("gpt-oss:20b", "gpt-oss:20b-cloud", "gpt-oss:120b", "gpt-oss:120b-cloud")
+        preferred_models = (
+            "cogito:latest",
+            "llama3.1:8b",
+            "llama3.2:latest",
+            "smollm2:1.7b",
+            "mistral:7b",
+            "qwen2.5-coder:3b",
+            "qwen2.5-coder:1.5b",
+            "gpt-oss:20b",
+            "gpt-oss:20b-cloud",
+            "gpt-oss:120b",
+            "gpt-oss:120b-cloud",
+        )
         for preferred in preferred_models:
             if preferred in models:
                 return preferred
@@ -1827,6 +1692,16 @@ def _build_doctor_report() -> dict[str, Any]:
         add_check("Playwright browser", bool(health.get("browser")), "Playwright browser/session readiness.")
         add_check("OCR", bool(health.get("ocr")), "Tesseract/OCR availability.")
         add_check("GPU telemetry", bool(health.get("gpu")), "GPU monitoring availability.")
+        brain_status = health.get("brain", {}) if isinstance(health.get("brain"), dict) else {}
+        adaptation_rules = int(brain_status.get("adaptation_rules", 0) or 0)
+        add_check(
+            "Self-evolving brain",
+            bool(brain_status.get("llm_wired")),
+            (
+                f"{adaptation_rules} adaptation rules loaded; "
+                f"episode success rate {brain_status.get('episode_success_rate', 0)}."
+            ),
+        )
         provider_keys = health.get("providers", {})
         configured_keys = sum(1 for value in provider_keys.values() if value)
         add_check(
@@ -2411,6 +2286,7 @@ async def api_metrics() -> JSONResponse:
 @app.get("/api/health")
 async def api_health() -> JSONResponse:
     """Return component health status."""
+    loop = asyncio.get_running_loop()
     result: dict[str, Any] = {}
     # Ollama
     try:
@@ -2429,9 +2305,17 @@ async def api_health() -> JSONResponse:
     result["browser"] = _pw_page is not None
     # Optional SDK availability
     result["anthropic_sdk"] = HAS_ANTHROPIC
+    result["brain"] = await loop.run_in_executor(None, brain_ai.status)
     # Cloud providers — report which keys are configured
     result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
     return JSONResponse(result)
+
+
+@app.get("/api/brain/status")
+async def api_brain_status() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, brain_ai.status)
+    return JSONResponse(payload)
 
 
 @app.get("/api/rag/status")
@@ -2674,21 +2558,24 @@ async def api_wake_word(body: dict):
 
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
-    global muted, mode, current_provider, current_model, _ollama_failover_active
+    global muted, mode, speak_task, current_provider, current_model, _ollama_failover_active, _input_busy
     global _elevenlabs_auth_failed
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
-    global wake_word_active, continuous_listening
+    global wake_word_active, continuous_listening, manual_voice_capture, _tts_silence_until
     await websocket.accept()
     clients.add(websocket)
+    _session_modes.setdefault(websocket, DEFAULT_MODE)
+    _session_providers.setdefault(websocket, DEFAULT_PROVIDER)
+    _session_models.setdefault(websocket, DEFAULT_MODEL)
     write_log("ws", "connected")
     # Send current state on connect
     await websocket.send_text(
         json.dumps(
             {
                 "type": "init",
-                "provider": current_provider,
-                "model": current_model,
-                "mode": mode,
+                "provider": _session_providers[websocket],
+                "model": _session_models[websocket],
+                "mode": _session_modes[websocket],
                 "state": runtime_state,
                 "memory": memory.get_all(),
                 "wake_word": wake_word_active,
@@ -2714,36 +2601,37 @@ async def ws_ep(websocket: WebSocket):
             if t == "mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
-                if muted:
-                    await _cancel_all_speak_tasks()
+                if muted and speak_task and not speak_task.done():
+                    speak_task.cancel()
             elif t == "mode":
-                mode = msg.get("mode", "chat")
-                _clear_all_histories()
-                write_log("mode", mode)
+                _session_modes[websocket] = str(msg.get("mode", DEFAULT_MODE) or DEFAULT_MODE)
+                with _session_context(websocket):
+                    _clear_active_history()
+                write_log("mode", _session_modes[websocket])
             elif t == "text":
                 text = msg.get("text", "").strip()
                 if text:
                     write_log("text_in", text[:120])
-                    if _request_lane_busy(websocket):
+                    if _request_lane_busy():
                         await broadcast(
                             {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
                             websocket,
                         )
                     else:
-                        _set_request_lane_busy(websocket, True)
+                        _input_busy = True
                         asyncio.create_task(handle_input(text, websocket))
             elif t == "input":
                 # Alias — UI sends {type:"input", text:...}
                 text = msg.get("text", "").strip()
                 if text:
                     write_log("text_in", text[:120])
-                    if _request_lane_busy(websocket):
+                    if _request_lane_busy():
                         await broadcast(
                             {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
                             websocket,
                         )
                     else:
-                        _set_request_lane_busy(websocket, True)
+                        _input_busy = True
                         asyncio.create_task(handle_input(text, websocket))
             elif t == "execute_tool":
                 # Direct tool execution from Actions tab
@@ -2752,44 +2640,60 @@ async def ws_ep(websocket: WebSocket):
                 if tool_name:
 
                     async def _run_tool(n, a):
+                        global _input_busy
                         with _session_context(websocket):
-                            async with _session_input_lock(websocket):
+                            async with _input_lock:
+                                _input_busy = True
                                 try:
                                     await set_state("thinking")
                                     result = await exec_tool(n, a)
                                     await broadcast_action(n, a, result)
                                     await set_state("idle")
                                 finally:
-                                    _set_request_lane_busy(websocket, False)
+                                    _input_busy = False
 
-                    if _request_lane_busy(websocket):
+                    if _request_lane_busy():
                         await broadcast(
                             {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
                             websocket,
                         )
                     else:
-                        _set_request_lane_busy(websocket, True)
+                        _input_busy = True
                         asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
-                current_provider = msg.get("provider", current_provider)
-                current_model = msg.get("model", current_model)
-                _ollama_failover_active = False
-                _clear_all_histories()
-                write_log("model", f"{current_provider}/{current_model}")
-                await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
+                _session_providers[websocket] = str(msg.get("provider", _session_providers.get(websocket, DEFAULT_PROVIDER)))
+                _session_models[websocket] = str(msg.get("model", _session_models.get(websocket, DEFAULT_MODEL)))
+                with _session_context(websocket):
+                    _clear_active_history()
+                write_log("model", f"{_session_providers[websocket]}/{_session_models[websocket]}")
+                await broadcast(
+                    {"type": "model_changed", "provider": _session_providers[websocket], "model": _session_models[websocket]},
+                    websocket,
+                )
             elif t == "set_mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
-                if muted:
-                    await _cancel_all_speak_tasks()
+                if muted and speak_task and not speak_task.done():
+                    speak_task.cancel()
                 await broadcast({"type": "mute_state", "muted": muted})
                 if muted:
                     if runtime_state != "muted":
                         await set_state("muted")
-                elif not _any_speak_active() and not _any_input_busy():
+                elif not (speak_task and not speak_task.done()) and not _input_busy:
                     target_state = "listening" if (continuous_listening or wake_word_active) else "idle"
                     if runtime_state != target_state:
                         await set_state(target_state)
+            elif t == "start_voice_capture":
+                manual_voice_capture = True
+                _tts_silence_until = 0.0
+                if muted:
+                    muted = False
+                    await broadcast({"type": "mute_state", "muted": muted})
+                write_log("voice_once", "requested")
+                if speak_task and not speak_task.done():
+                    speak_task.cancel()
+                if not _input_busy and runtime_state != "recording":
+                    await set_state("listening")
             elif t == "set_continuous":
                 continuous_listening = bool(msg.get("enabled", False))
                 memory.set_voice_flags(continuous=continuous_listening)
@@ -2798,17 +2702,18 @@ async def ws_ep(websocket: WebSocket):
                 if not muted:
                     if continuous_listening or wake_word_active:
                         if (
-                            not _any_speak_active()
-                            and not _any_input_busy()
+                            not (speak_task and not speak_task.done())
+                            and not _input_busy
                             and runtime_state != "listening"
                         ):
                             await set_state("listening")
                     elif runtime_state != "idle":
                         await set_state("idle")
             elif t == "set_mode":
-                mode = msg.get("mode", "chat")
-                _clear_all_histories()
-                write_log("mode", mode)
+                _session_modes[websocket] = str(msg.get("mode", DEFAULT_MODE) or DEFAULT_MODE)
+                with _session_context(websocket):
+                    _clear_active_history()
+                write_log("mode", _session_modes[websocket])
             elif t == "clear":
                 with _session_context(websocket):
                     _clear_active_history()
@@ -2833,9 +2738,9 @@ async def ws_ep(websocket: WebSocket):
                     json.dumps(
                         {
                             "type": "init",
-                            "provider": current_provider,
-                            "model": current_model,
-                            "mode": mode,
+                            "provider": _session_providers.get(websocket, DEFAULT_PROVIDER),
+                            "model": _session_models.get(websocket, DEFAULT_MODEL),
+                            "mode": _session_modes.get(websocket, DEFAULT_MODE),
                             "state": runtime_state,
                             "memory": memory.get_all(),
                             "wake_word": wake_word_active,
@@ -2875,11 +2780,21 @@ async def ws_ep(websocket: WebSocket):
                     write_log("key", f"Saved key for {provider}")
                     await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
-                preferred_stt = msg.get("preferred_stt", preferred_stt)
-                preferred_tts = msg.get("preferred_tts", preferred_tts)
+                requested_stt = msg.get("preferred_stt", preferred_stt)
+                requested_tts = msg.get("preferred_tts", preferred_tts)
+                preferred_stt = _normalize_preferred_stt(requested_stt)
+                preferred_tts = _normalize_preferred_tts(requested_tts)
                 tts_rate = int(msg.get("tts_rate", tts_rate))
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
+                if preferred_stt != requested_stt or preferred_tts != requested_tts:
+                    await broadcast(
+                        {
+                            "type": "transcript",
+                            "role": "system",
+                            "text": "⚠️ Requested cloud voice provider is unavailable. Switched voice processing to local.",
+                        }
+                    )
                 await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
                 asyncio.create_task(_start_el_agent())
@@ -2900,8 +2815,8 @@ async def ws_ep(websocket: WebSocket):
                     )
                     if (
                         not muted
-                        and not _any_speak_active()
-                        and not _any_input_busy()
+                        and not (speak_task and not speak_task.done())
+                        and not _input_busy
                         and runtime_state != "listening"
                     ):
                         await set_state("listening")
@@ -2918,8 +2833,8 @@ async def ws_ep(websocket: WebSocket):
                         target_state = "listening" if continuous_listening else "idle"
                         if (
                             runtime_state != target_state
-                            and not _any_speak_active()
-                            and not _any_input_busy()
+                            and not (speak_task and not speak_task.done())
+                            and not _input_busy
                         ):
                             await set_state(target_state)
     except WebSocketDisconnect:
@@ -2927,10 +2842,9 @@ async def ws_ep(websocket: WebSocket):
     finally:
         clients.discard(websocket)
         _session_histories.pop(websocket, None)
-        _session_input_busy.pop(websocket, None)
-        _session_input_locks.pop(websocket, None)
-        _set_request_lane_busy(websocket, False)
-        _session_speak_tasks.pop(websocket, None)
+        _session_modes.pop(websocket, None)
+        _session_providers.pop(websocket, None)
+        _session_models.pop(websocket, None)
 
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
@@ -2948,6 +2862,9 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     for ws in dead:
         clients.discard(ws)
         _session_histories.pop(ws, None)
+        _session_modes.pop(ws, None)
+        _session_providers.pop(ws, None)
+        _session_models.pop(ws, None)
 
 
 async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
@@ -2955,7 +2872,7 @@ async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TAR
     global runtime_state
     runtime_state = s
     write_log("state", s)
-    await broadcast({"type": "state", "state": s, "provider": current_provider, "model": current_model}, target)
+    await broadcast({"type": "state", "state": s, "provider": _active_provider(), "model": _active_model()}, target)
 
 
 async def add_transcript(role: str, text: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
@@ -3136,12 +3053,20 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 
         if preferred_stt == "elevenlabs":
             result = await _try_elevenlabs()
-            cascade = ["elevenlabs"]
-            used_provider = "elevenlabs"
+            cascade = ["elevenlabs" if result is not None else "elevenlabs✗"]
+            used_provider = "elevenlabs" if result else ""
+            if result is None:
+                result = await _try_local()
+                cascade.append("local" if result is not None else "local✗")
+                used_provider = "local" if result else used_provider
         elif preferred_stt == "groq":
             result = await _try_groq()
-            cascade = ["groq"]
-            used_provider = "groq"
+            cascade = ["groq" if result is not None else "groq✗"]
+            used_provider = "groq" if result else ""
+            if result is None:
+                result = await _try_local()
+                cascade.append("local" if result is not None else "local✗")
+                used_provider = "local" if result else used_provider
         elif preferred_stt == "local":
             result = await _try_local()
             cascade = ["local"]
@@ -4314,112 +4239,6 @@ def _tool_err(action: str, e: Exception) -> str:
     return f"{action} error: {e}"
 
 
-_CONFIRMATION_TIMEOUT_SECS = 180.0
-_pending_tool_confirmation: dict[str, Any] | None = None
-
-_CONFIRMATION_YES = {
-    "yes",
-    "y",
-    "yeah",
-    "yep",
-    "confirm",
-    "confirmed",
-    "proceed",
-    "go ahead",
-    "do it",
-    "run it",
-}
-_CONFIRMATION_NO = {"no", "n", "cancel", "abort", "stop", "never mind", "nevermind"}
-
-
-def _confirmation_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text.strip().lower()).strip(" .!?")
-
-
-def _is_confirmation_yes(text: str) -> bool:
-    return _confirmation_text(text) in _CONFIRMATION_YES
-
-
-def _is_confirmation_no(text: str) -> bool:
-    return _confirmation_text(text) in _CONFIRMATION_NO
-
-
-def _format_tool_args_for_confirmation(name: str, args: dict[str, Any]) -> str:
-    if name == "run_command":
-        command = str(args.get("command", "")).strip()
-        return f"run shell command `{command[:180]}`"
-    if name == "execute_python":
-        code = str(args.get("code", "")).strip().replace("\n", " ")
-        return f"execute Python code `{code[:180]}`"
-    if name == "delete_file":
-        return f"delete `{args.get('path', '')}`"
-    if name == "kill_process":
-        target = args.get("pid") or args.get("name") or "(unspecified process)"
-        return f"terminate process `{target}`"
-    if name == "move_file":
-        return f"move `{args.get('src', '')}` to `{args.get('dst', '')}`"
-    if name == "write_file":
-        return f"overwrite `{args.get('path', '')}`"
-    if name == "copy_file":
-        return f"overwrite `{args.get('dst', '')}`"
-    if name == "download_file":
-        return f"overwrite download destination `{args.get('path', '')}`"
-    return f"run `{name}`"
-
-
-def _is_safe_run_command(command: str) -> bool:
-    normalized = re.sub(r"\s+", " ", command.strip()).lower()
-    safe_commands = {re.sub(r"\s+", " ", cmd.strip()).lower() for cmd, _ in _SAFE_DIRECT_APP_COMMANDS.values()}
-    if normalized in safe_commands:
-        return True
-    return bool(re.fullmatch(r"echo\s+[a-z0-9_.-]+", normalized))
-
-
-def _tool_confirmation_reason(name: str, args: dict[str, Any]) -> str | None:
-    if name == "run_command":
-        command = str(args.get("command", ""))
-        return None if _is_safe_run_command(command) else _format_tool_args_for_confirmation(name, args)
-    if name in {"execute_python", "delete_file", "kill_process", "move_file"}:
-        return _format_tool_args_for_confirmation(name, args)
-    if name == "write_file":
-        target = str(args.get("path", ""))
-        if target and Path(target).exists():
-            return _format_tool_args_for_confirmation(name, args)
-    if name in {"copy_file", "download_file"}:
-        dest = str(args.get("dst") or args.get("path") or "")
-        if dest and Path(dest).exists():
-            return _format_tool_args_for_confirmation(name, args)
-    return None
-
-
-def _set_pending_tool_confirmation(name: str, args: dict[str, Any], summary: str) -> str:
-    global _pending_tool_confirmation
-    if _pending_tool_confirmation and not _pending_tool_confirmation_expired():
-        existing = str(_pending_tool_confirmation.get("summary", "run a pending action"))
-        return f"Confirmation already pending to {existing}. Reply `yes` to proceed or `cancel` to abort."
-    _pending_tool_confirmation = {
-        "name": name,
-        "args": dict(args),
-        "summary": summary,
-        "created_at": time.monotonic(),
-    }
-    return f"Confirmation required to {summary}. Reply `yes` to proceed or `cancel` to abort."
-
-
-def _pop_pending_tool_confirmation() -> dict[str, Any] | None:
-    global _pending_tool_confirmation
-    pending = _pending_tool_confirmation
-    _pending_tool_confirmation = None
-    return pending
-
-
-def _pending_tool_confirmation_expired() -> bool:
-    if not _pending_tool_confirmation:
-        return False
-    age = time.monotonic() - float(_pending_tool_confirmation.get("created_at", 0.0))
-    return age > _CONFIRMATION_TIMEOUT_SECS
-
-
 # Tools that are safe to automatically retry on transient failure
 _RETRYABLE_TOOLS = {
     "read_screen",
@@ -4441,24 +4260,17 @@ _RETRYABLE_TOOLS = {
 }
 
 
-async def exec_tool(name: str, args: dict, *, confirmed: bool = False) -> str:
+async def exec_tool(name: str, args: dict) -> str:
     """
     Execute a tool with automatic timing and exponential backoff retry on transient failure.
 
     Args:
         name: The unique identifier of the tool to execute.
         args: A dictionary of arguments for the tool.
-        confirmed: True only when executing a user-approved pending action.
 
     Returns:
         The result of the tool execution as a string, or a formatted error message.
     """
-    args = dict(args or {})
-    if not confirmed:
-        confirmation_reason = _tool_confirmation_reason(name, args)
-        if confirmation_reason:
-            return _set_pending_tool_confirmation(name, args, confirmation_reason)
-
     t0 = time.monotonic()
     last_err: Exception | None = None
     max_attempts = 3 if name in _RETRYABLE_TOOLS else 1
@@ -6921,12 +6733,12 @@ async def speak(text_gen):
 
         try:
             await _wait_for_quiet_input()
-            await set_state("speaking")
 
             # Wrap text_gen: broadcast each token to UI as it arrives so the
             # console shows streaming text in real-time (not just after TTS finishes)
             stream_started = False
             finalized_text = False
+            _tts_first = True  # guard for tts_start timing
 
             async def _finalize_text() -> None:
                 nonlocal finalized_text
@@ -6942,9 +6754,12 @@ async def speak(text_gen):
                 async for chunk in text_gen:
                     collected.append(chunk)
                     if chunk.strip():
+                        if runtime_state != "speaking":
+                            await set_state("speaking")
                         if not stream_started:
                             await broadcast({"type": "stream_start"})
                             stream_started = True
+                            _pt_set("llm_first_token")
                         await broadcast({"type": "token", "text": chunk})
                     yield chunk
 
@@ -6975,12 +6790,15 @@ async def speak(text_gen):
 
                 async def _speak_sentences():
                     """Consume sentence_q and speak each in sequence."""
-                    nonlocal playback_duration
+                    nonlocal playback_duration, _tts_first
                     while True:
                         sentence = await sentence_q.get()
                         if sentence is None:
                             break
                         await _wait_for_quiet_input()
+                        if _tts_first:
+                            _tts_first = False
+                            _pt_set("tts_start")
                         sentence_start = time.monotonic()
                         await _fallback_tts(sentence)
                         playback_duration += time.monotonic() - sentence_start
@@ -7084,6 +6902,7 @@ async def speak(text_gen):
                                             chunk_now = time.monotonic()
                                             if audio_started_at is None:
                                                 audio_started_at = chunk_now
+                                                _pt_set("tts_start")
                                             audio_finished_at = chunk_now
                                         if msg.get("isFinal"):
                                             break
@@ -7164,6 +6983,7 @@ async def speak(text_gen):
             return
 
         await _finalize_text()
+        await _emit_pipeline_timing()
 
         speak.last_duration = playback_duration
 
@@ -7172,58 +6992,51 @@ async def speak(text_gen):
 
 
 async def handle_input(text: str, target: WebSocket | None = None) -> None:
-    input_lock = _session_input_lock(target)
+    global speak_task, _input_busy, current_provider, current_model, mode
     duration = 0.0
     with _session_context(target):
-        _set_request_lane_busy(target, True)  # gate voice loop BEFORE any await
+        session_provider = _active_provider()
+        session_model = _active_model()
+        session_mode = _active_mode()
+        previous_provider = current_provider
+        previous_model = current_model
+        previous_mode = mode
+        _input_busy = True  # gate voice loop BEFORE any await
+        _pipeline_timing.clear()
+        _pt_set("input_start")
         try:
-            async with input_lock:
+            async with _input_lock:
+                current_provider = session_provider
+                current_model = session_model
+                mode = session_mode
                 # NOTE: don't call add_transcript("user") here — the UI already shows
                 # the user message locally via addMessage() when the user hits Enter.
                 # Voice input path calls add_transcript("user") directly in voice_loop.
-                await _cancel_task(_session_speak_task(target))
-
-                pending_expired = _pending_tool_confirmation_expired()
-                if pending_expired:
-                    _pop_pending_tool_confirmation()
-
-                if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
-                    await set_state("thinking")
-                    gen = _single_text_stream("The pending action expired. Please request it again if you still want it.")
-                elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
-                    await set_state("thinking")
-                    if _is_confirmation_no(text):
-                        _pop_pending_tool_confirmation()
-                        gen = _single_text_stream("Cancelled the pending action.")
-                    else:
-                        pending = _pop_pending_tool_confirmation()
-                        tool_name = str(pending.get("name", "")) if pending else ""
-                        tool_args = dict(pending.get("args", {})) if pending else {}
-                        if tool_name:
-                            result = await exec_tool(tool_name, tool_args, confirmed=True)
-                            await broadcast_action(tool_name, tool_args, result)
-                            gen = _single_text_stream(_direct_tool_reply(tool_name, result, None))
-                        else:
-                            gen = _single_text_stream("There was no pending action to confirm.")
+                memory.add_task(text)
+                await set_state("thinking")
+                if speak_task and not speak_task.done():
+                    speak_task.cancel()
+                    try:
+                        await speak_task
+                    except asyncio.CancelledError:
+                        pass
+                direct_tool = _direct_operator_tool_request(text) if session_mode == "operator" else None
+                if direct_tool:
+                    tool_name, tool_args, success_reply = direct_tool
+                    result = await exec_tool(tool_name, tool_args)
+                    await broadcast_action(tool_name, tool_args, result)
+                    gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
                 else:
-                    memory.add_task(text)
-                    await set_state("thinking")
-                    direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
-                    if direct_tool:
-                        tool_name, tool_args, success_reply = direct_tool
-                        result = await exec_tool(tool_name, tool_args)
-                        await broadcast_action(tool_name, tool_args, result)
-                        gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
-                    else:
-                        gen = llm_stream(text)
-                current_speak_task = asyncio.create_task(speak(gen))
-                _set_session_speak_task(target, current_speak_task)
-                await current_speak_task
+                    gen = llm_stream(text)
+                speak_task = asyncio.create_task(speak(gen))
+                await speak_task
                 duration = getattr(speak, "last_duration", 0.0)
+            await _drain(duration)
         finally:
-            _set_session_speak_task(target, None)
-            _set_request_lane_busy(target, False)  # always release even if an error occurs
-        await _drain(duration)
+            current_provider = previous_provider
+            current_model = previous_model
+            mode = previous_mode
+            _input_busy = False  # always release even if an error occurs
 
 
 async def _drain(tts_duration_secs: float = 0.0) -> None:
@@ -7247,7 +7060,7 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
 
 
 async def voice_loop() -> None:
-    global audio_q, speak_task, _tts_silence_until
+    global audio_q, speak_task, _input_busy, _tts_silence_until, manual_voice_capture
     global _voice_capture_active, _mic_hold_until
     audio_q = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -7260,8 +7073,6 @@ async def voice_loop() -> None:
     with sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=FRAME, callback=cb):
         start_state = "listening" if (continuous_listening or wake_word_active) else "idle"
         await set_state(start_state)
-        if start_state == "listening":
-            winsound.Beep(880, 120)
         print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:5691")
         while True:
             try:
@@ -7273,9 +7084,9 @@ async def voice_loop() -> None:
                     _mic_hold_until = now + 0.25
                 if muted:
                     continue
-                if _any_input_busy():  # text input is being processed — skip VAD entirely
+                if _input_busy:  # text input is being processed — skip VAD entirely
                     continue
-                if not continuous_listening and not wake_word_active:
+                if not continuous_listening and not wake_word_active and not manual_voice_capture:
                     vad.reset()
                     _voice_capture_active = False
                     if runtime_state != "idle":
@@ -7301,32 +7112,42 @@ async def voice_loop() -> None:
                 ev, data = vad.feed(frame)
                 if ev == "start":
                     _voice_capture_active = True
-                    winsound.Beep(400, 80)
                     await set_state("recording")
                     await broadcast({"type": "partial_transcript", "text": "🎙 Listening…"})
                 elif ev == "end":
                     _voice_capture_active = False
-                    winsound.Beep(700, 80)
+                    _pipeline_timing.clear()
+                    _pt_set("vad_end")
                     await set_state("thinking")
                     await broadcast({"type": "partial_transcript", "text": ""})
                     if len(data) < MIN_UTTERANCE_FRAMES:
+                        if manual_voice_capture:
+                            manual_voice_capture = False
+                            await set_state("idle")
+                            vad.reset()
+                            continue
                         _tts_silence_until = asyncio.get_running_loop().time() + 0.5
                         await set_state("listening")
                         vad.reset()
                         continue
                     try:
                         text = await transcribe(data)
+                        _pt_set("stt_done")
                     except Exception as e:
                         print(f"[stt] transcribe error: {e} - live_chat_app.py:5746")
                         _voice_capture_active = False
+                        if manual_voice_capture:
+                            manual_voice_capture = False
                         await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
                         vad.reset()
                         continue
                     if not text or len(text) < 3:
                         _voice_capture_active = False
+                        if manual_voice_capture:
+                            manual_voice_capture = False
                         _tts_silence_until = asyncio.get_running_loop().time() + 0.75
-                        await set_state("listening")
+                        await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         vad.reset()
                         continue
                     print(f"[operator] 🎙 {text} - live_chat_app.py:5758")
@@ -7339,7 +7160,6 @@ async def voice_loop() -> None:
                             for p in WAKE_PHRASES:
                                 txt_lo = txt_lo.replace(p, "").strip()
                             text = txt_lo or ""
-                            winsound.Beep(1000, 80)
                             await broadcast({"type": "transcript", "role": "system", "text": "🔓 Wake word detected"})
                             if not text:
                                 # Just a bare wake phrase — acknowledge and wait
@@ -7347,13 +7167,13 @@ async def voice_loop() -> None:
                                     yield "Yes? "
 
                                 async with _input_lock:
-                                    _set_request_lane_busy(None, True)
+                                    _input_busy = True
                                     try:
                                         await set_state("speaking")
                                         speak_task = asyncio.create_task(speak(_yes_once()))
                                         await speak_task
                                     finally:
-                                        _set_request_lane_busy(None, False)
+                                        _input_busy = False
                                 vad.reset()
                                 continue
                         else:
@@ -7364,7 +7184,7 @@ async def voice_loop() -> None:
                             continue
                     # ── Normal processing ────────────────────────────────────
                     async with _input_lock:
-                        _set_request_lane_busy(None, True)  # gate: don't let typed input race with voice
+                        _input_busy = True  # gate: don't let typed input race with voice
                         try:
                             await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
                             await add_transcript("user", text)
@@ -7373,9 +7193,11 @@ async def voice_loop() -> None:
                             speak_task = asyncio.create_task(speak(gen))
                             await speak_task
                             duration = getattr(speak, "last_duration", 0.0)
+                            if manual_voice_capture:
+                                manual_voice_capture = False
                             await _drain(duration)
                         finally:
-                            _set_request_lane_busy(None, False)
+                            _input_busy = False
                     vad.reset()
             except asyncio.CancelledError:
                 raise
@@ -7568,15 +7390,10 @@ async def _stop_el_agent() -> None:
 
 @app.on_event("startup")
 async def startup():
-    global _main_loop, _input_lock, _response_lock, current_provider, current_model, _ollama_failover_active, _input_busy
+    global _main_loop, _input_lock, _response_lock, current_provider, current_model, _ollama_failover_active
     _main_loop = asyncio.get_running_loop()
     _input_lock = asyncio.Lock()
     _response_lock = asyncio.Lock()
-    _session_input_locks.clear()
-    _session_input_busy.clear()
-    _session_speak_tasks.clear()
-    _active_request_targets.clear()
-    _input_busy = False
     if not API_11:
         print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:5985")
     ollama_models = await fetch_ollama_models()
