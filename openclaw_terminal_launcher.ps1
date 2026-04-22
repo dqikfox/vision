@@ -21,9 +21,34 @@ $UserHome = [Environment]::GetFolderPath("UserProfile")
 $OpenClawHome = Join-Path $UserHome ".openclaw"
 $OpenClawConfigPath = Join-Path $OpenClawHome "openclaw.json"
 $OllamaBaseUrl = "http://127.0.0.1:11434"
-$OllamaHost = "127.0.0.1:11434"
+$OllamaHost = "0.0.0.0:11434"   # bind all interfaces so Tailscale clients can reach Ollama
 $GatewayPort = 18789
-$GatewayWsUrl = "ws://127.0.0.1:$GatewayPort"
+$GatewayWsUrl = "ws://100.83.120.56:$GatewayPort"
+
+# Ensure OPENCLAW_ALLOW_INSECURE_PRIVATE_WS is set for tailnet-bound gateway (ws:// over Tailscale VPN).
+# Set in both current session and user persistent env so the service/task inherits it on reboot.
+$env:OPENCLAW_ALLOW_INSECURE_PRIVATE_WS = "1"
+if ([Environment]::GetEnvironmentVariable("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "User") -ne "1") {
+    [Environment]::SetEnvironmentVariable("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "1", "User")
+}
+
+# If OLLAMA_MODELS points to an unavailable drive (e.g. external SSD), create a subst so
+# Ollama can start. Ollama reads OLLAMA_MODELS from the Windows machine registry directly —
+# setting $env:OLLAMA_MODELS has no effect — so subst is the reliable workaround.
+$sysMods = [Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "Machine")
+if ($sysMods) {
+    $modsQualifier = Split-Path $sysMods -Qualifier   # e.g. "F:"
+    if ($modsQualifier -and -not (Test-Path $modsQualifier)) {
+        $substTarget = Join-Path $UserHome ".ollama"
+        Write-Host "  [WARN] OLLAMA_MODELS drive $modsQualifier unavailable. Creating subst $modsQualifier -> $substTarget" -ForegroundColor Yellow
+        & subst $modsQualifier $substTarget 2>$null | Out-Null
+        if (Test-Path $modsQualifier) {
+            Write-Host "  [OK]   subst $modsQualifier created for this session" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  [ERR]  subst $modsQualifier failed — Ollama may not start" -ForegroundColor Red
+        }
+    }
+}
 
 function ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
@@ -32,7 +57,7 @@ function hdr($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
 function dot($msg) { Write-Host "  [..] $msg" -ForegroundColor DarkGray }
 
 function Test-ListeningPort([int]$Port) {
-    return [bool](netstat -ano | Select-String -Pattern "LISTENING\s*$" | Select-String -Pattern ":$Port\b")
+    return [bool](netstat -ano | Select-String -Pattern ":$Port\b.*LISTENING")
 }
 
 function Wait-ForPort([int]$Port, [int]$TimeoutSeconds) {
@@ -95,12 +120,29 @@ function Invoke-OpenClawDoctorFix([string]$CliPath, [int]$TimeoutSeconds = 20) {
     $stderrPath = Join-Path $env:TEMP "openclaw-doctor-stderr.txt"
     Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
 
-    $process = Start-Process -FilePath $CliPath `
-        -ArgumentList @("doctor", "--fix") `
-        -RedirectStandardOutput $stdoutPath `
-        -RedirectStandardError $stderrPath `
-        -WindowStyle Hidden `
-        -PassThru
+    # If the CLI resolved to a .ps1 script (npm-installed shim on Windows),
+    # we must host it via powershell.exe rather than Start-Process -FilePath directly.
+    $isPsScript = $CliPath -match '\.ps1$'
+    if ($isPsScript) {
+        $startArgs = @{
+            FilePath               = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source ?? "powershell.exe"
+            ArgumentList           = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $CliPath, "doctor", "--fix")
+            RedirectStandardOutput = $stdoutPath
+            RedirectStandardError  = $stderrPath
+            WindowStyle            = "Hidden"
+            PassThru               = $true
+        }
+    } else {
+        $startArgs = @{
+            FilePath               = $CliPath
+            ArgumentList           = @("doctor", "--fix")
+            RedirectStandardOutput = $stdoutPath
+            RedirectStandardError  = $stderrPath
+            WindowStyle            = "Hidden"
+            PassThru               = $true
+        }
+    }
+    $process = Start-Process @startArgs
 
     $completed = $true
     try {
@@ -160,7 +202,7 @@ function Ensure-OpenClawConfig([string]$ConfigPath, [string]$PrimaryModel) {
         $config.gateway.mode = "local"
         $changed = $true
     }
-    if ("$($config.gateway.bind)" -notin @("loopback", "custom")) {
+    if ("$($config.gateway.bind)" -notin @("loopback", "custom", "tailnet", "lan", "auto")) {
         $config.gateway.bind = "loopback"
         $changed = $true
     }
@@ -237,15 +279,36 @@ $null = Ensure-OpenClawConfig -ConfigPath $OpenClawConfigPath -PrimaryModel $pri
 Invoke-OpenClawDoctorFix -CliPath $OpenClawExe
 
 hdr "STEP 3 - Ollama"
+# Detect if Ollama is running but bound to loopback only (prevents Tailscale access)
+$ollamaLoopbackOnly = $false
 if (Wait-ForHttp -Url "$OllamaBaseUrl/api/tags" -TimeoutSeconds 2) {
-    ok "Ollama is already responding at $OllamaBaseUrl"
-    $ollamaReady = $true
-} elseif ($ValidateOnly) {
-    warn "ValidateOnly: Ollama is not running"
-} else {
+    $ollamaBinds = netstat -ano | Select-String ":11434.*LISTEN"
+    $isAllInterfaces = $ollamaBinds | Select-String "0\.0\.0\.0:11434"
+    if ($isAllInterfaces) {
+        ok "Ollama is already responding and bound to all interfaces"
+        $ollamaReady = $true
+    } else {
+        warn "Ollama is responding but bound to loopback only — restarting with $OllamaHost"
+        $ollamaLoopbackOnly = $true
+        # Kill existing loopback-bound Ollama
+        $ollamaPid = ($ollamaBinds | Select-Object -First 1) -replace '.*LISTENING\s+(\d+).*', '$1'
+        if ($ollamaPid -match '^\d+$') {
+            Stop-Process -Id ([int]$ollamaPid) -Force -ErrorAction SilentlyContinue
+            Start-Sleep 2
+        }
+    }
+}
+
+if (-not $ollamaReady -and -not $ValidateOnly) {
     dot "Starting Ollama in its own PowerShell window..."
+    # Repeat the subst in the spawned window so Ollama can access its model path
+    $substLine = if ($sysMods -and (Split-Path $sysMods -Qualifier)) {
+        $q = Split-Path $sysMods -Qualifier
+        "subst $q `"$UserHome\.ollama`" 2>`$null | Out-Null; Start-Sleep 1"
+    } else { "" }
     Start-ManagedConsole -Title "OpenClaw Launcher - Ollama" -WindowStyle "Minimized" -CommandText @"
 `$env:OLLAMA_HOST = '$OllamaHost'
+$substLine
 ollama serve
 "@
     if (Wait-ForHttp -Url "$OllamaBaseUrl/api/tags" -TimeoutSeconds 25) {
@@ -254,6 +317,8 @@ ollama serve
     } else {
         err "Ollama did not come online at $OllamaBaseUrl"
     }
+} elseif ($ValidateOnly -and -not $ollamaReady) {
+    warn "ValidateOnly: Ollama is not running"
 }
 
 try {
@@ -270,17 +335,34 @@ try {
 }
 
 hdr "STEP 4 - OpenClaw Gateway"
-if (Wait-ForPort -Port $GatewayPort -TimeoutSeconds 2) {
-    ok "OpenClaw gateway is already listening on port $GatewayPort"
-    $gatewayReady = $true
-} elseif ($ValidateOnly) {
-    warn "ValidateOnly: gateway is not running"
+# Always kill any existing gateway so the fresh config (e.g. updated Ollama baseUrl, bind mode)
+# is loaded. The gateway does NOT hot-reload config changes — stale processes use old settings.
+$gwNetstatLine = (netstat -ano | Select-String ":$GatewayPort.*LISTEN" | Select-Object -First 1).Line
+$gwPid = $null
+if ($gwNetstatLine -and $gwNetstatLine -match '\s(\d+)\s*$') {
+    $gwPid = [int]$Matches[1]
+}
+if ($gwPid) {
+    dot "Stopping existing gateway (PID $gwPid) to apply latest config..."
+    taskkill /PID $gwPid /F 2>$null | Out-Null
+    schtasks /End /TN "OpenClaw Gateway" 2>$null | Out-Null
+    Start-Sleep -Seconds 2
+}
+# Clear stale lock files so openclaw gateway run doesn't refuse to start
+Get-ChildItem "$env:TEMP\openclaw" -Filter "gateway*.lock" -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+
+if ($ValidateOnly) {
+    warn "ValidateOnly: gateway not started"
 } else {
-    dot "Starting OpenClaw gateway in its own PowerShell window..."
-    Start-ManagedConsole -Title "OpenClaw Launcher - Gateway" -WindowStyle "Minimized" -CommandText @"
-openclaw gateway run
-"@
-    if (Wait-ForPort -Port $GatewayPort -TimeoutSeconds 25) {
+    dot "Starting OpenClaw gateway (node.exe direct — bypasses lock conflicts)..."
+    $nodeExePath = (Get-Command node.exe -ErrorAction SilentlyContinue).Source ?? "node.exe"
+    $ocModulePath = "$env:APPDATA\npm\node_modules\openclaw\dist\index.js"
+    # OPENCLAW_ALLOW_INSECURE_PRIVATE_WS is already set in $env: above; child processes inherit it.
+    Start-Process -FilePath $nodeExePath `
+        -ArgumentList "`"$ocModulePath`"", "gateway", "run" `
+        -WindowStyle Hidden | Out-Null
+    if (Wait-ForPort -Port $GatewayPort -TimeoutSeconds 60) {
         ok "OpenClaw gateway started successfully"
         $gatewayReady = $true
     } else {
