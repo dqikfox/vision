@@ -19,6 +19,7 @@ import json
 import os
 import queue
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -109,6 +110,16 @@ AUTOMATION_STATE_FILE = BASE / "vision_automation_state.json"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
 PORT = 8765
+VISION_HOST = os.environ.get("VISION_HOST", "127.0.0.1").strip() or "127.0.0.1"
+VISION_ALLOWED_ORIGINS = tuple(
+    origin.strip()
+    for origin in os.environ.get(
+        "VISION_ALLOWED_ORIGINS",
+        "http://localhost:8765,http://127.0.0.1:8765",
+    ).split(",")
+    if origin.strip()
+)
+VISION_TOOL_TOKEN = os.environ.get("VISION_TOOL_TOKEN", "").strip()
 
 RAG_SOURCE_ROOT = Path(os.environ.get("VISION_RAG_SOURCE", r"F:\rag-v1\data")).expanduser()
 _rag_manager = VisionRAGManager(base_dir=BASE, source_root=RAG_SOURCE_ROOT)
@@ -398,7 +409,12 @@ current_provider = DEFAULT_PROVIDER
 current_model = DEFAULT_MODEL
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(VISION_ALLOWED_ORIGINS),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 clients: set[WebSocket] = set()
 history: list[dict[str, Any]] = []
@@ -411,6 +427,49 @@ _session_history_var: contextvars.ContextVar[list[dict[str, Any]] | None] = cont
     "session_history", default=None
 )
 _USE_CONTEXT_TARGET = object()
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    normalized = (host or "").strip().strip("[]").casefold()
+    return normalized == "localhost" or normalized == "::1" or normalized.startswith("127.")
+
+
+def _bearer_or_header_token(headers: Any, query_params: Any | None = None) -> str:
+    header_token = str(headers.get("x-vision-token", "") or "").strip()
+    if header_token:
+        return header_token
+    auth = str(headers.get("authorization", "") or "").strip()
+    if auth.casefold().startswith("bearer "):
+        return auth[7:].strip()
+    if query_params is not None:
+        return str(query_params.get("token", "") or "").strip()
+    return ""
+
+
+def _has_tool_access(client_host: str | None, origin: str | None, token: str) -> bool:
+    if VISION_TOOL_TOKEN:
+        if not secrets.compare_digest(token, VISION_TOOL_TOKEN):
+            return False
+        return not origin or origin in VISION_ALLOWED_ORIGINS
+    return _is_loopback_host(client_host)
+
+
+def _request_has_tool_access(request: Request) -> bool:
+    client_host = request.client.host if request.client else ""
+    return _has_tool_access(
+        client_host,
+        request.headers.get("origin"),
+        _bearer_or_header_token(request.headers),
+    )
+
+
+def _websocket_has_tool_access(websocket: WebSocket) -> bool:
+    client_host = websocket.client.host if websocket.client else ""
+    return _has_tool_access(
+        client_host,
+        websocket.headers.get("origin"),
+        _bearer_or_header_token(websocket.headers, websocket.query_params),
+    )
 
 audio_q: asyncio.Queue[Any] | None = None
 muted: bool = False
@@ -2385,6 +2444,8 @@ async def screenshot_ep():
 
 @app.post("/api/tool/execute")
 async def tool_execute(request: Request):
+    if not _request_has_tool_access(request):
+        return JSONResponse({"error": "Tool execution is restricted to trusted local clients."}, status_code=403)
     data = await request.json()
     name = data.get("name", "")
     params = data.get("parameters", {})
@@ -2562,6 +2623,9 @@ async def ws_ep(websocket: WebSocket):
     global _elevenlabs_auth_failed
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
     global wake_word_active, continuous_listening, manual_voice_capture, _tts_silence_until
+    if not _websocket_has_tool_access(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     clients.add(websocket)
     _session_modes.setdefault(websocket, DEFAULT_MODE)
@@ -7480,4 +7544,4 @@ async def _prewarm_playwright():
 
 
 if __name__ == "__main__":
-    uvicorn.run("live_chat_app:app", host="0.0.0.0", port=PORT, log_level="warning")
+    uvicorn.run("live_chat_app:app", host=VISION_HOST, port=PORT, log_level="warning")

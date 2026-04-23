@@ -13,6 +13,8 @@ dist/
 build/
 .venv/
 venv/
+.coverage
+htmlcov/
 
 # Logs & runtime
 *.log
@@ -20,6 +22,8 @@ venv/
 overlay_err.txt
 startup_err.txt
 startup_out.txt
+memory.json
+.brain/
 
 # Screenshots & captures
 *.png
@@ -34,6 +38,7 @@ Thumbs.db
 .vscode/settings.json
 *.lock
 .archon/artifacts/
+**/node_modules/
 
 # Playwright persistent browser profile
 .pw_profile/

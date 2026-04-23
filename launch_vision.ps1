@@ -263,10 +263,11 @@ if (netstat -ano | Select-String ":8765.*LISTENING") {
         exit 1
     }
     dot "Starting VISION server..."
+    $visionHost = if ($env:VISION_HOST -and "$env:VISION_HOST".Trim()) { "$env:VISION_HOST".Trim() } else { "127.0.0.1" }
     $uvicornArgs = @(
         "-m", "uvicorn",
         "live_chat_app:app",
-        "--host", "0.0.0.0",
+        "--host", $visionHost,
         "--port", "8765",
         "--log-level", "warning"
     )

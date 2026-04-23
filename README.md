@@ -65,14 +65,14 @@ Or use the **Desktop VISION Master Launcher** for the full experience.
 Notes:
 - `vision_master_launcher.ps1` delegates core startup to `launch_vision.ps1`.
 - `launch_vision.ps1` starts `ollama serve` automatically when Ollama is needed and not already listening.
-- `vision_command_center_config.json` now controls Ollama access mode for launcher-managed starts: **local** (`127.0.0.1`) or **lan** (`0.0.0.0`), an explicit managed `ollama_host` (for example `0.0.0.0:11434`), configurable `OLLAMA_ORIGINS`, and the managed `ollama_models_path`.
+- `vision_command_center_config.json` now controls Ollama access mode for launcher-managed starts: **local** (`127.0.0.1`) or **lan** (`0.0.0.0`), an explicit managed `ollama_host` (for example `0.0.0.0:11434`), configurable `OLLAMA_ORIGINS`, and the managed `ollama_models_path`. The checked-in defaults now prefer fully local Ollama on `127.0.0.1:11434` with only localhost UI origins enabled.
 - `launch_vision.ps1` now restarts Ollama as a **managed standalone server** so Vision uses the configured model library instead of an app-respawned default store.
 - The launcher also starts the Vision backend when port `8765` is not already active, then checks `/api/health` and `/api/command-center/doctor` before treating startup as successful.
 - The embedded ElevenLabs browser widget only gets microphone access on **secure origins** (`http://localhost` counts, plain `http://<lan-ip>` does not). For same-network phone access, use the main/operator surfaces over LAN, or front Vision with HTTPS if you need browser-native microphone capture.
 
 Browser opens at `http://localhost:8765` automatically.
 The separate **Vision Command Center** is served at `http://localhost:8765/command-center` for launch, monitoring, docs, workflows, and repo-intelligence control.
-For same-network mobile access, open `http://<your-pc-lan-ip>:8765` for the main operator UI or `http://<your-pc-lan-ip>:8765/command-center` for the Command Center. The launchers now print detected LAN URLs after startup, and launcher-managed Ollama should stay in `lan` mode with `0.0.0.0:11434` when you want phone/tablet access on the same network.
+For same-network mobile access, set `VISION_HOST=0.0.0.0`, configure trusted `VISION_ALLOWED_ORIGINS`, and use `VISION_TOOL_TOKEN` before opening `http://<your-pc-lan-ip>:8765` or `http://<your-pc-lan-ip>:8765/command-center`. Launcher-managed Ollama should stay in `lan` mode with `0.0.0.0:11434` when you want phone/tablet model access on the same network.
 It now also includes **Vision Doctor**, saved maintenance **routines**, higher-level **Mission Control** automation pipelines, a persistent automation history file (`vision_automation_state.json`), a non-sensitive **profile/config** layer (`vision_command_center_config.json`), and an optional **ULTRON Retro** theme.
 The Command Center now also exposes a **Layered Control Architecture** view that separates the dependable operator core (launcher, local models, runtime/tool readiness) from the higher-order cognitive layer (context brain, missions, skills, agents, and docs).
 

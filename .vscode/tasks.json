@@ -119,6 +119,22 @@
 				"isDefault": true
 			},
 			"detail": "Builds the sql SQL project"
+		},
+		{
+			"label": "sqlproj: Build abc",
+			"type": "process",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"c:/project/vision/abc/abc.sqlproj"
+			],
+			"problemMatcher": "$sqlproj-problem-matcher",
+			"isBackground": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"detail": "Builds the abc SQL project"
 		}
 	]
 }

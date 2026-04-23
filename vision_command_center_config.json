@@ -7,9 +7,9 @@
     "open_primary_ui": true,
     "open_command_center": false,
     "prefer_app_window": true,
-    "ollama_access_mode": "lan",
-    "ollama_host": "0.0.0.0:11434",
-    "ollama_origins": "http://localhost:8765,http://127.0.0.1:8765,http://msi.tail886dbb.ts.net:8765,https://msi.tail886dbb.ts.net",
+    "ollama_access_mode": "local",
+    "ollama_host": "127.0.0.1:11434",
+    "ollama_origins": "http://localhost:8765,http://127.0.0.1:8765",
     "ollama_models_path": "F:\\models"
   },
   "doctor": {
