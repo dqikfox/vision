@@ -4,7 +4,7 @@
 # gateway, and opens the terminal UI with clear status indicators.
 
 param(
-    [string]$ModelId = "kimi-k2.5:cloud",
+    [string]$ModelId = "llama3.2:3b",
     [switch]$ValidateOnly,
     [switch]$NoTui,
     [switch]$NoPause
