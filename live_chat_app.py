@@ -4236,6 +4236,31 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_local_voice",
+            "description": "Set the local TTS voice by name. Pass a partial name such as 'Ava', 'Microsoft Ava', 'David', or 'Zira'. The best matching installed voice is selected and applied immediately. Use this when the user asks to change the voice or set a specific speaker.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "voice_name": {
+                        "type": "string",
+                        "description": "Partial or full name of the desired voice, e.g. 'Ava', 'Microsoft Ava', 'David', 'Zira'.",
+                    }
+                },
+                "required": ["voice_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_cloud_capabilities",
+            "description": "List all configured cloud AI providers and their available models, plus which cloud TTS/STT services are active. Use this when the user asks about cloud capabilities, available providers, or what AI models can be used.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 # Tool name → description map for Ollama prompt injection
@@ -5575,6 +5600,68 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 return f"Pixel ({x},{y}) changed from #{change_from_hex} to #{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
             await asyncio.sleep(0.2)
         return f"Timeout: pixel ({x},{y}) did not change after {timeout}s"
+
+    # ── Voice & cloud capability tools ────────────────────────────────────────
+    elif name == "set_local_voice":
+        global tts_voice_idx
+        voice_name = str(args.get("voice_name", "")).strip()
+        if not voice_name:
+            return "Error: 'voice_name' argument required"
+        voices = _list_local_tts_voices()
+        needle = voice_name.casefold()
+        # Match priority: 1) exact name, 2) whole-word, 3) substring
+        exact: tuple[int, str] | None = None
+        word: tuple[int, str] | None = None
+        sub: tuple[int, str] | None = None
+        for v in voices:
+            vname = str(v.get("name", ""))
+            vfold = vname.casefold()
+            vidx = int(v["index"])
+            if exact is None and vfold == needle:
+                exact = (vidx, vname)
+            if word is None and re.search(r'\b' + re.escape(needle) + r'\b', vfold):
+                word = (vidx, vname)
+            if sub is None and needle in vfold:
+                sub = (vidx, vname)
+        chosen = exact or word or sub
+        if chosen is None:
+            available = ", ".join(v["name"] for v in voices) or "none found"
+            return f"No voice matching '{voice_name}'. Available voices: {available}"
+        matched_idx, matched_name = chosen
+        tts_voice_idx = matched_idx
+        asyncio.create_task(
+            broadcast(
+                {
+                    "type": "voice_settings",
+                    "preferred_stt": preferred_stt,
+                    "preferred_tts": preferred_tts,
+                    "tts_rate": tts_rate,
+                    "tts_voice_idx": tts_voice_idx,
+                }
+            )
+        )
+        write_log("voice", f"set_local_voice → '{matched_name}' idx={matched_idx}")
+        return f"Local voice set to '{matched_name}'."
+
+    elif name == "list_cloud_capabilities":
+        lines: list[str] = ["☁ Cloud capabilities:"]
+        for provider, info in PROVIDERS.items():
+            if provider == "ollama":
+                continue
+            has_key = _provider_has_key(provider)
+            label = info.get("label", provider)
+            models = info.get("models", [])
+            status = "✅ configured" if has_key else "🔑 no key"
+            model_list = ", ".join(models[:5])
+            if len(models) > 5:
+                model_list += f" (+{len(models) - 5} more)"
+            lines.append(f"  {label}: {status} — models: {model_list}")
+        # TTS / STT cloud services
+        lines.append("")
+        lines.append("🔊 TTS: ElevenLabs " + ("✅ configured" if bool(API_11) else "🔑 no key"))
+        lines.append("🎤 STT: ElevenLabs (cloud) / Groq Whisper (cloud) / local Whisper fallback")
+        lines.append(f"🤖 Active provider: {current_provider} / {current_model}")
+        return "\n".join(lines)
 
     return f"Unknown tool: {name}"
 
@@ -7481,6 +7568,9 @@ _EL_TOOL_NAMES = [
     # Polling / wait
     "wait_for_text",
     "wait_for_pixel",
+    # Voice & cloud
+    "set_local_voice",
+    "list_cloud_capabilities",
 ]
 
 
