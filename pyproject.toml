@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=72.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,7 +9,7 @@ description = "Universal Accessibility Operator: Multi-provider AI with voice, v
 authors = [
     { name = "DFox", email = "dev@dfox.io" }
 ]
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104",
