@@ -108,9 +108,27 @@ COMMAND_CENTER_CONFIG_FILE = BASE / "vision_command_center_config.json"
 AUTOMATION_STATE_FILE = BASE / "vision_automation_state.json"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
-SETTINGS_FILE = BASE / "settings.json"
 PORT = 8765
 
+def _settings_dir() -> Path:
+    """Return a user-writable directory for persisted runtime settings."""
+    configured = os.environ.get("VISION_SETTINGS_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    if os.name == "nt":
+        appdata = (
+            os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA") or ""
+        ).strip()
+        if appdata:
+            return Path(appdata) / "Vision"
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    if xdg_config:
+        return Path(xdg_config).expanduser() / "vision"
+    return Path.home() / ".config" / "vision"
+
+
+SETTINGS_FILE = _settings_dir() / "settings.json"
+LEGACY_SETTINGS_FILE = BASE / "settings.json"
 RAG_SOURCE_ROOT = Path(os.environ.get("VISION_RAG_SOURCE", r"F:\rag-v1\data")).expanduser()
 _rag_manager = VisionRAGManager(base_dir=BASE, source_root=RAG_SOURCE_ROOT)
 
@@ -585,23 +603,105 @@ _elevenlabs_auth_failed: bool = False
 
 # ── Voice settings persistence ────────────────────────────────────────────────
 
+
+def _settings_read_path() -> Path | None:
+    if SETTINGS_FILE.exists():
+        return SETTINGS_FILE
+    if LEGACY_SETTINGS_FILE != SETTINGS_FILE and LEGACY_SETTINGS_FILE.exists():
+        return LEGACY_SETTINGS_FILE
+    return None
+
+
+def _quarantine_bad_settings_file(path: Path) -> None:
+    """Rename a corrupt settings file so future loads can recover cleanly."""
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    bad_file = path.with_name(f"{path.stem}.bad-{timestamp}{path.suffix}")
+    try:
+        path.rename(bad_file)
+        print(f"[settings] Renamed corrupt settings file to {bad_file}")
+    except Exception as e:
+        print(f"[settings] Failed to rename corrupt settings file {path}: {e}")
+
+
+def _get_str_setting(
+    data: dict[str, Any],
+    path: Path,
+    key: str,
+    current: str,
+    allowed: set[str] | None = None,
+) -> str:
+    value = data.get(key, current)
+    if not isinstance(value, str):
+        print(
+            f"[settings] Ignoring invalid {key} in {path}: "
+            f"expected string, got {type(value).__name__}"
+        )
+        return current
+    normalized = value.strip().lower()
+    if allowed and normalized not in allowed:
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        return current
+    return normalized if allowed else value
+
+
+def _get_int_setting(
+    data: dict[str, Any],
+    path: Path,
+    key: str,
+    current: int,
+    minimum: int | None = None,
+) -> int:
+    value = data.get(key, current)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        return current
+    if minimum is not None and parsed < minimum:
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        return current
+    return parsed
+
 def _load_settings() -> None:
     """Load persisted voice/STT/TTS settings from settings.json into globals."""
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
+    path = _settings_read_path()
+    if path is None:
+        return
     try:
-        if SETTINGS_FILE.exists():
-            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-            preferred_stt = data.get("preferred_stt", preferred_stt)
-            preferred_tts = data.get("preferred_tts", preferred_tts)
-            tts_rate = int(data.get("tts_rate", tts_rate))
-            tts_voice_idx = int(data.get("tts_voice_idx", tts_voice_idx))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        print(f"[settings] Failed to load {SETTINGS_FILE}: {e}")
+        print(f"[settings] Failed to parse {path}: {e}")
+        _quarantine_bad_settings_file(path)
+        return
+
+    if not isinstance(data, dict):
+        print(f"[settings] Ignoring invalid settings root in {path}: expected object")
+        _quarantine_bad_settings_file(path)
+        return
+
+    preferred_stt = _get_str_setting(
+        data,
+        path,
+        "preferred_stt",
+        preferred_stt,
+        allowed={"auto", "elevenlabs", "groq", "local"},
+    )
+    preferred_tts = _get_str_setting(
+        data,
+        path,
+        "preferred_tts",
+        preferred_tts,
+        allowed={"auto", "elevenlabs", "local"},
+    )
+    tts_rate = _get_int_setting(data, path, "tts_rate", tts_rate)
+    tts_voice_idx = _get_int_setting(data, path, "tts_voice_idx", tts_voice_idx, minimum=0)
 
 
 def _save_settings() -> None:
     """Persist current voice/STT/TTS settings to settings.json."""
     try:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SETTINGS_FILE.write_text(
             json.dumps(
                 {
@@ -679,6 +779,7 @@ async def _handle_invalid_elevenlabs_auth(error_text: str) -> None:
 
     write_log("voice", "elevenlabs auth failed; switching voice providers to local")
     if changed:
+        await asyncio.to_thread(_save_settings)
         await _broadcast_voice_settings_update()
     await broadcast(
         {
@@ -2880,6 +2981,7 @@ async def ws_ep(websocket: WebSocket):
                 tts_rate = int(msg.get("tts_rate", tts_rate))
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
+                await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
                 asyncio.create_task(_start_el_agent())

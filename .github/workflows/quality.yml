@@ -126,7 +126,7 @@ jobs:
         with:
           script: |
             let comment = '## 📊 Vision Quality Report\n\n';
-            comment += 'This workflow uses the repo\\'s current Python toolchain. Review the job logs and uploaded artifacts for exact pass/fail details.\n\n';
+            comment += "This workflow uses the repo's current Python toolchain. Review the job logs and uploaded artifacts for exact pass/fail details.\n\n";
             comment += '| Check | Where to look |\n';
             comment += '|-------|---------------|\n';
             comment += '| 🎨 Format (`ruff format --check`) | `Code Quality Checks` job |\n';
@@ -136,9 +136,13 @@ jobs:
             comment += '| ✅ Tests (`pytest`) | `Unit & Integration Tests` job |\n';
             comment += '| 📈 Coverage (`coverage.xml`) | Codecov upload / test artifacts |\n';
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment,
-            });
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment,
+              });
+            } catch (error) {
+              core.warning(`Skipping PR summary comment: ${error.message}`);
+            }
