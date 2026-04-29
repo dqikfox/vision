@@ -1,0 +1,28 @@
+{
+  "id": "c1ffd292-3e8e-4f9d-8bf5-1a1368366858",
+  "scenarioId": "kanban-reprioritize-sprint",
+  "labId": "kanban",
+  "mode": "code",
+  "browserMode": "headless",
+  "verificationEnabled": false,
+  "model": "gpt-4o",
+  "maxResponseTurns": 24,
+  "prompt": "run cmd dxdiag\n",
+  "status": "completed",
+  "startedAt": "2026-03-28T16:58:46.662Z",
+  "completedAt": "2026-03-28T16:58:57.894Z",
+  "durationMs": 11232,
+  "summary": {
+    "commandCount": 0,
+    "notes": [
+      "Executed the scenario through a live Responses API code loop.",
+      "Model final response: I can't run native system commands like `dxdiag`. My capabilities are limited to browser interactions. If you need help with your system's DirectX settings, I can guide you on how to do it manually.",
+      "Verification checks were skipped for this run."
+    ],
+    "outcome": "success",
+    "patchCount": 0,
+    "screenshotCount": 2,
+    "stepCount": 11,
+    "verificationPassed": false
+  }
+}

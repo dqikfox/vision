@@ -18,6 +18,12 @@ The system is a real-time voice-controlled AI operator with three layers:
 └─────────────────────────────────────────────────────┘
 ```
 
+The Command Center now presents this runtime as two supervisory bands:
+- **Core Operator Layer** — launcher, local-model/runtime readiness, health, voice/tool responsiveness
+- **Cognitive Layer** — context brain, missions, memory/catalog surfaces, skills, agents, and orchestration
+
+This is a monitoring and control split, not a change to the underlying Perception → Brain → Action runtime.
+
 ---
 
 ## Data Flow
@@ -27,8 +33,11 @@ The system is a real-time voice-controlled AI operator with three layers:
 mic frame (480 samples @ 16kHz)
   → if always-listening disabled and wake-word mode is off: remain in voice standby
   → VAD.feed() → "start" | "frame" | "end"
-  → "end": concatenate frames → WAV → ElevenLabs STT
-  → text → LLM stream (Ollama/OpenAI/GitHub)
+  → "end": concatenate frames → WAV → STT cascade
+      1. ElevenLabs scribe_v1
+      2. Groq whisper-large-v3-turbo
+      3. faster-whisper tiny (offline fallback)
+  → text → provider-specific LLM stream
   → token chunks → ElevenLabs TTS WebSocket (PCM streaming)
   → sounddevice OutputStream → speaker
   → transcript broadcast → browser UI
@@ -150,7 +159,7 @@ Auto-extraction: if AI response contains "remember", names, or preferences → s
 
 ## Provider Abstraction
 
-All providers use the OpenAI-compatible API:
+Most providers use the OpenAI-compatible API:
 
 ```python
 client = AsyncOpenAI(
@@ -158,6 +167,15 @@ client = AsyncOpenAI(
     api_key=PROVIDERS[current_provider]["api_key"],
 )
 ```
+
+Anthropic uses its native SDK, and Ollama uses its own async client for local streaming and tool support.
+
+Current routing behavior:
+- Ollama uses a native `ollama.AsyncClient`
+- Anthropic uses the native Anthropic SDK tool loop
+- OpenAI uses the Responses API for `gpt-4.1`, `gpt-4.1-mini`, `o4-mini`, `o3`, and `computer-use-preview`
+- GitHub, Groq, Gemini, DeepSeek, Mistral, and xAI use OpenAI-compatible chat completions
+- If Ollama fails, provider fallback order is `github → groq → gemini → deepseek → openai → mistral → anthropic → xai`
 
 | Provider | base_url | Notes |
 |---|---|---|

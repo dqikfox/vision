@@ -1,0 +1,11 @@
+{
+  "mode": "research_eval",
+  "records": 1047,
+  "hf_repo": "havikz/bucket",
+  "hf_repo_type": "auto",
+  "hf_snapshot": "c:\\project\\vision\\data\\curated\\hf_snapshot",
+  "hf_status": "ok",
+  "hf_token_source": "env",
+  "local_root": "G:\\rag-v1\\data",
+  "output": "c:\\project\\vision\\data\\curated\\curated_research_eval.jsonl"
+}

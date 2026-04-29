@@ -89,7 +89,8 @@ vision_wake_word(enabled)  → toggle wake-word activation mode
 Use `vision_execute_tool()` for the full 70-tool Vision surface when the backend is running.
 
 ### lmstudio-rag
-Filesystem access to the user's LM Studio RAG plugin workspace at `F:\rag-v1`.
+Filesystem access to the user's LM Studio RAG plugin workspace resolved from `RAG_PLUGIN_WORKSPACE`.
+Falls back to `F:\rag-v1` on Windows and `~/rag-v1` elsewhere.
 Same tools as `filesystem` but scoped to that directory.
 Use when the user asks about LM Studio plugins, RAG, prompt preprocessing, or local retrieval.
 Read `manifest.json`, `src/`, and `.lmstudio/` before making assumptions about the plugin.

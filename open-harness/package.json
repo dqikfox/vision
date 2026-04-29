@@ -1,0 +1,31 @@
+{
+  "name": "vision-open-harness",
+  "version": "1.0.0",
+  "description": "Open Harness integration for Vision accessibility operator via MCP",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx",
+    "start": "tsx src/vision-agent.ts",
+    "start:vision-agent": "tsx src/vision-agent.ts",
+    "start:subagents": "tsx src/subagent-demo.ts",
+    "start:all": "powershell -ExecutionPolicy Bypass -File ./start-all.ps1",
+    "health": "tsx src/health.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openharness/core": "^0.6.2",
+    "@ai-sdk/openai": "^3.0.53",
+    "ai": "^6.0.168",
+    "zod": "^4.3.6",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

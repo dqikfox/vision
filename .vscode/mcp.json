@@ -13,9 +13,9 @@
     },
     "lmstudio-rag": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "F:\\rag-v1"],
-      "description": "Read the user's LM Studio RAG plugin workspace at F:\\rag-v1"
+      "command": "python",
+      "args": ["launch_lmstudio_rag_mcp.py"],
+      "description": "Read the user's LM Studio RAG plugin workspace from RAG_PLUGIN_WORKSPACE or the platform fallback"
     },
     "fetch": {
       "type": "stdio",

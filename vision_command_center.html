@@ -1,0 +1,1544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VISION Command Center</title>
+<style>
+:root {
+  --bg: #050816;
+  --bg2: #0a1124;
+  --panel: rgba(9, 16, 34, 0.92);
+  --panel-2: rgba(13, 22, 42, 0.95);
+  --line: rgba(96, 165, 250, 0.18);
+  --line-strong: rgba(96, 165, 250, 0.42);
+  --text: #dbeafe;
+  --muted: #8aa4c7;
+  --blue: #60a5fa;
+  --cyan: #22d3ee;
+  --green: #4ade80;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --radius: 18px;
+  --mono: "Consolas", "SFMono-Regular", ui-monospace, monospace;
+  --ui: "Segoe UI", Arial, sans-serif;
+}
+
+body[data-theme="ultron"] {
+  --bg: #18060a;
+  --bg2: #2a0d14;
+  --panel: rgba(38, 11, 16, 0.94);
+  --panel-2: rgba(57, 16, 22, 0.96);
+  --line: rgba(248, 113, 113, 0.2);
+  --line-strong: rgba(251, 191, 36, 0.45);
+  --text: #fde68a;
+  --muted: #fca5a5;
+  --blue: #fb7185;
+  --cyan: #f97316;
+  --green: #facc15;
+  --amber: #fbbf24;
+  --red: #f87171;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.1), transparent 32%),
+    linear-gradient(180deg, var(--bg), #03050c 55%, #02040a 100%);
+  color: var(--text);
+  font-family: var(--ui);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.02) 0,
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  opacity: 0.25;
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+  width: min(1500px, calc(100vw - 32px));
+  margin: 24px auto 40px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.hero-main {
+  padding: 26px 28px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.hero-copy {
+  margin: 14px 0 0;
+  max-width: 760px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.hero-side {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mini-grid,
+.status-grid,
+.catalog-grid,
+.button-grid,
+.command-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.mini-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.catalog-grid {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.button-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.command-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.stat-tile,
+.status-tile,
+.item-card,
+.command-card {
+  background: rgba(7, 13, 27, 0.88);
+  border: 1px solid rgba(96, 165, 250, 0.12);
+  border-radius: 14px;
+}
+
+.stat-tile {
+  padding: 16px;
+}
+
+.stat-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.stat-value {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.stat-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.section {
+  margin-bottom: 18px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.12);
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.section-sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.section-body {
+  padding: 18px 22px 22px;
+}
+
+.status-tile {
+  padding: 14px;
+}
+
+.status-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.status-name {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.status-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-pill.ok { color: var(--green); border-color: rgba(74, 222, 128, 0.28); background: rgba(22, 101, 52, 0.18); }
+.status-pill.warn { color: var(--amber); border-color: rgba(251, 191, 36, 0.28); background: rgba(146, 64, 14, 0.18); }
+.status-pill.off { color: var(--red); border-color: rgba(248, 113, 113, 0.28); background: rgba(127, 29, 29, 0.18); }
+.status-pill.info { color: var(--blue); border-color: rgba(96, 165, 250, 0.28); background: rgba(30, 64, 175, 0.18); }
+
+.status-detail,
+.item-meta {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.metric {
+  margin-bottom: 14px;
+}
+
+.metric:last-child {
+  margin-bottom: 0;
+}
+
+.metric-top {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.meter {
+  position: relative;
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--blue));
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.3);
+}
+
+.meter-fill.warn {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.25);
+}
+
+.meter-fill.crit {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+  box-shadow: 0 0 18px rgba(248, 113, 113, 0.25);
+}
+
+.item-card,
+.command-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.item-path,
+.code-line {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #bfdbfe;
+  word-break: break-all;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+button,
+.link-button {
+  appearance: none;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+  transition: 140ms ease;
+}
+
+button:hover,
+.link-button:hover {
+  border-color: var(--line-strong);
+  background: rgba(37, 99, 235, 0.2);
+  transform: translateY(-1px);
+}
+
+.button-primary {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(37, 99, 235, 0.22));
+  border-color: rgba(34, 211, 238, 0.26);
+}
+
+.button-ghost {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.button-danger {
+  background: rgba(127, 29, 29, 0.24);
+  border-color: rgba(248, 113, 113, 0.24);
+}
+
+.log {
+  margin: 0;
+  padding: 16px;
+  min-height: 170px;
+  max-height: 280px;
+  overflow: auto;
+  background: rgba(4, 8, 18, 0.95);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: #dbeafe;
+}
+
+.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.summary-banner {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(96, 165, 250, 0.12);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.layer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.layer-card {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(7, 13, 27, 0.9);
+  border: 1px solid rgba(96, 165, 250, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.layer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.layer-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 6px;
+}
+
+.layer-name {
+  margin: 0;
+  font-size: 20px;
+}
+
+.layer-strapline {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signal-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.signal-chip.ok { color: var(--green); border-color: rgba(74, 222, 128, 0.28); }
+.signal-chip.warn { color: var(--amber); border-color: rgba(251, 191, 36, 0.28); }
+.signal-chip.off { color: var(--red); border-color: rgba(248, 113, 113, 0.28); }
+.signal-chip.info { color: var(--blue); border-color: rgba(96, 165, 250, 0.28); }
+
+.layer-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.layer-surface-list {
+  display: grid;
+  gap: 8px;
+}
+
+.layer-surface {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(96, 165, 250, 0.1);
+}
+
+.layer-surface strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 1100px) {
+  .hero,
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .shell {
+    width: min(100vw - 20px, 100%);
+    margin-top: 10px;
+  }
+
+  .hero-main,
+  .hero-side,
+  .section-body,
+  .section-head {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <section class="hero">
+    <div class="panel hero-main">
+      <div class="eyebrow">VISION INTELLIGENCE STACK</div>
+      <h1>Command Center</h1>
+      <p class="hero-copy" id="heroCopy">
+        Launch, monitor, open, and orchestrate the Vision runtime, repo intelligence layers, Archon workflows,
+        MCP surfaces, docs, skills, and agents from one control surface.
+      </p>
+      <div class="hero-actions">
+        <button class="button-primary" id="openVisionUiBtn">Open Vision UI</button>
+        <button id="refreshBrainBtn">Refresh Context Brain</button>
+        <button id="openRepoBtn">Open Repo Root</button>
+        <button class="button-ghost" id="openDocsBtn">Open Docs Index</button>
+      </div>
+    </div>
+    <div class="panel hero-side">
+      <div class="mini-grid">
+        <div class="stat-tile">
+          <div class="stat-label">Current Model</div>
+          <div class="stat-value" id="currentModel">Loading</div>
+          <div class="stat-note" id="currentProvider">Preparing provider data</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Memory Facts</div>
+          <div class="stat-value" id="memoryFacts">0</div>
+          <div class="stat-note" id="memorySessions">Loading memory state</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Skills / Agents</div>
+          <div class="stat-value" id="catalogCounts">0 / 0</div>
+          <div class="stat-note" id="workflowCounts">0 workflows, 0 MCP servers</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-label">Context Brain</div>
+          <div class="stat-value" id="brainTimestamp">--</div>
+          <div class="stat-note" id="brainSource">Waiting for catalog</div>
+        </div>
+      </div>
+      <div class="summary-banner" id="profileSummary">
+        Loading profile preferences...
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="profileName">Profile</label>
+          <input id="profileName" type="text" value="default">
+        </div>
+        <div class="field">
+          <label for="themeSelect">Theme</label>
+          <select id="themeSelect">
+            <option value="vision">Vision Default</option>
+            <option value="ultron">ULTRON Retro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="refreshSeconds">Auto Refresh Seconds</label>
+          <input id="refreshSeconds" type="number" min="10" max="300" step="5" value="30">
+        </div>
+        <div class="field">
+          <label for="externalToggle">External Resources</label>
+          <select id="externalToggle">
+            <option value="true">Show</option>
+            <option value="false">Hide</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="launcherPrimary">Launcher Opens Main UI</label>
+          <select id="launcherPrimary">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="launcherCommandCenter">Launcher Opens Command Center</label>
+          <select id="launcherCommandCenter">
+            <option value="false">No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ollamaAccessMode">Ollama Access Mode</label>
+          <select id="ollamaAccessMode">
+            <option value="local">Local Only (127.0.0.1)</option>
+            <option value="lan">Expose on LAN (0.0.0.0)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ollamaHost">OLLAMA_HOST</label>
+          <input id="ollamaHost" type="text" value="127.0.0.1:11434">
+        </div>
+        <div class="field" style="grid-column: span 2;">
+          <label for="ollamaOrigins">Ollama Origins</label>
+          <input id="ollamaOrigins" type="text" value="http://localhost:8765,http://127.0.0.1:8765">
+        </div>
+        <div class="field" style="grid-column: span 2;">
+          <label for="ollamaModelsPath">Ollama Models Path</label>
+          <input id="ollamaModelsPath" type="text" value="F:\\models">
+        </div>
+      </div>
+      <div class="card-actions">
+        <button id="saveProfileBtn">Save Profile</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="panel section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Layered Control Architecture</h2>
+          <div class="section-sub">See the dependable operator core separately from the higher-order cognition and orchestration layer.</div>
+        </div>
+      </div>
+      <div class="section-body">
+        <div class="layer-grid" id="layerGrid"></div>
+      </div>
+    </div>
+
+    <div class="panel section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Runtime Status</h2>
+          <div class="section-sub">Live health view for Vision, providers, browser, GPU, and key integrations.</div>
+        </div>
+        <button class="button-ghost" id="refreshStatusBtn">Refresh Status</button>
+      </div>
+      <div class="section-body">
+        <div class="status-grid" id="statusGrid"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="panel section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">System Metrics</h2>
+          <div class="section-sub">CPU, memory, disk, and GPU saturation from the running backend.</div>
+        </div>
+      </div>
+      <div class="section-body" id="metricsPanel"></div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div class="panel section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Vision Doctor</h2>
+          <div class="section-sub">Reusable startup and readiness report inspired by the stronger ULTRON launcher/doctor flow.</div>
+        </div>
+        <button class="button-ghost" id="runDoctorBtn">Run Doctor</button>
+      </div>
+      <div class="section-body">
+        <div class="summary-banner" id="doctorSummary">Waiting for first doctor run...</div>
+        <div style="height: 14px;"></div>
+        <div class="status-grid" id="doctorGrid"></div>
+      </div>
+    </div>
+
+    <div class="panel section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Saved Routines</h2>
+          <div class="section-sub">Reusable automation macros for repo maintenance, refresh, and smoke checks.</div>
+        </div>
+      </div>
+      <div class="section-body">
+        <div class="catalog-grid" id="routineGrid"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Mission Control</h2>
+        <div class="section-sub">Multi-step automation missions that chain routines into repeatable maintenance, recovery, and self-refresh workflows.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="missionGrid"></div>
+      <div style="height: 14px;"></div>
+      <div class="status-grid" id="automationHistoryGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Quick Launch</h2>
+        <div class="section-sub">Primary launchers and one-click repo controls.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="button-grid" id="quickActions"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Context Brain Control</h2>
+        <div class="section-sub">Inspect and regenerate the machine-readable repo cognition pack.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="brainControl"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Pages and Core Components</h2>
+        <div class="section-sub">Open the live UIs, backend sources, MCP bridge, and repo control files.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="pagesGrid"></div>
+      <div style="height: 14px;"></div>
+      <div class="catalog-grid" id="coreGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Docs and Instructions</h2>
+        <div class="section-sub">Open the repo docs that explain how the stack connects and how to operate it.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="docsGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Archon Workflows and Commands</h2>
+        <div class="section-sub">Run, copy, and inspect the deterministic workflows that support the repo intelligence stack.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="workflowGrid"></div>
+      <div style="height: 14px;"></div>
+      <div class="command-grid" id="commandGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Skills and Agents</h2>
+        <div class="section-sub">Browse the repo-local intelligence surfaces that shape Copilot behavior in this workspace.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="skillsGrid"></div>
+      <div style="height: 14px;"></div>
+      <div class="catalog-grid" id="agentsGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">MCP and External Resources</h2>
+        <div class="section-sub">Monitor active MCP wiring and jump out to related external project references.</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="catalog-grid" id="mcpGrid"></div>
+      <div style="height: 14px;"></div>
+      <div class="catalog-grid" id="externalGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">Activity</h2>
+        <div class="section-sub">Recent Command Center actions and command results.</div>
+      </div>
+      <button class="button-danger" id="clearLogBtn">Clear Log</button>
+    </div>
+    <pre class="log" id="activityLog">Booting Command Center...</pre>
+  </section>
+</div>
+
+<script>
+const API = "";
+let commandCenter = null;
+let commandCenterConfig = null;
+let refreshTimer = null;
+
+function logActivity(message) {
+  const log = document.getElementById("activityLog");
+  const stamp = new Date().toLocaleTimeString();
+  const lines = log.textContent.trim() ? log.textContent.split("\n") : [];
+  lines.unshift(`[${stamp}] ${message}`);
+  log.textContent = lines.slice(0, 120).join("\n");
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeJsArg(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+
+function parseBoolean(value) {
+  return String(value) === "true";
+}
+
+function applyTheme(theme) {
+  const normalized = theme === "ultron" ? "ultron" : "vision";
+  document.body.dataset.theme = normalized;
+}
+
+function syncProfileForm(config) {
+  commandCenterConfig = config;
+  document.getElementById("profileName").value = config.profile_name || "default";
+  document.getElementById("themeSelect").value = config.theme || "vision";
+  document.getElementById("refreshSeconds").value = String(config.auto_refresh_seconds || 30);
+  document.getElementById("externalToggle").value = String(Boolean(config.show_external_resources));
+  document.getElementById("launcherPrimary").value = String(Boolean(config.launcher?.open_primary_ui));
+  document.getElementById("launcherCommandCenter").value = String(Boolean(config.launcher?.open_command_center));
+  document.getElementById("ollamaAccessMode").value = config.launcher?.ollama_access_mode || "local";
+  document.getElementById("ollamaHost").value = config.launcher?.ollama_host || "127.0.0.1:11434";
+  document.getElementById("ollamaOrigins").value =
+    config.launcher?.ollama_origins || "http://localhost:8765,http://127.0.0.1:8765";
+  document.getElementById("ollamaModelsPath").value = config.launcher?.ollama_models_path || "F:\\models";
+  document.getElementById("profileSummary").textContent =
+    `Profile "${config.profile_name || "default"}" :: theme=${config.theme || "vision"} :: launcher main UI=${Boolean(config.launcher?.open_primary_ui)} :: launcher command center=${Boolean(config.launcher?.open_command_center)} :: ollama=${config.launcher?.ollama_access_mode || "local"} @ ${config.launcher?.ollama_host || "127.0.0.1:11434"} :: models=${config.launcher?.ollama_models_path || "F:\\models"}`;
+  applyTheme(config.theme || "vision");
+  updateRefreshTimer();
+}
+
+function collectProfileForm() {
+  return {
+    profile_name: document.getElementById("profileName").value.trim() || "default",
+    theme: document.getElementById("themeSelect").value,
+    auto_refresh_seconds: Number.parseInt(document.getElementById("refreshSeconds").value || "30", 10),
+    show_external_resources: parseBoolean(document.getElementById("externalToggle").value),
+    launcher: {
+      open_primary_ui: parseBoolean(document.getElementById("launcherPrimary").value),
+      open_command_center: parseBoolean(document.getElementById("launcherCommandCenter").value),
+      prefer_app_window: commandCenterConfig?.launcher?.prefer_app_window ?? true,
+      ollama_access_mode: document.getElementById("ollamaAccessMode").value || "local",
+      ollama_host: document.getElementById("ollamaHost").value.trim() || "127.0.0.1:11434",
+      ollama_origins: document.getElementById("ollamaOrigins").value.trim() || "http://localhost:8765,http://127.0.0.1:8765",
+      ollama_models_path: document.getElementById("ollamaModelsPath").value.trim() || "F:\\models",
+    },
+    doctor: commandCenterConfig?.doctor || {
+      check_context_brain: true,
+      check_launchers: true,
+      show_provider_keys: true,
+    },
+  };
+}
+
+function updateRefreshTimer() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  const seconds = Number(commandCenterConfig?.auto_refresh_seconds || 0);
+  if (seconds >= 10) {
+    refreshTimer = window.setInterval(() => {
+      loadDashboard(true);
+      loadDoctor(true);
+    }, seconds * 1000);
+  }
+}
+
+async function runTool(name, parameters) {
+  const payload = await fetchJson(`${API}/api/tool/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, parameters }),
+  });
+  logActivity(`${name}: ${String(payload.result).slice(0, 180)}`);
+  return payload.result;
+}
+
+async function runToolFromJson(name, parametersJson) {
+  return runTool(name, JSON.parse(parametersJson));
+}
+
+async function runCommand(command) {
+  return runTool("run_command", { command });
+}
+
+async function openPath(path) {
+  return runTool("open_file", { path });
+}
+
+async function copyText(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    logActivity(`Copied ${label}`);
+  } catch (error) {
+    logActivity(`Copy failed for ${label}: ${error}`);
+  }
+}
+
+function stateClass(value) {
+  if (typeof value === "boolean") {
+    return value ? "ok" : "off";
+  }
+  if (typeof value === "string" && value) {
+    return "info";
+  }
+  return "warn";
+}
+
+function stateLabel(value) {
+  if (value === true) return "online";
+  if (value === false) return "offline";
+  if (value === null || value === undefined || value === "") return "unknown";
+  return String(value);
+}
+
+function meterClass(value) {
+  if (value >= 90) return "crit";
+  if (value >= 75) return "warn";
+  return "";
+}
+
+function layerSignalClass(ok, fallback = "info") {
+  if (ok === true) return "ok";
+  if (ok === false) return "off";
+  return fallback;
+}
+
+function renderLayeredControl(payload, health, models) {
+  const target = document.getElementById("layerGrid");
+  const stats = payload.stats || {};
+  const layers = payload.control_layers || [];
+  if (!layers.length) {
+    target.innerHTML = '<div class="empty">Layer metadata unavailable.</div>';
+    return;
+  }
+
+  target.innerHTML = layers.map((layer) => {
+    let liveLabel = "observing";
+    let liveClass = "info";
+    let liveDetail = layer.description || "";
+    let signals = [];
+
+    if (layer.id === "core") {
+      const coreChecks = [health.ollama, health.browser, health.ocr, health.gpu];
+      const onlineCount = coreChecks.filter(Boolean).length;
+      liveClass = onlineCount >= 3 ? "ok" : onlineCount >= 1 ? "warn" : "off";
+      liveLabel = `${onlineCount}/${coreChecks.length} core services`;
+      liveDetail =
+        `Provider ${models.current_provider || "unknown"}/${models.current_model || "unknown"} :: ` +
+        `Ollama mode ${commandCenterConfig?.launcher?.ollama_access_mode || "local"} @ ${commandCenterConfig?.launcher?.ollama_host || "127.0.0.1:11434"} :: ` +
+        `models ${commandCenterConfig?.launcher?.ollama_models_path || "F:\\models"}`;
+      signals = [
+        { label: `Ollama ${stateLabel(health.ollama)}`, className: layerSignalClass(health.ollama) },
+        { label: `Browser ${stateLabel(health.browser)}`, className: layerSignalClass(health.browser) },
+        { label: `OCR ${stateLabel(health.ocr)}`, className: layerSignalClass(health.ocr) },
+        { label: `GPU ${stateLabel(health.gpu)}`, className: layerSignalClass(health.gpu) },
+      ];
+    } else {
+      const artifactReady = Boolean(payload.artifact?.exists);
+      const missionCount = (payload.missions || []).length;
+      const workflowCount = stats.archon_workflow_count || 0;
+      liveClass = artifactReady ? "info" : "warn";
+      liveLabel = `${stats.skill_count || 0} skills / ${stats.agent_count || 0} agents`;
+      liveDetail =
+        `Context brain ${artifactReady ? "persisted" : "live-only"} :: ` +
+        `${workflowCount} workflows :: ${missionCount} missions :: ` +
+        `${stats.mcp_server_count || 0} MCP servers`;
+      signals = [
+        { label: `Brain ${artifactReady ? "persisted" : "volatile"}`, className: artifactReady ? "ok" : "warn" },
+        { label: `Missions ${missionCount}`, className: missionCount ? "info" : "warn" },
+        { label: `Workflows ${workflowCount}`, className: workflowCount ? "info" : "warn" },
+        { label: `MCP ${stats.mcp_server_count || 0}`, className: (stats.mcp_server_count || 0) ? "info" : "warn" },
+      ];
+    }
+
+    const surfaces = (layer.surfaces || []).map((surface) => `
+      <div class="layer-surface">
+        <strong>${escapeHtml(surface.name || surface.path || "Surface")}</strong>
+        <div class="item-meta">${escapeHtml(surface.description || "")}</div>
+        <div class="item-path">${escapeHtml(surface.path || "")}</div>
+      </div>
+    `).join("");
+
+    const actionButtons = layer.id === "core"
+      ? `
+        <button onclick="loadDoctor()">Run Doctor</button>
+        <button class="button-ghost" onclick="window.open('/', '_blank', 'noopener')">Open Operator</button>
+      `
+      : `
+        <button onclick="refreshContextBrain()">Refresh Brain</button>
+        <button class="button-ghost" onclick="window.open('/command-center', '_blank', 'noopener')">Open Supervisory View</button>
+      `;
+
+    return `
+      <div class="layer-card">
+        <div class="layer-top">
+          <div>
+            <div class="layer-kicker">${escapeHtml(layer.id === "core" ? "BASELINE CONTROL" : "AUGMENTATION / PLANNING")}</div>
+            <h3 class="layer-name">${escapeHtml(layer.name || "Layer")}</h3>
+          </div>
+          <div class="status-pill ${liveClass}">${escapeHtml(liveLabel)}</div>
+        </div>
+        <div class="layer-strapline">${escapeHtml(layer.strapline || "")}</div>
+        <div class="status-detail">${escapeHtml(liveDetail)}</div>
+        <div class="signal-row">
+          ${signals.map((signal) => `<div class="signal-chip ${signal.className}">${escapeHtml(signal.label)}</div>`).join("")}
+        </div>
+        <ul class="layer-list">
+          ${(layer.responsibilities || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
+        <div class="layer-surface-list">${surfaces}</div>
+        <div class="card-actions">${actionButtons}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderStatus(health, models) {
+  const providerHealth = Object.entries(health.providers || {}).map(([name, ok]) => ({
+    name: `${name} key`,
+    value: ok,
+    detail: ok ? "configured" : "missing",
+  }));
+
+  const cards = [
+    { name: "Backend route", value: true, detail: "Command Center is being served by the active backend." },
+    { name: "Ollama", value: health.ollama, detail: "Local model service availability." },
+    {
+      name: "Ollama access",
+      value: commandCenterConfig?.launcher?.ollama_access_mode || "local",
+      detail: `Mode=${commandCenterConfig?.launcher?.ollama_access_mode || "local"} :: host=${commandCenterConfig?.launcher?.ollama_host || "127.0.0.1:11434"} :: origins=${commandCenterConfig?.launcher?.ollama_origins || "default"} :: models=${commandCenterConfig?.launcher?.ollama_models_path || "F:\\models"}`,
+    },
+    { name: "Browser", value: health.browser, detail: "Embedded Playwright browser readiness." },
+    { name: "OCR", value: health.ocr, detail: "Screen text extraction capability." },
+    { name: "GPU", value: health.gpu, detail: "GPU telemetry and acceleration availability." },
+    { name: "ElevenLabs", value: health.elevenlabs, detail: "Cloud voice key configuration." },
+    { name: "Anthropic SDK", value: health.anthropic_sdk, detail: "Native Anthropic SDK availability." },
+    ...providerHealth,
+  ];
+
+  document.getElementById("statusGrid").innerHTML = cards.map((card) => `
+    <div class="status-tile">
+      <div class="status-top">
+        <div class="status-name">${escapeHtml(card.name)}</div>
+        <div class="status-pill ${stateClass(card.value)}">${escapeHtml(stateLabel(card.value))}</div>
+      </div>
+      <div class="status-detail">${escapeHtml(card.detail)}</div>
+    </div>
+  `).join("");
+
+  document.getElementById("currentProvider").textContent =
+    models.current_provider ? `Provider: ${models.current_provider}` : "Provider unavailable";
+  document.getElementById("currentModel").textContent = models.current_model || "Unavailable";
+}
+
+function renderMetrics(metrics) {
+  const rows = [
+    ["CPU", metrics.cpu],
+    ["RAM", metrics.ram],
+    ["Disk", metrics.disk],
+    ["GPU", metrics.gpu],
+    ["VRAM", metrics.gpu_mem],
+  ];
+
+  document.getElementById("metricsPanel").innerHTML = rows.map(([label, value]) => {
+    const numericValue = typeof value === "number" ? value : 0;
+    const displayValue = typeof value === "number" ? `${value}%` : "n/a";
+    const fillClass = meterClass(numericValue);
+    return `
+      <div class="metric">
+        <div class="metric-top">
+          <span>${escapeHtml(label)}</span>
+          <span>${escapeHtml(displayValue)}</span>
+        </div>
+        <div class="meter">
+          <div class="meter-fill ${fillClass}" style="width:${numericValue}%"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderItemGrid(targetId, items, options = {}) {
+  const target = document.getElementById(targetId);
+  if (!items || !items.length) {
+    target.innerHTML = '<div class="empty">Nothing available.</div>';
+    return;
+  }
+
+  target.innerHTML = items.map((item) => {
+    const openUrl = item.url
+      ? `<button onclick='window.open(${escapeJsArg(item.url)}, "_blank", "noopener")'>Open</button>`
+      : "";
+    const openFile = item.absolute_path
+      ? `<button onclick='openPath(${escapeJsArg(item.absolute_path)})'>Open File</button>`
+      : "";
+    const copyPath = item.path
+      ? `<button class="button-ghost" onclick='copyText(${escapeJsArg(item.path)}, ${escapeJsArg(`${item.name || item.path} path`)})'>Copy Path</button>`
+      : "";
+    const extraButtons = (options.extraButtons ? options.extraButtons(item) : []).join("");
+    const meta = item.path || item.target || item.url || item.type || "";
+    return `
+      <div class="item-card">
+        <div class="item-name">${escapeHtml(item.name || item.path || "Untitled")}</div>
+        <div class="item-meta">${escapeHtml(item.description || "")}</div>
+        ${meta ? `<div class="item-path">${escapeHtml(meta)}</div>` : ""}
+        <div class="card-actions">
+          ${openUrl}
+          ${openFile}
+          ${copyPath}
+          ${extraButtons}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderCommandGrid(targetId, commands) {
+  const target = document.getElementById(targetId);
+  if (!commands || !commands.length) {
+    target.innerHTML = '<div class="empty">No commands available.</div>';
+    return;
+  }
+
+  target.innerHTML = commands.map((command, index) => `
+    <div class="command-card">
+      <div class="item-name">Command ${index + 1}</div>
+      <div class="code-line">${escapeHtml(command)}</div>
+      <div class="card-actions">
+        <button onclick='runCommand(${escapeJsArg(command)})'>Run</button>
+        <button class="button-ghost" onclick='copyText(${escapeJsArg(command)}, ${escapeJsArg(`command ${index + 1}`)})'>Copy</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderQuickActions(actions) {
+  const container = document.getElementById("quickActions");
+  container.innerHTML = (actions || []).map((action) => {
+    let onclick = "";
+    if (action.kind === "url") {
+      onclick = `window.open(${escapeJsArg(action.target)}, "_blank", "noopener")`;
+    } else if (action.kind === "tool") {
+      onclick = `runToolFromJson(${escapeJsArg(action.tool)}, ${escapeJsArg(JSON.stringify(action.parameters || {}))})`;
+    } else if (action.kind === "api") {
+      onclick = action.target && action.target.includes("/doctor") ? "loadDoctor()" : "refreshContextBrain()";
+    }
+    return `
+      <button title="${escapeHtml(action.description || "")}" onclick='${onclick}'>${escapeHtml(action.name)}</button>
+    `;
+  }).join("");
+}
+
+function renderBrainControl(payload) {
+  const brain = payload.brain || {};
+  const cards = [
+    {
+      name: "Context Brain Artifact",
+      description: "Persisted JSON snapshot used for refresh, compaction recovery, and catalog-driven automation.",
+      path: payload.artifact?.relative_path,
+      absolute_path: payload.artifact?.path,
+    },
+    {
+      name: "Recommended Refresh Skill",
+      description: (brain.refresh?.notes || []).join(" "),
+      path: brain.refresh?.recommended_skill || "",
+    },
+    {
+      name: "Recommended Council Skill",
+      description: "Use after the initial refresh for broad, risky, or ambiguous changes.",
+      path: brain.refresh?.recommended_council_skill || "",
+    },
+    {
+      name: "Primary Refresh Order",
+      description: (brain.refresh?.primary_order || []).join(" -> "),
+      path: "",
+    },
+  ];
+
+  renderItemGrid("brainControl", cards, {
+    extraButtons: (item) => {
+      const buttons = [];
+      if (item.name === "Context Brain Artifact") {
+        buttons.push("<button onclick='refreshContextBrain()'>Refresh</button>");
+      }
+      return buttons;
+    },
+  });
+}
+
+function updateSummary(payload, memory) {
+  const stats = payload.stats || {};
+  document.getElementById("catalogCounts").textContent = `${stats.skill_count || 0} / ${stats.agent_count || 0}`;
+  document.getElementById("workflowCounts").textContent =
+    `${stats.archon_workflow_count || 0} workflows, ${stats.mcp_server_count || 0} MCP servers`;
+  document.getElementById("brainTimestamp").textContent =
+    payload.generated_at_utc ? new Date(payload.generated_at_utc).toLocaleTimeString() : "--";
+  document.getElementById("brainSource").textContent =
+    payload.artifact?.exists ? `Artifact: ${payload.artifact.relative_path}` : "Using live in-memory catalog";
+  document.getElementById("memoryFacts").textContent = String((memory.facts || []).length);
+  document.getElementById("memorySessions").textContent =
+    `Session summaries: ${memory.session_count || 0}`;
+  document.getElementById("heroCopy").textContent =
+    `${payload.project?.mission || "Vision intelligence stack"} :: ${payload.project?.primary_runtime || ""}`;
+  if (payload.config) {
+    syncProfileForm(payload.config);
+  }
+}
+
+async function refreshContextBrain() {
+  try {
+    logActivity("Refreshing context brain...");
+    await fetchJson(`${API}/api/command-center/context-brain/refresh`, { method: "POST" });
+    await loadDashboard(true);
+    await loadDoctor(true);
+    logActivity("Context brain refreshed and persisted.");
+  } catch (error) {
+    logActivity(`Context brain refresh failed: ${error}`);
+  }
+}
+
+function renderDoctor(report) {
+  const banner = document.getElementById("doctorSummary");
+  const grid = document.getElementById("doctorGrid");
+  banner.textContent = report.summary || "Doctor report unavailable.";
+  grid.innerHTML = (report.checks || []).map((check) => `
+    <div class="status-tile">
+      <div class="status-top">
+        <div class="status-name">${escapeHtml(check.name)}</div>
+        <div class="status-pill ${check.ok ? "ok" : "off"}">${check.ok ? "ok" : "issue"}</div>
+      </div>
+      <div class="status-detail">${escapeHtml(check.detail)}</div>
+    </div>
+  `).join("");
+  if (report.recommendations?.length) {
+    banner.textContent += ` Recommendations: ${report.recommendations.join(" | ")}`;
+  }
+}
+
+function renderRoutineGrid(routines) {
+  const target = document.getElementById("routineGrid");
+  if (!routines?.length) {
+    target.innerHTML = '<div class="empty">No saved routines.</div>';
+    return;
+  }
+  target.innerHTML = routines.map((routine) => `
+    <div class="item-card">
+      <div class="item-name">${escapeHtml(routine.name)}</div>
+      <div class="item-meta">${escapeHtml(routine.description || "")}</div>
+      <div class="item-path">${escapeHtml(routine.id)}</div>
+      <div class="card-actions">
+        <button onclick='runRoutine(${escapeJsArg(routine.id)})'>Run</button>
+        <button class="button-ghost" onclick='copyText(${escapeJsArg(routine.id)}, ${escapeJsArg(`${routine.name} id`)})'>Copy ID</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function findLatestRun(history, id) {
+  return (history || []).find((entry) => entry.id === id) || null;
+}
+
+function renderMissionGrid(missions, automationState) {
+  const target = document.getElementById("missionGrid");
+  if (!missions?.length) {
+    target.innerHTML = '<div class="empty">No automation missions.</div>';
+    return;
+  }
+  target.innerHTML = missions.map((mission) => {
+    const latest = findLatestRun(automationState?.mission_runs, mission.id);
+    const latestText = latest
+      ? `${latest.ok ? "ok" : "issue"} :: ${new Date(latest.generated_at_utc).toLocaleString()}`
+      : "Never run";
+    return `
+      <div class="item-card">
+        <div class="item-name">${escapeHtml(mission.name)}</div>
+        <div class="item-meta">${escapeHtml(mission.description || "")}</div>
+        <div class="item-path">${escapeHtml((mission.steps || []).map((step) => step.name || step.target).join(" -> "))}</div>
+        <div class="item-meta">Latest run: ${escapeHtml(latestText)}</div>
+        <div class="card-actions">
+          <button onclick='runMission(${escapeJsArg(mission.id)})'>Run Mission</button>
+          <button class="button-ghost" onclick='copyText(${escapeJsArg(mission.id)}, ${escapeJsArg(`${mission.name} id`)})'>Copy ID</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderAutomationHistory(state) {
+  const target = document.getElementById("automationHistoryGrid");
+  const history = [
+    ...((state?.mission_runs || []).map((entry) => ({ ...entry, type: "Mission" }))),
+    ...((state?.routine_runs || []).map((entry) => ({ ...entry, type: "Routine" }))),
+  ]
+    .sort((a, b) => String(b.generated_at_utc || "").localeCompare(String(a.generated_at_utc || "")))
+    .slice(0, 8);
+
+  if (!history.length) {
+    target.innerHTML = '<div class="empty">No automation history yet.</div>';
+    return;
+  }
+
+  target.innerHTML = history.map((entry) => `
+    <div class="status-tile">
+      <div class="status-top">
+        <div class="status-name">${escapeHtml(entry.type)} :: ${escapeHtml(entry.name || entry.id || "automation")}</div>
+        <div class="status-pill ${entry.ok ? "ok" : "off"}">${entry.ok ? "ok" : "issue"}</div>
+      </div>
+      <div class="status-detail">${escapeHtml(entry.summary || "Completed.")}</div>
+      <div class="status-detail">${escapeHtml(entry.generated_at_utc ? new Date(entry.generated_at_utc).toLocaleString() : "--")}</div>
+    </div>
+  `).join("");
+}
+
+async function loadDoctor(silent = false) {
+  try {
+    const doctor = await fetchJson(`${API}/api/command-center/doctor`);
+    renderDoctor(doctor);
+    if (!silent) {
+      logActivity(`Doctor: ${doctor.summary}`);
+    }
+  } catch (error) {
+    logActivity(`Doctor failed: ${error}`);
+  }
+}
+
+async function runRoutine(routineId) {
+  try {
+    logActivity(`Running routine ${routineId}...`);
+    const payload = await fetchJson(`${API}/api/command-center/routines/${encodeURIComponent(routineId)}`, {
+      method: "POST",
+    });
+    const summary = payload.result?.summary || `Routine ${routineId} completed.`;
+    logActivity(`${routineId}: ${summary}`);
+    if (payload.result?.output) {
+      logActivity(payload.result.output);
+    }
+    if (routineId === "refresh-context-stack") {
+      await loadDashboard();
+      await loadDoctor();
+    }
+    if (routineId === "run-vision-doctor") {
+      await loadDoctor();
+    }
+  } catch (error) {
+    logActivity(`Routine ${routineId} failed: ${error}`);
+  }
+}
+
+async function runMission(missionId) {
+  try {
+    logActivity(`Running mission ${missionId}...`);
+    const payload = await fetchJson(`${API}/api/command-center/missions/${encodeURIComponent(missionId)}`, {
+      method: "POST",
+    });
+    const result = payload.result || {};
+    logActivity(`${missionId}: ${result.summary || "Mission completed."}`);
+    for (const step of result.steps || []) {
+      logActivity(`step ${step.index}: ${step.name} :: ${step.summary || (step.ok ? "ok" : "issue")}`);
+      if (step.output) {
+        logActivity(step.output);
+      }
+    }
+    await loadDashboard(true);
+    await loadDoctor(true);
+  } catch (error) {
+    logActivity(`Mission ${missionId} failed: ${error}`);
+  }
+}
+
+async function saveProfile() {
+  try {
+    const nextConfig = collectProfileForm();
+    const saved = await fetchJson(`${API}/api/command-center/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextConfig),
+    });
+    syncProfileForm(saved);
+    logActivity(`Saved profile ${saved.profile_name}.`);
+    await loadDashboard(true);
+    await loadDoctor(true);
+  } catch (error) {
+    logActivity(`Profile save failed: ${error}`);
+  }
+}
+
+function renderCatalog(payload) {
+  renderQuickActions(payload.quick_actions || []);
+  renderBrainControl(payload);
+  renderItemGrid("pagesGrid", payload.pages || []);
+  renderItemGrid("coreGrid", payload.core_components || []);
+  renderItemGrid("docsGrid", payload.docs || []);
+  renderItemGrid("skillsGrid", payload.catalog?.skills || []);
+  renderItemGrid("agentsGrid", payload.catalog?.agents || []);
+  renderItemGrid("mcpGrid", (payload.integration?.mcp_servers || []).map((server) => ({
+    ...server,
+    name: server.name,
+    description: `${server.type} :: ${server.description || "MCP server"}`,
+    path: server.target,
+  })));
+  renderItemGrid("externalGrid", payload.integration?.external_resources || []);
+  if (commandCenterConfig && !commandCenterConfig.show_external_resources) {
+    document.getElementById("externalGrid").innerHTML = '<div class="empty">Hidden by current profile.</div>';
+  }
+  renderItemGrid("workflowGrid", payload.automation?.archon_workflows || [], {
+    extraButtons: (workflow) => {
+      const runCommandText =
+        `archon workflow run "${workflow.name}" --cwd C:\\project\\vision "Run ${workflow.name}"`;
+      return [
+        `<button onclick='runCommand(${escapeJsArg(runCommandText)})'>Run</button>`,
+        `<button class="button-ghost" onclick='copyText(${escapeJsArg(runCommandText)}, ${escapeJsArg(`${workflow.name} run command`)})'>Copy Run</button>`,
+      ];
+    },
+  });
+  renderRoutineGrid(payload.routines || []);
+  renderMissionGrid(payload.missions || [], payload.automation_state || {});
+  renderAutomationHistory(payload.automation_state || {});
+  renderCommandGrid(
+    "commandGrid",
+    [...(payload.automation?.command_shortcuts || []), ...(payload.automation?.validation_commands || [])]
+  );
+}
+
+async function loadDashboard(silent = false) {
+  try {
+    const [payload, health, metrics, models, memory] = await Promise.all([
+      fetchJson(`${API}/api/command-center`),
+      fetchJson(`${API}/api/health`),
+      fetchJson(`${API}/api/metrics`),
+      fetchJson(`${API}/api/models`),
+      fetchJson(`${API}/api/memory`),
+    ]);
+    commandCenter = payload;
+    updateSummary(payload, memory);
+    renderLayeredControl(payload, health, models);
+    renderStatus(health, models);
+    renderMetrics(metrics);
+    renderCatalog(payload);
+    if (!silent) {
+      logActivity("Dashboard loaded.");
+    }
+  } catch (error) {
+    logActivity(`Dashboard load failed: ${error}`);
+  }
+}
+
+document.getElementById("openVisionUiBtn").addEventListener("click", () => window.open("/", "_blank", "noopener"));
+document.getElementById("refreshBrainBtn").addEventListener("click", refreshContextBrain);
+document.getElementById("refreshStatusBtn").addEventListener("click", loadDashboard);
+document.getElementById("openRepoBtn").addEventListener("click", () => openPath("C:\\project\\vision"));
+document.getElementById("openDocsBtn").addEventListener("click", () => openPath("C:\\project\\vision\\DOCUMENTATION_INDEX.md"));
+document.getElementById("runDoctorBtn").addEventListener("click", loadDoctor);
+document.getElementById("themeSelect").addEventListener("change", (event) => applyTheme(event.target.value));
+document.getElementById("saveProfileBtn").addEventListener("click", saveProfile);
+document.getElementById("clearLogBtn").addEventListener("click", () => {
+  document.getElementById("activityLog").textContent = "";
+  logActivity("Activity log cleared.");
+});
+
+loadDashboard();
+loadDoctor();
+</script>
+</body>
+</html>

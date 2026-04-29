@@ -1,12 +1,11 @@
 """
 elite_safety.py — Security checks, safe patterns, vulnerability detection
 =========================================================================
-Prevents common vulnerabilities: injection, secrets exposure, unsafe async operations.
+Prevents common vulnerabilities: injection, secrets exposure, unsafe async.
 """
 
 import re
-import os
-from typing import Any, Optional, List
+from typing import List, Optional
 from dataclasses import dataclass
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -14,13 +13,22 @@ from dataclasses import dataclass
 # ──────────────────────────────────────────────────────────────────────────────
 
 SENSITIVE_PATTERNS = {
-    "api_key": re.compile(r"(?i)(api[_-]?key|secret|token)\s*[:=]?\s*['\"]?([a-zA-Z0-9\-._~+/]+=*)['\"]?", re.IGNORECASE),
+    "api_key": re.compile(
+        r"(?i)(api[_-]?key|secret|token)\s*[:=]?\s*['\"]?"
+        r"([a-zA-Z0-9\-._~+/]+=*)['\"]?",
+        re.IGNORECASE,
+    ),
     "aws_key": re.compile(r"(AKIA[0-9A-Z]{16})"),
     "github_token": re.compile(r"ghp_[0-9a-zA-Z]{36}"),
-    "password": re.compile(r"(?i)(password|passwd|pwd)\s*[:=]?\s*['\"]([^'\"]+)['\"]"),
-    "database_url": re.compile(r"(mongodb|postgres|mysql|redis)\:\/\/.*?@"),
-    "private_key": re.compile(r"-----BEGIN (?:RSA |EC |PGP )?PRIVATE KEY"),
+    "password": re.compile(
+        r"(?i)(password|passwd|pwd)\s*[:=]?\s*['\"]([^'\"]+)['\"]"
+    ),
+    "database_url": re.compile(r"(mongodb|postgres|mysql|redis):\/\/.*?@"),
+    "private_key": re.compile(
+        r"-----BEGIN (?:RSA |EC |PGP )?PRIVATE KEY"
+    ),
 }
+
 
 def scan_for_secrets(text: str, patterns: dict = None) -> List[dict]:
     """Scan text for exposed secrets/credentials."""
@@ -39,40 +47,45 @@ def scan_for_secrets(text: str, patterns: dict = None) -> List[dict]:
 
     return findings
 
+
 def sanitize_for_logging(text: str) -> str:
     """Remove sensitive data before logging."""
     for secret_type, pattern in SENSITIVE_PATTERNS.items():
         text = pattern.sub(f"<{secret_type}>", text)
     return text
 
-def validate_no_hardcoded_secrets(code: str, raise_on_finding: bool = False) -> bool:
+
+def validate_no_hardcoded_secrets(
+    code: str, raise_on_finding: bool = False
+) -> bool:
     """Validate code contains no hardcoded secrets."""
     findings = scan_for_secrets(code)
     if findings and raise_on_finding:
         raise ValueError(f"Found {len(findings)} potential secrets in code")
     return len(findings) == 0
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Input Validation & Sanitization
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class InputValidator:
     """Validate and sanitize user inputs."""
 
     @staticmethod
-    def sanitize_file_path(path: str, base_dir: str = None) -> Optional[str]:
+    def sanitize_file_path(
+        path: str, base_dir: str = None
+    ) -> Optional[str]:
         """Prevent path traversal attacks."""
         import os
         from pathlib import Path
 
-        # Resolve path
         normalized = os.path.normpath(path)
 
-        # Prevent .. traversal
         if ".." in normalized:
             return None
 
-        # Check against base directory
         if base_dir:
             resolved = Path(base_dir).resolve() / normalized
             try:
@@ -89,7 +102,9 @@ class InputValidator:
         return shlex.quote(text)
 
     @staticmethod
-    def validate_json_input(data: str, max_size_bytes: int = 1_000_000) -> tuple[bool, Optional[dict]]:
+    def validate_json_input(
+        data: str, max_size_bytes: int = 1_000_000
+    ) -> tuple[bool, Optional[dict]]:
         """Safely validate and parse JSON."""
         if len(data) > max_size_bytes:
             return False, None
@@ -103,16 +118,14 @@ class InputValidator:
     @staticmethod
     def validate_url(url: str) -> bool:
         """Validate URL format and prevent SSRF."""
-        import re
+        import re as _re
         from urllib.parse import urlparse
 
-        # Pattern: must start with http:// or https://
-        if not re.match(r"^https?://", url):
+        if not _re.match(r"^https?://", url):
             return False
 
         parsed = urlparse(url)
 
-        # Prevent localhost/private IPs
         blocked_hosts = {
             "localhost", "127.0.0.1", "0.0.0.0",
             "169.254.169.254",  # AWS metadata
@@ -122,9 +135,11 @@ class InputValidator:
 
         return True
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Async Safety
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class AsyncSafety:
     """Detect and prevent common async antipatterns."""
@@ -143,7 +158,9 @@ class AsyncSafety:
 
         for call, suggestion in blocking_calls.items():
             if call in fn_code:
-                warnings.append(f"Possible blocking call '{call}': {suggestion}")
+                warnings.append(
+                    f"Possible blocking call '{call}': {suggestion}"
+                )
 
         return warnings
 
@@ -153,20 +170,27 @@ class AsyncSafety:
         warnings = []
 
         if "asyncio.create_task(" in code and "cancel()" not in code:
-            warnings.append("create_task used without visible cancel() — may leak tasks")
+            warnings.append(
+                "create_task used without visible cancel() — may leak tasks"
+            )
 
         if "gather(" in code and "return_exceptions" not in code:
-            warnings.append("gather() without return_exceptions may fail if one task raises")
+            warnings.append(
+                "gather() without return_exceptions may fail if one task raises"
+            )
 
         return warnings
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Code Quality Checks
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class CodeHealth:
     """Code quality assessment."""
+
     has_type_hints: bool
     has_docstrings: bool
     lacks_secrets: bool
@@ -175,23 +199,19 @@ class CodeHealth:
     score: float  # 0-1
     issues: List[str]
 
+
 def assess_code_health(code: str, is_async: bool = False) -> CodeHealth:
     """Holistic code health assessment."""
     issues = []
 
-    # Type hints
     has_type_hints = "->" in code or ": " in code
-
-    # Docstrings
     has_docstrings = '"""' in code or "'''" in code
 
-    # Secrets
     secrets = scan_for_secrets(code)
     lacks_secrets = len(secrets) == 0
     if secrets:
         issues.append(f"Found {len(secrets)} potential secrets")
 
-    # Async safety
     no_blocking = True
     async_safe = True
     if is_async:
@@ -201,11 +221,7 @@ def assess_code_health(code: str, is_async: bool = False) -> CodeHealth:
         async_safe = len(async_warns) == 0
         issues.extend(blocking_warns)
         issues.extend(async_warns)
-    else:
-        no_blocking = True
-        async_safe = True
 
-    # Score
     score = sum([
         has_type_hints * 0.25,
         has_docstrings * 0.25,
@@ -224,9 +240,11 @@ def assess_code_health(code: str, is_async: bool = False) -> CodeHealth:
         issues=issues,
     )
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Enforcement
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class SecurityPolicy:
     """Enforce security policies."""
@@ -253,7 +271,9 @@ class SecurityPolicy:
         if not policy.get("allow_secrets"):
             secrets = scan_for_secrets(code)
             if secrets:
-                violations.append(f"Policy violation: hardcoded secrets found ({len(secrets)})")
+                violations.append(
+                    f"Policy violation: hardcoded secrets found ({len(secrets)})"
+                )
 
         if policy.get("require_type_hints") and "->" not in code:
             violations.append("Policy violation: missing type hints")
@@ -263,6 +283,8 @@ class SecurityPolicy:
 
         for module in policy.get("block_dangerous_modules", []):
             if f"import {module}" in code or f"from {module}" in code:
-                violations.append(f"Policy violation: blocked module '{module}'")
+                violations.append(
+                    f"Policy violation: blocked module '{module}'"
+                )
 
         return len(violations) == 0, violations

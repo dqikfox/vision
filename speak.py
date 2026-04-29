@@ -33,7 +33,7 @@ async def stream_tts(text: str) -> None:
     )
 
     with sd.OutputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
-        async with websockets.connect(uri) as ws:
+        async with websockets.connect(uri, additional_headers={"xi-api-key": API_KEY}) as ws:
             # Initialise connection with voice settings
             await ws.send(json.dumps({
                 "text": " ",
@@ -45,7 +45,6 @@ async def stream_tts(text: str) -> None:
                 "generation_config": {
                     "chunk_length_schedule": [50, 120, 160, 250],
                 },
-                "xi_api_key": API_KEY,
             }))
 
             # Send text + flush to start generating immediately

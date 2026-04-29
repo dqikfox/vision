@@ -1,0 +1,20 @@
+assistants:
+  claude:
+    model: sonnet
+    settingSources:
+      - project
+  codex:
+    model: gpt-5.3-codex
+    modelReasoningEffort: medium
+    webSearchMode: live
+
+commands:
+  folder: .archon/commands
+  autoLoad: true
+
+docs:
+  path: docs
+
+defaults:
+  loadDefaultCommands: true
+  loadDefaultWorkflows: true

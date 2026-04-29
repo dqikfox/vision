@@ -1,0 +1,24 @@
+[flake8]
+# Project-wide line length — matches Black/Google style (120 is the modern standard).
+# The original PEP 8 limit of 79 is impractical for a large application file
+# with long string literals, tool descriptions, and chained method calls.
+max-line-length = 120
+
+# Exclude generated/vendored paths
+exclude =
+    .git,
+    __pycache__,
+    .pw_profile,
+    node_modules,
+    .venv,
+    venv
+
+# live_chat_app.py contains hundreds of long JSON tool-description strings
+# (the TOOLS list) that cannot be meaningfully wrapped without breaking
+# readability.  E501 is suppressed for that file only.
+per-file-ignores =
+    live_chat_app.py: E501
+
+# E402 is suppressed project-wide — third-party imports intentionally follow
+# warnings.filterwarnings() to silence noisy deprecation output on import.
+extend-ignore = E402

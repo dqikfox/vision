@@ -1,0 +1,40 @@
+name: vision-external-agent-integration
+description: |
+  Use when: Integrating Vision with an external agent runtime such as OpenHarness or another MCP-capable orchestrator.
+  Input: The target harness, UX goal, or orchestration problem to solve.
+  Does: Reuses Vision's existing MCP bridge, updates repo wiring or docs as needed, and validates the bridge-facing Python entrypoints.
+
+nodes:
+  - id: map-integration
+    prompt: |
+      Inspect how Vision exposes external integration points.
+      Focus on:
+      - vision_mcp_server.py
+      - .vscode/mcp.json
+      - README.md
+      - HIVE.md
+      - DOCUMENTATION_INDEX.md
+      - .github/copilot-instructions.md
+
+      Produce a short integration plan that prefers reusing the MCP bridge over creating a new adapter.
+      Call out any harness-specific concerns such as tool namespacing, transport type, or required environment variables.
+
+  - id: implement
+    depends_on: [map-integration]
+    context: fresh
+    prompt: |
+      Use $map-integration.output to implement the smallest coherent integration improvement in this repo.
+      Prefer:
+      - MCP bridge reuse
+      - clearer external-harness docs
+      - small bridge enhancements that preserve the current Vision API surface
+
+  - id: validate
+    depends_on: [implement]
+    bash: python -m py_compile vision_mcp_server.py launch_lmstudio_rag_mcp.py
+
+  - id: summarize
+    depends_on: [validate]
+    context: fresh
+    prompt: |
+      Summarize the integration change, the bridge or docs touched, and the validation result.

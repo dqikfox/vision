@@ -1,0 +1,44 @@
+name: vision-cognitive-council
+description: |
+  Use when: The task is broad, high-risk, or ambiguous and needs multiple independent viewpoints before action.
+  Input: A task or decision that would benefit from deeper reasoning.
+  Does: Regenerates the context brain, gathers several fresh specialist perspectives in parallel, and synthesizes one recommended path with risks and validation steps.
+
+nodes:
+  - id: generate-brain
+    bash: python hive_tools/context_mapper.py --output .archon/artifacts/project_context.json
+
+  - id: runtime-view
+    depends_on: [generate-brain]
+    context: fresh
+    prompt: |
+      Read .archon/artifacts/project_context.json.
+      From the Vision runtime/operator perspective, identify what matters most for this task: entrypoints, protocol surfaces, likely breakpoints, and validation needs.
+
+  - id: customization-view
+    depends_on: [generate-brain]
+    context: fresh
+    prompt: |
+      Read .archon/artifacts/project_context.json.
+      From the repo-awareness/customization perspective, identify what should change in instructions, skills, workflows, docs, or MCP wiring for this task.
+
+  - id: risk-view
+    depends_on: [generate-brain]
+    context: fresh
+    prompt: |
+      Read .archon/artifacts/project_context.json.
+      From the risk and reliability perspective, identify failure modes, coupling hazards, and the minimum validation required before the task is considered done.
+
+  - id: automation-view
+    depends_on: [generate-brain]
+    context: fresh
+    prompt: |
+      Read .archon/artifacts/project_context.json.
+      From the automation/workflow perspective, identify which Archon workflow, MCP surface, or reusable repo process should be used instead of ad hoc work.
+
+  - id: synthesize
+    depends_on: [runtime-view, customization-view, risk-view, automation-view]
+    context: fresh
+    prompt: |
+      Compare the four viewpoints and synthesize one recommended path forward.
+      Resolve any conflicts, name the files or workflows that should be used next, and highlight the most important validation step.

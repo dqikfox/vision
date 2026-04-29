@@ -1,0 +1,19 @@
+{
+  "denyTools": [
+    "deleteFile"
+  ],
+  "denyInputRegex": [
+    "rm\\s+-rf",
+    "shutdown",
+    "reboot",
+    "format\\s+",
+    "cipher\\s+/w"
+  ],
+  "highRiskInputRegex": [
+    "del\\s+/f",
+    "rmdir\\s+/s",
+    "taskkill",
+    "reg\\s+delete",
+    "diskpart"
+  ]
+}

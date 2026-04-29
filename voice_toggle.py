@@ -104,12 +104,11 @@ async def _stream_tts(text: str) -> None:
         f"?model_id={MODEL_ID}&output_format=pcm_{SAMPLE_RATE}"
     )
     with sd.OutputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
-        async with websockets.connect(uri) as ws:
+        async with websockets.connect(uri, additional_headers={"xi-api-key": API_KEY}) as ws:
             await ws.send(json.dumps({
                 "text": " ",
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "use_speaker_boost": False},
                 "generation_config": {"chunk_length_schedule": [50, 120, 160, 250]},
-                "xi_api_key": API_KEY,
             }))
             await ws.send(json.dumps({"text": text, "flush": True}))
             await ws.send(json.dumps({"text": ""}))
@@ -183,13 +182,21 @@ def stop_recording_and_transcribe():
 
     audio_np = np.concatenate(chunks, axis=0)
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        wav_path = f.name
-    wavfile.write(wav_path, SAMPLE_RATE, audio_np)
+    text = ""
+    wav_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            wav_path = f.name
+        wavfile.write(wav_path, SAMPLE_RATE, audio_np)
 
-    log("⏳  Transcribing…")
-    text = transcribe_wav(wav_path)
-    os.unlink(wav_path)
+        log("⏳  Transcribing…")
+        text = transcribe_wav(wav_path)
+    finally:
+        if wav_path:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
 
     if text:
         pyperclip.copy(text)

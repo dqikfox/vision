@@ -1,0 +1,99 @@
+[
+  {
+    "name": "vision_project",
+    "entityType": "project_fact",
+    "observations": [
+      "Main project is at C:\\project\\vision",
+      "FastAPI + WebSocket backend on port 8765",
+      "Primary entry point: live_chat_app.py",
+      "Primary UI: live_chat_ui.html",
+      "65+ operator tools for desktop control, OCR, browser, files, shell",
+      "Architecture: Perception -> Brain -> Action (3-layer pipeline)",
+      "Memory stored in memory.json, logs in chat_events.log"
+    ]
+  },
+  {
+    "name": "api_keys_status",
+    "entityType": "api_key_status",
+    "observations": [
+      "VALID: OPENAI_API_KEY (sk-proj-hBJPw...)",
+      "VALID: ELEVENLABS_API_KEY (sk_a99d3...)",
+      "VALID: DEEPSEEK_API_KEY (sk-585f...)",
+      "VALID: GITHUB_PAT (ghp_5MU3... login=dqikfox)",
+      "VALID: PINECONE_API_KEY",
+      "VALID: VERCEL_API_KEY",
+      "VALID: SUPABASE_PAT (6 projects)",
+      "INVALID/EXPIRED: GROQ_API_KEY (403 forbidden)",
+      "INVALID/EXPIRED: MISTRAL_API_KEY (401)",
+      "INVALID/EXPIRED: GEMINI_API_KEY (403 permission denied)",
+      "INVALID/EXPIRED: GITHUB_TOKEN original (401 bad credentials)",
+      "INVALID: GOOGLE_API_KEY (reported as leaked by Google)",
+      "INVALID: OPENAI_ADMIN_KEY (401)"
+    ]
+  },
+  {
+    "name": "system_environment",
+    "entityType": "system_state",
+    "observations": [
+      "OS: Windows 11 Home, MSI Thin 15 B13UC",
+      "Python 3.14 at C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\",
+      "Node.js 24.14.1",
+      "Ollama models stored at F:\\models (OLLAMA_MODELS env var set)",
+      "ADB at C:\\Users\\CHANN0$\\AppData\\Local\\Android\\Sdk\\platform-tools\\",
+      "ExpressVPN installed and active",
+      "Intel Wi-Fi 6E AX211, IP 192.168.0.202, gateway 192.168.0.1",
+      "64GB RAM, NVMe 512GB (C:), HDD 500GB (D:), Samsung T7 1TB (F:)",
+      "NVIDIA GPU present (pynvml available)"
+    ]
+  },
+  {
+    "name": "vision_providers",
+    "entityType": "project_fact",
+    "observations": [
+      "Ollama: local, http://localhost:11434, 60+ models installed",
+      "OpenAI: cloud, gpt-4.1/gpt-4o/o3/computer-use-preview",
+      "ElevenLabs: STT (scribe_v1) + TTS (eleven_flash_v2_5)",
+      "DeepSeek: cloud, deepseek-chat/reasoner",
+      "GitHub Models: cloud via Azure inference API",
+      "Anthropic: native SDK, claude-sonnet/opus",
+      "Fallback order: github -> groq -> gemini -> deepseek -> openai -> mistral -> anthropic -> xai"
+    ]
+  },
+  {
+    "name": "vision_voice_pipeline",
+    "entityType": "project_fact",
+    "observations": [
+      "STT cascade: ElevenLabs scribe_v1 -> Groq whisper -> faster-whisper tiny",
+      "TTS cascade: ElevenLabs WS stream -> Windows OneCore -> pyttsx3",
+      "VAD: RMS_THRESH=500, START_FRAMES=3, END_FRAMES=20, BARGE_RMS=1100",
+      "DO NOT change VAD thresholds without explicit instruction",
+      "ElevenLabs agent ID: agent_01jz2wq70mfetr2b7nchrhew1t"
+    ]
+  },
+  {
+    "name": "coding_conventions",
+    "entityType": "project_fact",
+    "observations": [
+      "Line length: 120 chars (Ruff enforced, not Black)",
+      "Formatter: ruff format",
+      "asyncio.get_running_loop() not get_event_loop()",
+      "All new functions need return type annotations",
+      "dict -> dict[str, Any], Queue -> Queue[T], Task -> Task[None]",
+      "New tools need 3 changes: TOOLS schema + exec_tool handler + _EL_TOOL_NAMES",
+      "broadcast() must use list(clients) snapshot to avoid RuntimeError",
+      "APITimeoutError must come before APIConnectionError in except clauses",
+      "PIL.Image.LANCZOS -> PIL.Image.Resampling.LANCZOS (Pillow 10+)"
+    ]
+  },
+  {
+    "name": "ultron_project",
+    "entityType": "project_fact",
+    "observations": [
+      "ULTRON canonical location: F:\\ULTRON",
+      "Also at F:\\projects\\ultron_agent and F:\\ultron_agent",
+      "Core modules: ai_brain.py, file_manager.py, system_control.py, vision_system.py",
+      "Integration plan exists but not yet merged into Vision",
+      "ULTRON AIBrain is a wrapper around OpenAI \u2014 Vision already does this natively"
+    ]
+  }
+]

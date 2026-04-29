@@ -1,93 +1,208 @@
 #!/usr/bin/env pwsh
-# ════════════════════════════════════════════════════════════════
-#  VISION — Universal Accessibility Operator  |  Launcher v2.0
-#  Starts all required services, validates connections, opens UI
-#  --reload flag: auto-restarts server on code changes
-# ════════════════════════════════════════════════════════════════
+# VISION - Universal Accessibility Operator launcher
+#
+# Startup flow:
+# 1. Validate Python + required packages.
+# 2. Start Ollama automatically when it is required and not already listening.
+# 3. Start the FastAPI / WebSocket backend when it is not already listening.
+# 4. Confirm health + doctor endpoints before opening the UI surfaces.
 
 param(
-    [switch]$Reload,        # Enable uvicorn --reload (dev mode)
-    [switch]$Debug,         # Show verbose server output
-    [switch]$NoOllama,      # Skip Ollama startup
-    [switch]$NoBrowser      # Skip opening browser UI
+    [switch]$Reload,
+    [switch]$Debug,
+    [switch]$NoOllama,
+    [switch]$NoBrowser
 )
 
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = "SilentlyContinue"
 
-# ── Paths ────────────────────────────────────────────────────────
-$PYTHON   = (Get-Command python -ErrorAction SilentlyContinue)?.Source
-if (-not $PYTHON) { $PYTHON = "python" }
-$OLLAMA   = (Get-Command ollama -ErrorAction SilentlyContinue)?.Source
-$APP_DIR  = $PSScriptRoot
-$APP_FILE = "$APP_DIR\live_chat_app.py"
-$LOG_FILE = "$APP_DIR\vision_launch.log"
-$UI_URL   = "http://localhost:8765"
-$HEALTH   = "$UI_URL/api/health"
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+$PYTHON = if ($pythonCommand) { $pythonCommand.Source } else { "python" }
+$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
+$OLLAMA = if ($ollamaCommand) { $ollamaCommand.Source } else { $null }
+$APP_DIR = $PSScriptRoot
+$APP_FILE = Join-Path $APP_DIR "live_chat_app.py"
+$CONFIG_FILE = Join-Path $APP_DIR "vision_command_center_config.json"
+$LOG_FILE = Join-Path $APP_DIR "vision_launch.log"
+$ERR_FILE = Join-Path $APP_DIR "vision_error.log"
+$UI_URL = "http://localhost:8765"
+$COMMAND_CENTER_URL = "$UI_URL/command-center"
+$HEALTH_URL = "$UI_URL/api/health"
+$DOCTOR_URL = "$UI_URL/api/command-center/doctor"
 
-# ── Colors ───────────────────────────────────────────────────────
-function ok($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
-function warn($msg) { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
-function err($msg)  { Write-Host "  ✗ $msg" -ForegroundColor Red }
-function hdr($msg)  { Write-Host "`n◆ $msg" -ForegroundColor Cyan }
-function dot($msg)  { Write-Host "  · $msg" -ForegroundColor DarkGray }
+function ok($msg) { Write-Host "  [OK] $msg" -ForegroundColor Green }
+function warn($msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
+function err($msg) { Write-Host "  [ERR] $msg" -ForegroundColor Red }
+function hdr($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
+function dot($msg) { Write-Host "  [..] $msg" -ForegroundColor DarkGray }
+
+function Get-LauncherConfig {
+    $default = @{
+        open_primary_ui = $true
+        open_command_center = $false
+        prefer_app_window = $true
+        ollama_access_mode = "local"
+        ollama_host = "127.0.0.1:11434"
+        ollama_origins = "http://localhost:8765,http://127.0.0.1:8765"
+        ollama_models_path = "F:\\models"
+    }
+    if (-not (Test-Path $CONFIG_FILE)) {
+        return $default
+    }
+    try {
+        $raw = Get-Content $CONFIG_FILE -Raw | ConvertFrom-Json
+        if ($null -eq $raw.launcher) {
+            return $default
+        }
+        return @{
+            open_primary_ui = if ($null -ne $raw.launcher.open_primary_ui) { [bool]$raw.launcher.open_primary_ui } else { $default.open_primary_ui }
+            open_command_center = if ($null -ne $raw.launcher.open_command_center) { [bool]$raw.launcher.open_command_center } else { $default.open_command_center }
+            prefer_app_window = if ($null -ne $raw.launcher.prefer_app_window) { [bool]$raw.launcher.prefer_app_window } else { $default.prefer_app_window }
+            ollama_access_mode = if ($null -ne $raw.launcher.ollama_access_mode -and "$($raw.launcher.ollama_access_mode)".Trim()) { "$($raw.launcher.ollama_access_mode)".Trim().ToLowerInvariant() } else { $default.ollama_access_mode }
+            ollama_host = if ($null -ne $raw.launcher.ollama_host -and "$($raw.launcher.ollama_host)".Trim()) { "$($raw.launcher.ollama_host)".Trim() } else { $default.ollama_host }
+            ollama_origins = if ($null -ne $raw.launcher.ollama_origins -and "$($raw.launcher.ollama_origins)".Trim()) { "$($raw.launcher.ollama_origins)".Trim() } else { $default.ollama_origins }
+            ollama_models_path = if ($null -ne $raw.launcher.ollama_models_path -and "$($raw.launcher.ollama_models_path)".Trim()) { "$($raw.launcher.ollama_models_path)".Trim() } else { $default.ollama_models_path }
+        }
+    } catch {
+        warn "Could not parse vision_command_center_config.json; using launcher defaults"
+        return $default
+    }
+}
+
+function Open-PreferredBrowser([string]$Url, [bool]$PreferAppWindow) {
+    $browsers = @(
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+    )
+    if ($PreferAppWindow) {
+        foreach ($browser in $browsers) {
+            if (Test-Path $browser) {
+                Start-Process $browser -ArgumentList "--app=$Url --window-size=1400,900"
+                ok "Opened in: $(Split-Path $browser -Leaf)"
+                return
+            }
+        }
+    }
+    Start-Process $Url
+    ok "Opened in default browser"
+}
+
+function Wait-ForPort([int]$Port, [int]$TimeoutSeconds) {
+    for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
+        Start-Sleep -Seconds 1
+        if (netstat -ano | Select-String ":$Port.*LISTENING") {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-LanBaseUrls([int]$Port) {
+    $addresses = @()
+    try {
+        $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop | Where-Object {
+            $_.IPAddress -and
+            $_.IPAddress -notlike "127.*" -and
+            $_.IPAddress -notlike "169.254.*"
+        } | Select-Object -ExpandProperty IPAddress -Unique
+    } catch {
+        try {
+            $addresses = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+                Where-Object { $_.OperationalStatus -eq "Up" } |
+                ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+                Where-Object {
+                    $_.Address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+                    $_.Address.IPAddressToString -notlike "127.*" -and
+                    $_.Address.IPAddressToString -notlike "169.254.*"
+                } |
+                ForEach-Object { $_.Address.IPAddressToString } |
+                Select-Object -Unique
+        } catch {
+            $addresses = @()
+        }
+    }
+    return @($addresses | Sort-Object | ForEach-Object { "http://$($_):$Port" })
+}
+
+function Get-TailscaleBaseUrls([int]$Port) {
+    try {
+        $status = & tailscale status --json 2>$null | ConvertFrom-Json
+    } catch {
+        return @()
+    }
+
+    if ($null -eq $status -or $null -eq $status.Self) {
+        return @()
+    }
+
+    $urls = @()
+    $dnsName = "$($status.Self.DNSName)".Trim().TrimEnd(".")
+    if ($dnsName) {
+        $urls += "http://${dnsName}:$Port"
+    }
+    foreach ($ip in @($status.Self.TailscaleIPs)) {
+        $ipText = "$ip".Trim()
+        if ($ipText -and $ipText -match "^\d{1,3}(\.\d{1,3}){3}$") {
+            $urls += "http://${ipText}:$Port"
+        }
+    }
+    return @($urls | Select-Object -Unique)
+}
+
+function Stop-OllamaProcesses {
+    $targets = Get-CimInstance Win32_Process | Where-Object {
+        ($_.Name -eq 'ollama.exe' -or $_.Name -eq 'ollama app.exe') -and $_.ExecutablePath -like '*\\Ollama\\*'
+    }
+    foreach ($target in $targets) {
+        try {
+            Stop-Process -Id $target.ProcessId -Force -ErrorAction Stop
+            dot "Stopped Ollama PID $($target.ProcessId)"
+        } catch {
+        }
+    }
+}
 
 Clear-Host
 Write-Host ""
-Write-Host "  ██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██╗" -ForegroundColor Blue
-Write-Host "  ██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║" -ForegroundColor Blue
-Write-Host "  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║" -ForegroundColor DarkBlue
-Write-Host "  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║" -ForegroundColor DarkBlue
-Write-Host "   ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║" -ForegroundColor DarkCyan
-Write-Host "    ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host "  Universal Accessibility Operator — Launch Sequence" -ForegroundColor DarkGray
+Write-Host "  VISION - Universal Accessibility Operator" -ForegroundColor Cyan
 if ($Reload) {
-    Write-Host "  ◈ DEV MODE — hot-reload enabled (uvicorn --reload)" -ForegroundColor Yellow
+    Write-Host "  DEV MODE - hot-reload enabled" -ForegroundColor Yellow
 }
-Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 
 $startTime = Get-Date
+$launcherConfig = Get-LauncherConfig
+$openPrimaryUi = (-not $NoBrowser) -and $launcherConfig.open_primary_ui
+$openCommandCenter = (-not $NoBrowser) -and $launcherConfig.open_command_center
 
-# ════════════════════════════════════════════════════════════════
-#  STEP 1: Validate Python
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 1 — Python Runtime"
+hdr "STEP 1 - Python Runtime"
 $pyVer = & $PYTHON --version 2>&1
 if ($LASTEXITCODE -eq 0 -or $pyVer -match "Python") {
     ok "Python found: $pyVer"
 } else {
     err "Python not found in PATH"
-    err "Cannot start VISION without Python. Aborting."
-    Read-Host "`nPress Enter to exit"
     exit 1
 }
 
-# ════════════════════════════════════════════════════════════════
-#  STEP 2: Check required Python packages
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 2 — Python Packages"
+hdr "STEP 2 - Python Packages"
 $packages = @(
-    @{ name='fastapi';     import='fastapi' },
-    @{ name='uvicorn';     import='uvicorn' },
-    @{ name='elevenlabs';  import='elevenlabs' },
-    @{ name='pyttsx3';     import='pyttsx3' },
-    @{ name='sounddevice'; import='sounddevice' },
-    @{ name='pytesseract'; import='pytesseract' },
-    @{ name='pyautogui';   import='pyautogui' },
-    @{ name='psutil';      import='psutil' },
-    @{ name='PIL';         import='PIL' },
-    @{ name='playwright';  import='playwright' },
-    @{ name='ddgs';        import='ddgs' },
-    @{ name='markdownify'; import='markdownify' }
+    @{ name = "fastapi"; import = "fastapi" },
+    @{ name = "uvicorn"; import = "uvicorn" },
+    @{ name = "httpx"; import = "httpx" },
+    @{ name = "psutil"; import = "psutil" },
+    @{ name = "playwright"; import = "playwright" },
+    @{ name = "pytesseract"; import = "pytesseract" },
+    @{ name = "pyautogui"; import = "pyautogui" }
 )
 $missing = @()
 foreach ($pkg in $packages) {
     $result = & $PYTHON -c "import $($pkg.import); print('OK')" 2>&1
-    if ($result -eq 'OK') {
-        dot "$($pkg.name) ✓"
+    if ($result -eq "OK") {
+        dot "$($pkg.name) loaded"
     } else {
-        warn "$($pkg.name) — NOT FOUND"
+        warn "$($pkg.name) not found"
         $missing += $pkg.name
     }
 }
@@ -95,56 +210,59 @@ if ($missing.Count -gt 0) {
     warn "Missing packages: $($missing -join ', ')"
     warn "Run: pip install -r requirements.txt"
 } else {
-    ok "All packages present"
+    ok "All required packages present"
 }
 
-# ════════════════════════════════════════════════════════════════
-#  STEP 3: Ollama
-# ════════════════════════════════════════════════════════════════
 if (-not $NoOllama) {
-    hdr "STEP 3 — Ollama (Local AI)"
-    $ollamaRunning = netstat -ano | Select-String ':11434.*LISTENING'
-    if ($ollamaRunning) {
-        $pid11434 = (netstat -ano | Select-String ':11434.*LISTENING' | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -First 1)
-        ok "Ollama already running (PID $pid11434)"
-    } elseif ($OLLAMA) {
-        dot "Starting Ollama serve…"
+    # Ollama is the local model service used by Vision. If it is not already
+    # listening on the standard port, start `ollama serve` automatically so
+    # local-model features can come online without manual intervention.
+    hdr "STEP 3 - Ollama"
+    $ollamaAccessMode = if ("$($launcherConfig.ollama_access_mode)" -eq "lan") { "lan" } else { "local" }
+    $defaultOllamaHost = if ($ollamaAccessMode -eq "lan") { "0.0.0.0:11434" } else { "127.0.0.1:11434" }
+    $ollamaHost = if ("$($launcherConfig.ollama_host)".Trim()) { "$($launcherConfig.ollama_host)".Trim() } else { $defaultOllamaHost }
+    $ollamaOrigins = if ("$($launcherConfig.ollama_origins)".Trim()) { "$($launcherConfig.ollama_origins)".Trim() } else { "http://localhost:8765,http://127.0.0.1:8765" }
+    $ollamaModelsPath = if ("$($launcherConfig.ollama_models_path)".Trim()) { "$($launcherConfig.ollama_models_path)".Trim() } else { "F:\\models" }
+    $env:OLLAMA_HOST = $ollamaHost
+    $env:OLLAMA_ORIGINS = $ollamaOrigins
+    if ($ollamaAccessMode -eq "lan") {
+        warn "Ollama launcher mode: LAN exposed (host=$env:OLLAMA_HOST, origins=$env:OLLAMA_ORIGINS)"
+    } else {
+        ok "Ollama launcher mode: local only (host=$env:OLLAMA_HOST)"
+    }
+    $env:OLLAMA_MODELS = $ollamaModelsPath
+    if (-not (Test-Path $ollamaModelsPath)) {
+        warn "Configured Ollama models path not found: $ollamaModelsPath"
+    } else {
+        ok "Ollama models path: $ollamaModelsPath"
+    }
+    if ($OLLAMA) {
+        dot "Restarting managed Ollama serve with configured model library..."
+        Stop-OllamaProcesses
+        Start-Sleep -Seconds 2
         Start-Process -FilePath $OLLAMA -ArgumentList "serve" -WindowStyle Hidden
         Start-Sleep -Seconds 3
-        ok "Ollama started"
-    } else {
-        warn "Ollama not found — local models unavailable"
-    }
-
-    $ollamaModels = @()
-    try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 5
-        $ollamaModels = $resp.models | ForEach-Object { $_.name }
-        if ($ollamaModels.Count -gt 0) {
-            ok "$($ollamaModels.Count) models: $($ollamaModels -join ', ')"
+        if (netstat -ano | Select-String ":11434.*LISTENING") {
+            ok "Ollama started"
         } else {
-            warn "No models. Run: ollama pull llama3.1:8b"
+            warn "Ollama may still be starting"
         }
-    } catch { warn "Could not query Ollama models" }
+    } else {
+        warn "Ollama not found on PATH"
+    }
 }
 
-# ════════════════════════════════════════════════════════════════
-#  STEP 4: VISION App Server
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 4 — VISION App Server (port 8765)"
-$visionRunning = netstat -ano | Select-String ':8765.*LISTENING'
-if ($visionRunning) {
-    $pid8765 = (netstat -ano | Select-String ':8765.*LISTENING' | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -First 1)
-    ok "VISION server already running (PID $pid8765)"
+hdr "STEP 4 - VISION App Server"
+# The backend hosts both the operator UI and the command-center APIs. Start it
+# only when port 8765 is not already in use so repeated launches stay safe.
+if (netstat -ano | Select-String ":8765.*LISTENING") {
+    ok "VISION server already running"
 } else {
-    dot "Starting VISION server…"
     if (-not (Test-Path $APP_FILE)) {
         err "App file not found: $APP_FILE"
-        Read-Host "`nPress Enter to exit"
         exit 1
     }
-
-    # Build uvicorn args
+    dot "Starting VISION server..."
     $uvicornArgs = @(
         "-m", "uvicorn",
         "live_chat_app:app",
@@ -159,370 +277,105 @@ if ($visionRunning) {
     }
 
     $startInfo = @{
-        FilePath         = $PYTHON
-        ArgumentList     = $uvicornArgs
+        FilePath = $PYTHON
+        ArgumentList = $uvicornArgs
         WorkingDirectory = $APP_DIR
+        RedirectStandardOutput = $LOG_FILE
+        RedirectStandardError = $ERR_FILE
     }
-    if ($Debug) {
-        $startInfo.RedirectStandardOutput = $LOG_FILE
-        $startInfo.RedirectStandardError  = "$APP_DIR\vision_error.log"
-    } else {
+    if (-not $Debug) {
         $startInfo.WindowStyle = "Hidden"
-        $startInfo.RedirectStandardOutput = $LOG_FILE
-        $startInfo.RedirectStandardError  = "$APP_DIR\vision_error.log"
     }
     Start-Process @startInfo
-
-    dot "Waiting for server to come online…"
-    $timeout = 35
-    $started = $false
-    for ($i = 0; $i -lt $timeout; $i++) {
-        Start-Sleep -Seconds 1
-        $check = netstat -ano | Select-String ':8765.*LISTENING'
-        if ($check) { $started = $true; break }
-        Write-Host "  · Waiting… ($($i+1)s)" -ForegroundColor DarkGray -NoNewline
-        Write-Host "`r" -NoNewline
-    }
-    if ($started) {
+    dot "Waiting for server to come online..."
+    if (Wait-ForPort -Port 8765 -TimeoutSeconds 35) {
         ok "VISION server started"
     } else {
-        err "VISION server failed to start within ${timeout}s"
-        err "Check: $APP_DIR\vision_error.log"
-        notepad "$APP_DIR\vision_error.log"
-        Read-Host "`nPress Enter to exit"
+        err "VISION server failed to start within timeout"
+        err "Check: $ERR_FILE"
         exit 1
     }
 }
 
-# ════════════════════════════════════════════════════════════════
-#  STEP 5: Health Check & Validation
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 5 — Health Check"
+hdr "STEP 5 - Health Check"
+# The health and doctor checks are the success indicators for the launcher. They
+# confirm the runtime is responsive before the browser UI is opened.
 Start-Sleep -Seconds 1
 try {
-    $health = Invoke-RestMethod -Uri $HEALTH -TimeoutSec 8
+    $health = Invoke-RestMethod -Uri $HEALTH_URL -TimeoutSec 8
     ok "API responding"
     $statusMap = @{
-        ollama      = 'Ollama'
-        elevenlabs  = 'ElevenLabs'
-        browser     = 'Playwright Browser'
-        gpu         = 'GPU'
-        ocr         = 'OCR (Tesseract)'
+        ollama = "Ollama"
+        elevenlabs = "ElevenLabs"
+        browser = "Playwright Browser"
+        gpu = "GPU"
+        ocr = "OCR"
     }
     foreach ($key in $statusMap.Keys) {
         $val = $health.$key
-        if ($val -eq $true -or $val -eq 'true') { ok "$($statusMap[$key])" }
-        elseif ($val -eq $false -or $val -eq 'false') { warn "$($statusMap[$key]) — offline" }
-        else { dot "$($statusMap[$key]) — $val" }
+        if ($val -eq $true -or $val -eq "true") {
+            ok "$($statusMap[$key]) online"
+        } elseif ($val -eq $false -or $val -eq "false") {
+            warn "$($statusMap[$key]) offline"
+        } else {
+            dot "$($statusMap[$key]) => $val"
+        }
     }
 } catch {
     warn "Health check failed: $($_.Exception.Message)"
 }
 
-# Metrics
 try {
-    $m = Invoke-RestMethod -Uri "$UI_URL/api/metrics" -TimeoutSec 5
-    ok "Metrics: CPU=$([Math]::Round($m.cpu))% RAM=$([Math]::Round($m.ram))% DISK=$([Math]::Round($m.disk))%"
-} catch { dot "Metrics not available" }
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 6: Launch Browser
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 6 — Launch UI"
-$elapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
-Write-Host ""
-Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-Write-Host "  VISION is ready  |  Startup: ${elapsed}s  |  $UI_URL" -ForegroundColor Cyan
-if ($Reload) {
-    Write-Host "  ◈ Hot-reload active — save live_chat_app.py to auto-restart" -ForegroundColor Yellow
-}
-Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-Write-Host ""
-
-if (-not $NoBrowser) {
-    $browsers = @(
-        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-        "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
-        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-    )
-    $launched = $false
-    foreach ($browser in $browsers) {
-        if (Test-Path $browser) {
-            Start-Process $browser -ArgumentList "--app=$UI_URL --window-size=1400,900"
-            ok "Opened in: $(Split-Path $browser -Leaf)"
-            $launched = $true
-            break
+    $doctor = Invoke-RestMethod -Uri $DOCTOR_URL -TimeoutSec 8
+    if ($doctor.ok) {
+        ok "Vision Doctor reports healthy"
+    } else {
+        warn "Vision Doctor found issues"
+        foreach ($item in $doctor.recommendations) {
+            warn "Doctor: $item"
         }
     }
-    if (-not $launched) { Start-Process $UI_URL; ok "Opened in default browser" }
+} catch {
+    dot "Doctor endpoint not available"
+}
+
+hdr "STEP 6 - Launch UI"
+$elapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
+Write-Host ""
+Write-Host "  ===============================================" -ForegroundColor DarkCyan
+Write-Host "  VISION is ready  |  Startup: ${elapsed}s" -ForegroundColor Cyan
+Write-Host "  ===============================================" -ForegroundColor DarkCyan
+Write-Host ""
+
+if ($openPrimaryUi) {
+    Open-PreferredBrowser -Url $UI_URL -PreferAppWindow ([bool]$launcherConfig.prefer_app_window)
+}
+if ($openCommandCenter) {
+    Start-Process $COMMAND_CENTER_URL
+    ok "Opened Command Center"
+}
+if ($NoBrowser) {
+    dot "Browser launch skipped by -NoBrowser"
 }
 
 Write-Host ""
 Write-Host "  Logs:   $LOG_FILE" -ForegroundColor DarkGray
-Write-Host "  Errors: $APP_DIR\vision_error.log" -ForegroundColor DarkGray
-Write-Host "  Usage:  .\launch_vision.ps1 -Reload    # hot-reload dev mode" -ForegroundColor DarkGray
-Write-Host "  Usage:  .\launch_vision.ps1 -NoBrowser # no auto browser" -ForegroundColor DarkGray
-Write-Host "  Press Ctrl+C to exit this window (server keeps running)" -ForegroundColor DarkGray
+Write-Host "  Errors: $ERR_FILE" -ForegroundColor DarkGray
+Write-Host "  Config: $CONFIG_FILE" -ForegroundColor DarkGray
+$lanUrls = Get-LanBaseUrls -Port 8765
+if ($lanUrls.Count -gt 0) {
+    Write-Host "  LAN:" -ForegroundColor DarkGray
+    foreach ($baseUrl in $lanUrls) {
+        Write-Host "    UI:      $baseUrl" -ForegroundColor DarkGray
+        Write-Host "    Control: $baseUrl/command-center" -ForegroundColor DarkGray
+    }
+}
+$tailscaleUrls = Get-TailscaleBaseUrls -Port 8765
+if ($tailscaleUrls.Count -gt 0) {
+    Write-Host "  Tailscale:" -ForegroundColor DarkGray
+    foreach ($baseUrl in $tailscaleUrls) {
+        Write-Host "    UI:      $baseUrl" -ForegroundColor DarkGray
+        Write-Host "    Control: $baseUrl/command-center" -ForegroundColor DarkGray
+    }
+}
 Write-Host ""
-
-Start-Sleep -Seconds 4
-
-
-# ── Colors ───────────────────────────────────────────────────────
-function ok($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
-function warn($msg) { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
-function err($msg)  { Write-Host "  ✗ $msg" -ForegroundColor Red }
-function hdr($msg)  { Write-Host "`n◆ $msg" -ForegroundColor Cyan }
-function dot($msg)  { Write-Host "  · $msg" -ForegroundColor DarkGray }
-
-Clear-Host
-Write-Host ""
-Write-Host "  ██╗   ██╗██╗███████╗██╗ ██████╗ ███╗   ██╗" -ForegroundColor Blue
-Write-Host "  ██║   ██║██║██╔════╝██║██╔═══██╗████╗  ██║" -ForegroundColor Blue
-Write-Host "  ██║   ██║██║███████╗██║██║   ██║██╔██╗ ██║" -ForegroundColor DarkBlue
-Write-Host "  ╚██╗ ██╔╝██║╚════██║██║██║   ██║██║╚██╗██║" -ForegroundColor DarkBlue
-Write-Host "   ╚████╔╝ ██║███████║██║╚██████╔╝██║ ╚████║" -ForegroundColor DarkCyan
-Write-Host "    ╚═══╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host "  Universal Accessibility Operator — Launch Sequence" -ForegroundColor DarkGray
-Write-Host "  ─────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host ""
-
-$startTime = Get-Date
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 1: Validate Python
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 1 — Python Runtime"
-if (Test-Path $PYTHON) {
-    $pyVer = & $PYTHON --version 2>&1
-    ok "Python found: $pyVer"
-} else {
-    err "Python not found at: $PYTHON"
-    err "Cannot start VISION without Python. Aborting."
-    Read-Host "`nPress Enter to exit"
-    exit 1
-}
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 2: Check required Python packages
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 2 — Python Packages"
-$packages = @(
-    @{ name='fastapi';     import='fastapi' },
-    @{ name='uvicorn';     import='uvicorn' },
-    @{ name='elevenlabs';  import='elevenlabs' },
-    @{ name='pyttsx3';     import='pyttsx3' },
-    @{ name='sounddevice'; import='sounddevice' },
-    @{ name='mss';         import='mss' },
-    @{ name='pytesseract'; import='pytesseract' },
-    @{ name='pyautogui';   import='pyautogui' },
-    @{ name='psutil';      import='psutil' },
-    @{ name='PIL';         import='PIL' },
-    @{ name='playwright';  import='playwright' }
-)
-$missing = @()
-foreach ($pkg in $packages) {
-    $result = & $PYTHON -c "import $($pkg.import); print('OK')" 2>&1
-    if ($result -eq 'OK') {
-        dot "$($pkg.name) ✓"
-    } else {
-        warn "$($pkg.name) — NOT FOUND"
-        $missing += $pkg.name
-    }
-}
-if ($missing.Count -gt 0) {
-    warn "Missing packages: $($missing -join ', ')"
-    warn "Some features may be unavailable."
-} else {
-    ok "All packages present"
-}
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 3: Ollama
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 3 — Ollama (Local AI)"
-$ollamaRunning = netstat -ano | Select-String ':11434.*LISTENING'
-if ($ollamaRunning) {
-    $pid11434 = (netstat -ano | Select-String ':11434.*LISTENING' | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -First 1)
-    ok "Ollama already running (PID $pid11434)"
-} elseif (Test-Path $OLLAMA) {
-    dot "Starting Ollama serve…"
-    Start-Process -FilePath $OLLAMA -ArgumentList "serve" -WindowStyle Hidden
-    Start-Sleep -Seconds 3
-    $ollamaRunning = netstat -ano | Select-String ':11434.*LISTENING'
-    if ($ollamaRunning) {
-        ok "Ollama started successfully"
-    } else {
-        warn "Ollama may still be starting (takes a few seconds)"
-    }
-} else {
-    warn "Ollama not found at: $OLLAMA"
-    warn "Local AI models will be unavailable"
-}
-
-# Check which models are available
-$ollamaModels = @()
-try {
-    $resp = Invoke-RestMethod -Uri "http://localhost:11434/api/tags" -TimeoutSec 5
-    $ollamaModels = $resp.models | ForEach-Object { $_.name }
-    if ($ollamaModels.Count -gt 0) {
-        ok "$($ollamaModels.Count) models available: $($ollamaModels -join ', ')"
-    } else {
-        warn "No models found. Run: ollama pull llama3.1:8b"
-    }
-} catch {
-    warn "Could not query Ollama models (may still be starting)"
-}
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 4: VISION App Server
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 4 — VISION App Server (port 8765)"
-$visionRunning = netstat -ano | Select-String ':8765.*LISTENING'
-if ($visionRunning) {
-    $pid8765 = (netstat -ano | Select-String ':8765.*LISTENING' | ForEach-Object { ($_ -split '\s+')[-1] } | Select-Object -First 1)
-    ok "VISION server already running (PID $pid8765)"
-} else {
-    dot "Starting VISION server…"
-    if (-not (Test-Path $APP_FILE)) {
-        err "App file not found: $APP_FILE"
-        Read-Host "`nPress Enter to exit"
-        exit 1
-    }
-    $logStream = [System.IO.File]::CreateText($LOG_FILE)
-    $logStream.Close()
-    Start-Process -FilePath $PYTHON -ArgumentList $APP_FILE `
-        -WorkingDirectory $APP_DIR `
-        -RedirectStandardOutput $LOG_FILE `
-        -RedirectStandardError "$APP_DIR\vision_error.log" `
-        -WindowStyle Hidden
-    
-    dot "Waiting for server to come online…"
-    $timeout = 30
-    $started = $false
-    for ($i = 0; $i -lt $timeout; $i++) {
-        Start-Sleep -Seconds 1
-        $check = netstat -ano | Select-String ':8765.*LISTENING'
-        if ($check) {
-            $started = $true
-            break
-        }
-        Write-Host "  · Waiting… ($($i+1)s)" -ForegroundColor DarkGray -NoNewline
-        Write-Host "`r" -NoNewline
-    }
-    if ($started) {
-        ok "VISION server started"
-    } else {
-        err "VISION server failed to start within ${timeout}s"
-        err "Check log: $LOG_FILE"
-        warn "Attempting to open log…"
-        notepad "$APP_DIR\vision_error.log"
-        Read-Host "`nPress Enter to exit"
-        exit 1
-    }
-}
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 5: Health Check & Validation
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 5 — Health Check & Model Setup"
-Start-Sleep -Seconds 1  # brief settle time
-try {
-    $health = Invoke-RestMethod -Uri $HEALTH -TimeoutSec 8
-    ok "API responding"
-    
-    $statusMap = @{
-        ollama      = 'Ollama'
-        elevenlabs  = 'ElevenLabs'
-        browser     = 'Playwright Browser'
-        gpu         = 'GPU'
-        ocr         = 'OCR (Tesseract)'
-    }
-    foreach ($key in $statusMap.Keys) {
-        $val = $health.$key
-        if ($val -eq $true -or $val -eq 'true') {
-            ok "$($statusMap[$key])"
-        } elseif ($val -eq $false -or $val -eq 'false') {
-            warn "$($statusMap[$key]) — offline"
-        } else {
-            dot "$($statusMap[$key]) — $val"
-        }
-    }
-} catch {
-    warn "Health check request failed: $($_.Exception.Message)"
-    warn "Server may still be initializing"
-}
-
-# Check metrics endpoint
-try {
-    $metrics = Invoke-RestMethod -Uri "$UI_URL/api/metrics" -TimeoutSec 5
-    ok "Metrics: CPU=$([Math]::Round($metrics.cpu))% RAM=$([Math]::Round($metrics.ram))% DISK=$([Math]::Round($metrics.disk))%"
-} catch {
-    dot "Metrics endpoint not available"
-}
-
-# Check voices endpoint
-try {
-    $voices = Invoke-RestMethod -Uri "$UI_URL/api/voices" -TimeoutSec 5
-    $vCount = ($voices.voices | Measure-Object).Count
-    ok "Voices: $vCount available"
-    $voices.voices | ForEach-Object { dot "  · $($_.name) [$($_.type)]" }
-} catch {
-    dot "Voices endpoint not available"
-}
-
-# Set preferred model: qwen3-coder:480b-cloud (cloud-hosted via Ollama)
-$DEFAULT_MODEL    = "qwen3-coder:480b-cloud"
-$DEFAULT_PROVIDER = "ollama"
-try {
-    $modelAvail = $ollamaModels | Where-Object { $_ -like "*qwen3-coder*480b*" }
-    if ($modelAvail) {
-        $body = "{`"provider`":`"$DEFAULT_PROVIDER`",`"model`":`"$DEFAULT_MODEL`"}"
-        Invoke-RestMethod -Uri "$UI_URL/api/model" -Method POST -ContentType "application/json" -Body $body | Out-Null
-        ok "Active model: $DEFAULT_PROVIDER / $DEFAULT_MODEL"
-    } else {
-        warn "qwen3-coder:480b-cloud not found in Ollama — using default model"
-    }
-} catch {
-    dot "Could not set active model"
-}
-
-# ════════════════════════════════════════════════════════════════
-#  STEP 6: Launch Browser
-# ════════════════════════════════════════════════════════════════
-hdr "STEP 6 — Launch UI"
-$elapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
-Write-Host ""
-Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-Write-Host "  VISION is ready  |  Startup: ${elapsed}s  |  $UI_URL" -ForegroundColor Cyan
-Write-Host "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkCyan
-Write-Host ""
-
-# Try to open in existing Edge/Chrome first (won't open a new browser if already on the page)
-$browsers = @(
-    "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-    "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
-    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-)
-$launched = $false
-foreach ($browser in $browsers) {
-    if (Test-Path $browser) {
-        Start-Process $browser -ArgumentList "--app=$UI_URL --window-size=1400,900"
-        ok "Opened in: $(Split-Path $browser -Leaf)"
-        $launched = $true
-        break
-    }
-}
-if (-not $launched) {
-    Start-Process $UI_URL
-    ok "Opened in default browser"
-}
-
-Write-Host ""
-Write-Host "  Logs: $LOG_FILE" -ForegroundColor DarkGray
-Write-Host "  Press Ctrl+C to exit this window (server keeps running)" -ForegroundColor DarkGray
-Write-Host ""
-
-# Keep window open briefly so user can read startup report
-Start-Sleep -Seconds 4

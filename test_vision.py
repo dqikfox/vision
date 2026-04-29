@@ -23,6 +23,10 @@ def section(title):
     print(f'  {title}')
     print('='*55)
 
+
+def is_busy_message(msg):
+    return msg.get('type') == 'error' and 'busy' in str(msg.get('message', '')).lower()
+
 # ─────────────────────────────────────────────────────────
 # 1. HTTP endpoints
 # ─────────────────────────────────────────────────────────
@@ -78,28 +82,39 @@ section('3. OLLAMA CHAT')
 
 async def test_ollama_chat():
     import websockets
-    try:
-        async with websockets.connect(WS, open_timeout=5) as ws:
-            await ws.recv()  # consume init
-            await ws.send(json.dumps({'type': 'input', 'text': 'Reply with exactly this text and nothing else: VISION_TEST_OK'}))
-            deadline = time.time() + 45
-            while time.time() < deadline:
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=5)
-                    msg = json.loads(raw)
-                    if msg.get('type') == 'transcript' and msg.get('role') == 'assistant':
-                        text = msg.get('text', '')
-                        ok('Ollama replied', text[:100])
-                        return True
-                    if msg.get('type') == 'state':
-                        print(f'     state: {msg.get("state")}')
-                except asyncio.TimeoutError:
-                    print('     waiting for reply...')
-            fail('Ollama chat', 'No reply within 45s')
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        try:
+            async with websockets.connect(WS, open_timeout=5) as ws:
+                await ws.recv()  # consume init
+                await ws.send(json.dumps({'type': 'set_mode', 'mode': 'chat'}))
+                await ws.send(json.dumps({'type': 'input', 'text': 'Reply with exactly this text and nothing else: VISION_TEST_OK'}))
+                while time.time() < deadline:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+                        msg = json.loads(raw)
+                        if is_busy_message(msg):
+                            print('     busy — retrying chat...')
+                            await asyncio.sleep(2)
+                            break
+                        if msg.get('type') in ('transcript', 'stream_finalize') and (
+                            msg.get('role') == 'assistant' or msg.get('type') == 'stream_finalize'
+                        ):
+                            text = msg.get('text', '')
+                            if text:
+                                ok('Ollama replied', text[:100])
+                                return True
+                        if msg.get('type') == 'state':
+                            print(f'     state: {msg.get("state")}')
+                    except asyncio.TimeoutError:
+                        print('     waiting for reply...')
+                else:
+                    break
+        except Exception as e:
+            fail('Ollama chat', e)
             return False
-    except Exception as e:
-        fail('Ollama chat', e)
-        return False
+    fail('Ollama chat', 'No reply within 60s')
+    return False
 
 asyncio.run(test_ollama_chat())
 
@@ -108,24 +123,28 @@ asyncio.run(test_ollama_chat())
 # ─────────────────────────────────────────────────────────
 section('4. TOOL EXECUTION')
 
-async def run_tool(tool_name, args, timeout=15):
+async def run_tool(tool_name, args, timeout=45):
     import websockets
-    try:
-        async with websockets.connect(WS, open_timeout=5) as ws:
-            await ws.recv()  # init
-            await ws.send(json.dumps({'type': 'execute_tool', 'tool': tool_name, 'args': args}))
-            deadline = time.time() + timeout
-            while time.time() < deadline:
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=5)
-                    msg = json.loads(raw)
-                    if msg.get('type') == 'action' and msg.get('action') == tool_name:
-                        return str(msg.get('result', ''))
-                except asyncio.TimeoutError:
-                    pass
-            return None
-    except Exception as e:
-        return f'ERROR: {e}'
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            async with websockets.connect(WS, open_timeout=5) as ws:
+                await ws.recv()  # init
+                await ws.send(json.dumps({'type': 'execute_tool', 'tool': tool_name, 'args': args}))
+                while time.time() < deadline:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+                        msg = json.loads(raw)
+                        if msg.get('type') == 'action' and msg.get('action') == tool_name:
+                            return str(msg.get('result', ''))
+                        if is_busy_message(msg):
+                            await asyncio.sleep(2.0)
+                            break
+                    except asyncio.TimeoutError:
+                        pass
+        except Exception as e:
+            return f'ERROR: {e}'
+    return None
 
 async def test_tools():
     # run_command
@@ -252,45 +271,65 @@ except Exception as e:
     fail('TTS pyttsx3', e)
 
 # ─────────────────────────────────────────────────────────
-# 8. Ollama model tool calling (llama3.1 native FC)
+# 8. Ollama model tool calling
 # ─────────────────────────────────────────────────────────
 section('8. OLLAMA NATIVE TOOL CALLING TEST')
 
 async def test_ollama_tools():
     import websockets
-    # Switch to llama3.1 which supports native function calling
+    # Switch to the best available local tool-capable Ollama model, then restore
+    # the previous runtime selection so the test leaves Vision unchanged.
     try:
+        with urllib.request.urlopen(f'{BASE}/api/models', timeout=10) as resp:
+            payload = json.load(resp)
+        ollama_models_raw = payload.get('providers', {}).get('ollama', {}).get('models', [])
+        ollama_models = ollama_models_raw if isinstance(ollama_models_raw, list) else str(ollama_models_raw).split()
+        preferred_prefixes = ('gpt-oss', 'llama3.2', 'llama3.1', 'qwen2.5', 'qwen2')
+        tool_model = next(
+            (model for model in ollama_models if any(model.startswith(prefix) for prefix in preferred_prefixes)),
+            '',
+        )
+        if not tool_model:
+            fail('Ollama operator tool test', 'No suitable local Ollama model available for tool-calling validation')
+            return
         async with websockets.connect(WS, open_timeout=5) as ws:
-            await ws.recv()
-            # Switch to operator mode + llama3.1
-            await ws.send(json.dumps({'type': 'set_model', 'provider': 'ollama', 'model': 'llama3.1:latest'}))
-            await ws.send(json.dumps({'type': 'set_mode', 'mode': 'operator'}))
-            await ws.send(json.dumps({'type': 'input', 'text': 'Run the echo command to output the word TOOLCALL_OK'}))
-            deadline = time.time() + 60
-            got_action = False
-            got_reply  = False
-            while time.time() < deadline:
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=5)
-                    msg = json.loads(raw)
-                    t = msg.get('type')
-                    if t == 'action':
-                        ok(f'Ollama tool call executed: {msg["action"]}', str(msg.get("result",""))[:60])
-                        got_action = True
-                    if t == 'transcript' and msg.get('role') == 'assistant':
-                        ok('Ollama tool reply', msg.get('text','')[:80])
-                        got_reply = True
-                    if got_action and got_reply:
-                        break
-                    if t == 'state' and msg.get('state') == 'idle':
-                        if not got_action and not got_reply:
-                            print('     idle reached with no tool call/reply yet...')
-                        else:
+            init = json.loads(await ws.recv())
+            orig_provider = init.get('provider', 'ollama')
+            orig_model = init.get('model', 'gpt-oss:20b')
+            orig_mode = init.get('mode', 'chat')
+            try:
+                # Switch to operator mode + a local tool-capable model.
+                await ws.send(json.dumps({'type': 'set_model', 'provider': 'ollama', 'model': tool_model}))
+                await ws.send(json.dumps({'type': 'set_mode', 'mode': 'operator'}))
+                await ws.send(json.dumps({'type': 'input', 'text': 'Run the echo command to output the word TOOLCALL_OK'}))
+                deadline = time.time() + 60
+                got_action = False
+                got_reply  = False
+                while time.time() < deadline:
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5)
+                        msg = json.loads(raw)
+                        t = msg.get('type')
+                        if t == 'action':
+                            ok(f'Ollama tool call executed: {msg["action"]}', str(msg.get("result",""))[:60])
+                            got_action = True
+                        if t == 'transcript' and msg.get('role') == 'assistant':
+                            ok('Ollama tool reply', msg.get('text','')[:80])
+                            got_reply = True
+                        if got_action and got_reply:
                             break
-                except asyncio.TimeoutError:
-                    print('     waiting...')
-            if not got_action:
-                fail('Ollama operator tool call', 'No tool action seen — model may not support native FC for this task')
+                        if t == 'state' and msg.get('state') == 'idle':
+                            if not got_action and not got_reply:
+                                print('     idle reached with no tool call/reply yet...')
+                            else:
+                                break
+                    except asyncio.TimeoutError:
+                        print('     waiting...')
+                if not got_action:
+                    fail('Ollama operator tool call', 'No tool action seen — model may not support native FC for this task')
+            finally:
+                await ws.send(json.dumps({'type': 'set_model', 'provider': orig_provider, 'model': orig_model}))
+                await ws.send(json.dumps({'type': 'set_mode', 'mode': orig_mode}))
     except Exception as e:
         fail('Ollama operator tool test', e)
 

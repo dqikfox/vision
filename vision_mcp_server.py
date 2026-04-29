@@ -14,6 +14,12 @@ from mcp.server.fastmcp import FastMCP
 
 VISION_BASE_URL = os.environ.get("VISION_BASE_URL", "http://localhost:8765").rstrip("/")
 VISION_MCP_TIMEOUT = float(os.environ.get("VISION_MCP_TIMEOUT", "20"))
+VISION_MCP_INCLUDE_SCREENSHOT_B64 = os.environ.get("VISION_MCP_INCLUDE_SCREENSHOT_B64", "0").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 mcp = FastMCP("Vision Local")
 
@@ -54,6 +60,21 @@ def _vision_request(
         return {"ok": True, "status_code": response.status_code, **data}
 
     return {"ok": True, "status_code": response.status_code, "data": data}
+
+
+def _sanitize_screenshot_response(payload: dict[str, Any]) -> dict[str, Any]:
+    """Strip large base64 screenshot data from MCP output to avoid context blowups."""
+    sanitized = dict(payload)
+    candidate_keys = ("image", "image_base64", "screenshot", "jpeg_base64", "png_base64", "data")
+
+    for key in candidate_keys:
+        value = sanitized.get(key)
+        if isinstance(value, str) and len(value) > 512:
+            sanitized[f"{key}_preview"] = f"{value[:80]}..."
+            sanitized[f"{key}_chars"] = len(value)
+            sanitized[key] = "<omitted base64 image data; set VISION_MCP_INCLUDE_SCREENSHOT_B64=1 to include>"
+
+    return sanitized
 
 
 @mcp.tool()
@@ -117,7 +138,12 @@ def vision_voices() -> dict[str, Any]:
 @mcp.tool()
 def vision_screenshot() -> dict[str, Any]:
     """Take a live desktop screenshot and return it as base64-encoded JPEG."""
-    return _vision_request("GET", "/screenshot")
+    response = _vision_request("GET", "/screenshot")
+
+    if not response.get("ok") or VISION_MCP_INCLUDE_SCREENSHOT_B64:
+        return response
+
+    return _sanitize_screenshot_response(response)
 
 
 @mcp.tool()
@@ -133,6 +159,46 @@ def vision_recall(query: str = "") -> dict[str, Any]:
         "POST",
         "/api/tool/execute",
         payload={"name": "recall", "parameters": {"query": query} if query else {}},
+    )
+
+
+@mcp.tool()
+def vision_kb_status() -> dict[str, Any]:
+    """Return Vision RAG knowledge-base status and index metadata."""
+    return _vision_request("GET", "/api/rag/status")
+
+
+@mcp.tool()
+def vision_kb_index(max_files: int = 0, chunk_size: int = 1400, overlap: int = 220) -> dict[str, Any]:
+    """Build or rebuild the Vision RAG index from the configured corpus."""
+    return _vision_request(
+        "POST",
+        "/api/rag/index",
+        payload={
+            "max_files": max_files,
+            "chunk_size": chunk_size,
+            "overlap": overlap,
+        },
+    )
+
+
+@mcp.tool()
+def vision_kb_search(query: str, limit: int = 8, include_content: bool = True) -> dict[str, Any]:
+    """Search the Vision RAG index for grounded retrieval context."""
+    return _vision_request(
+        "POST",
+        "/api/rag/search",
+        payload={"query": query, "limit": limit, "include_content": include_content},
+    )
+
+
+@mcp.tool()
+def vision_kb_export_training_data(max_examples: int = 0) -> dict[str, Any]:
+    """Export indexed corpus as JSONL datasets for training and KB ingestion."""
+    return _vision_request(
+        "POST",
+        "/api/rag/export-training",
+        payload={"max_examples": max_examples},
     )
 
 

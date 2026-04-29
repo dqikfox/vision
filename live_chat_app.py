@@ -10,19 +10,25 @@ Providers:
 
 import asyncio
 import base64
+import binascii
 import contextlib
+import contextvars
 import fnmatch
 import io
 import json
 import os
+import queue
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
 import traceback
 import warnings
 import webbrowser
+from collections import deque
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from pathlib import Path
@@ -49,13 +55,19 @@ from ollama import ResponseError as OllamaResponseError
 from openai import AsyncOpenAI
 
 try:
-    from elevenlabs.conversational_ai.conversation import ClientTools, Conversation
-    from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
+    from elevenlabs.conversational_ai.conversation import AudioInterface, ClientTools, Conversation
 
     HAS_CONVAI = True
 except ImportError:
     HAS_CONVAI = False
-from scipy.io import wavfile
+from scipy.io import wavfile  # type: ignore[import-untyped]
+
+from elite_brain import get_brain
+from hive_tools.context_mapper import DEFAULT_OUTPUT as CONTEXT_BRAIN_FILE
+from hive_tools.context_mapper import build_context_brain
+from vision_rag import VisionRAGManager
+
+brain_ai = get_brain()
 
 try:
     import pytesseract
@@ -91,10 +103,12 @@ except ImportError:
 
 BASE = Path(__file__).parent
 UI_FILE = BASE / "live_chat_ui.html"
+COMMAND_CENTER_FILE = BASE / "vision_command_center.html"
+COMMAND_CENTER_CONFIG_FILE = BASE / "vision_command_center_config.json"
+AUTOMATION_STATE_FILE = BASE / "vision_automation_state.json"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
 PORT = 8765
-
 
 def _settings_dir() -> Path:
     """Return a user-writable directory for persisted runtime settings."""
@@ -115,6 +129,101 @@ def _settings_dir() -> Path:
 
 SETTINGS_FILE = _settings_dir() / "settings.json"
 LEGACY_SETTINGS_FILE = BASE / "settings.json"
+RAG_SOURCE_ROOT = Path(os.environ.get("VISION_RAG_SOURCE", r"F:\rag-v1\data")).expanduser()
+_rag_manager = VisionRAGManager(base_dir=BASE, source_root=RAG_SOURCE_ROOT)
+
+DEFAULT_COMMAND_CENTER_CONFIG: dict[str, Any] = {
+    "profile_name": "default",
+    "theme": "vision",
+    "auto_refresh_seconds": 30,
+    "show_external_resources": True,
+    "launcher": {
+        "open_primary_ui": True,
+        "open_command_center": False,
+        "prefer_app_window": True,
+        "ollama_access_mode": "local",
+        "ollama_host": "127.0.0.1:11434",
+        "ollama_origins": "http://localhost:8765,http://127.0.0.1:8765",
+        "ollama_models_path": r"F:\models",
+    },
+    "doctor": {
+        "check_context_brain": True,
+        "check_launchers": True,
+        "show_provider_keys": True,
+    },
+}
+
+DEFAULT_AUTOMATION_STATE: dict[str, Any] = {
+    "updated_at_utc": None,
+    "routine_runs": [],
+    "mission_runs": [],
+}
+
+AUTOMATION_ROUTINES: list[dict[str, Any]] = [
+    {
+        "id": "run-vision-doctor",
+        "name": "Run Vision Doctor",
+        "description": "Probe runtime health, provider readiness, launcher surfaces, and core repo files.",
+        "action": "doctor",
+    },
+    {
+        "id": "refresh-context-stack",
+        "name": "Refresh Context Stack",
+        "description": "Regenerate the context brain and refresh the repo-intelligence catalog.",
+        "action": "context_brain_refresh",
+    },
+    {
+        "id": "open-core-surfaces",
+        "name": "Open Core Surfaces",
+        "description": "Open the repo root, docs index, and Archon workflows for active maintenance work.",
+        "action": "open_files",
+        "paths": [
+            ".",
+            "DOCUMENTATION_INDEX.md",
+            ".archon\\workflows",
+        ],
+    },
+    {
+        "id": "quality-smoke",
+        "name": "Run Quality Smoke",
+        "description": "Compile the main runtime and run the focused context-brain test.",
+        "action": "command",
+        "command": r"python -m py_compile live_chat_app.py hive_tools\context_mapper.py && python -m pytest test_context_mapper.py -q -o addopts=",
+    },
+]
+
+AUTOMATION_MISSIONS: list[dict[str, Any]] = [
+    {
+        "id": "autonomous-maintenance-sweep",
+        "name": "Autonomous Maintenance Sweep",
+        "description": "Run doctor, refresh the repo cognition layer, and execute the focused quality smoke.",
+        "steps": [
+            {"kind": "routine", "target": "run-vision-doctor", "name": "Vision Doctor"},
+            {"kind": "routine", "target": "refresh-context-stack", "name": "Refresh Context Stack"},
+            {"kind": "routine", "target": "quality-smoke", "name": "Quality Smoke"},
+        ],
+    },
+    {
+        "id": "prime-command-deck",
+        "name": "Prime Command Deck",
+        "description": "Refresh context, open the core repo surfaces, and end with a doctor report for the next session.",
+        "steps": [
+            {"kind": "routine", "target": "refresh-context-stack", "name": "Refresh Context Stack"},
+            {"kind": "routine", "target": "open-core-surfaces", "name": "Open Core Surfaces"},
+            {"kind": "routine", "target": "run-vision-doctor", "name": "Vision Doctor"},
+        ],
+    },
+    {
+        "id": "runtime-resilience-loop",
+        "name": "Runtime Resilience Loop",
+        "description": "Check readiness, run the smoke validation, and verify that the stack is still healthy afterward.",
+        "steps": [
+            {"kind": "routine", "target": "run-vision-doctor", "name": "Pre-flight Doctor"},
+            {"kind": "routine", "target": "quality-smoke", "name": "Quality Smoke"},
+            {"kind": "routine", "target": "run-vision-doctor", "name": "Post-flight Doctor"},
+        ],
+    },
+]
 
 # ── Auto-load .env file into environment ─────────────────────────────────────
 _ENV_FILE = BASE / ".env"
@@ -194,6 +303,7 @@ FRAME = 480
 RMS_THRESH = 500  # raised from 250 — reduces ambient noise false triggers
 START_FRAMES = 3  # 3 loud frames (~90ms) before recording starts — faster detection
 END_FRAMES = 20  # ~600ms silence → stop recording (was 33 = ~1s)
+MIN_UTTERANCE_FRAMES = 6  # allow short voice commands without retuning VAD thresholds
 BARGE_RMS = 1100
 BARGE_FRAMES = 4
 WAKE_PHRASES = ["hey vision", "ok vision", "vision wake", "hey computer"]
@@ -300,26 +410,186 @@ PROVIDERS = {
 # ── Mutable state ─────────────────────────────────────────────────────────────
 
 current_provider = "ollama"
-current_model = "llama3.2:latest"
+current_model = "gpt-oss:20b"
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 clients: set[WebSocket] = set()
-history: list[dict] = []
+history: list[dict[str, Any]] = []
+_session_histories: dict[WebSocket, list[dict[str, Any]]] = {}
+_session_target_var: contextvars.ContextVar[WebSocket | None] = contextvars.ContextVar("session_target", default=None)
+_session_history_var: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "session_history", default=None
+)
+_USE_CONTEXT_TARGET = object()
+_VOICE_REQUEST_TARGET = object()
+_session_input_busy: dict[WebSocket, bool] = {}
+_session_input_locks: dict[WebSocket, asyncio.Lock] = {}
+_session_speak_tasks: dict[WebSocket, asyncio.Task[None]] = {}
+_active_request_targets: set[object] = set()
 
-audio_q: asyncio.Queue | None = None
+audio_q: asyncio.Queue[Any] | None = None
 muted: bool = False
 mode: str = "operator"
-speak_task: asyncio.Task | None = None
+speak_task: asyncio.Task[None] | None = None
 _tts_silence_until: float = 0.0  # ignore VAD input until this timestamp
 _input_busy: bool = False  # True while handle_input is running (gate voice loop)
 wake_word_active: bool = False  # True = wake-word mode; requires trigger phrase
-continuous_listening: bool = True  # False = press-to-talk mode
+continuous_listening: bool = False  # False = press-to-talk mode
+_input_lock: asyncio.Lock = asyncio.Lock()
 _response_lock: asyncio.Lock = asyncio.Lock()
 runtime_state: str = "idle"
 _voice_capture_active: bool = False
 _mic_hold_until: float = 0.0
+
+
+@contextlib.contextmanager
+def _session_context(target: WebSocket | None) -> dict[str, Any]:
+    """Bind the current task to a websocket/session-local history when present."""
+    target_token = _session_target_var.set(target)
+    history_token = _session_history_var.set(_session_histories.setdefault(target, []) if target else None)
+    try:
+        yield
+    finally:
+        _session_history_var.reset(history_token)
+        _session_target_var.reset(target_token)
+
+
+def _active_history() -> list[dict[str, Any]]:
+    """Return the current task's session history, or the lone active session/global history."""
+    session_history = _session_history_var.get()
+    if session_history is not None:
+        return session_history
+    if len(_session_histories) == 1:
+        return next(iter(_session_histories.values()))
+    return history
+
+
+def _append_history(message: dict[str, Any]) -> None:
+    """Append a message to the active conversation history."""
+    _active_history().append(message)
+
+
+def _clear_active_history() -> None:
+    """Clear the current task's active conversation history."""
+    _active_history().clear()
+
+
+def _clear_all_histories() -> None:
+    """Clear global and websocket-scoped conversation history."""
+    history.clear()
+    for session_history in _session_histories.values():
+        if session_history is not history:
+            session_history.clear()
+
+
+def _resolve_target(target: object | WebSocket | None) -> WebSocket | None:
+    """Resolve the effective websocket target for a broadcast helper."""
+    if target is _USE_CONTEXT_TARGET:
+        return _session_target_var.get()
+    return target if isinstance(target, WebSocket) else None
+
+
+def _request_target_key(target: WebSocket | None) -> object:
+    """Return a stable request-lane key for the target."""
+    return target if target is not None else _VOICE_REQUEST_TARGET
+
+
+def _session_input_lock(target: WebSocket | None) -> asyncio.Lock:
+    """Return the input lock for a websocket session, or the global voice lock."""
+    if target is None:
+        return _input_lock
+    return _session_input_locks.setdefault(target, asyncio.Lock())
+
+
+def _session_speak_task(target: WebSocket | None) -> asyncio.Task[None] | None:
+    """Return the active speak task for a target, dropping completed session tasks."""
+    if target is None:
+        return speak_task
+    task = _session_speak_tasks.get(target)
+    if task and task.done():
+        _session_speak_tasks.pop(target, None)
+        return None
+    return task
+
+
+def _set_session_speak_task(target: WebSocket | None, task: asyncio.Task[None] | None) -> None:
+    """Persist the active speak task for a target."""
+    global speak_task
+    if target is None:
+        speak_task = task
+        return
+    if task is None:
+        _session_speak_tasks.pop(target, None)
+    else:
+        _session_speak_tasks[target] = task
+
+
+def _set_request_lane_busy(target: WebSocket | None, busy: bool) -> None:
+    """Track request-lane occupancy per session while keeping a global voice gate."""
+    global _input_busy
+    key = _request_target_key(target)
+    if busy:
+        _active_request_targets.add(key)
+    else:
+        _active_request_targets.discard(key)
+    if target is not None:
+        _session_input_busy[target] = busy
+    _input_busy = bool(_active_request_targets)
+
+
+def _any_input_busy() -> bool:
+    """Return True when any active request should gate microphone capture."""
+    return bool(_active_request_targets)
+
+
+def _any_speak_active() -> bool:
+    """Return True when any session or voice response is still speaking."""
+    if speak_task and not speak_task.done():
+        return True
+    dead_targets = [target for target, task in _session_speak_tasks.items() if task.done()]
+    for target in dead_targets:
+        _session_speak_tasks.pop(target, None)
+    return any(not task.done() for task in _session_speak_tasks.values())
+
+
+async def _cancel_task(task: asyncio.Task[None] | None) -> None:
+    """Cancel and await a task when it is still running."""
+    if not task or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+async def _cancel_all_speak_tasks() -> None:
+    """Cancel all active speech tasks across voice and websocket sessions."""
+    await _cancel_task(speak_task)
+    _set_session_speak_task(None, None)
+    for target, task in list(_session_speak_tasks.items()):
+        await _cancel_task(task)
+        _session_speak_tasks.pop(target, None)
+
+
+def _request_lane_busy(target: WebSocket | None = None) -> bool:
+    """Return True only when the relevant request lane is genuinely occupied."""
+    global _input_busy
+    if target is None:
+        if _input_busy and runtime_state in {"idle", "listening", "muted"} and not _any_speak_active():
+            _set_request_lane_busy(None, False)
+        return _any_input_busy() or _input_lock.locked()
+
+    lock = _session_input_locks.get(target)
+    busy = _session_input_busy.get(target, False)
+    task = _session_speak_task(target)
+    if busy and (lock is None or not lock.locked()) and not (task and not task.done()):
+        _set_request_lane_busy(target, False)
+        busy = False
+    return busy or bool(lock and lock.locked())
+
 
 # ── Voice provider preferences (user-configurable at runtime) ─────────────────
 preferred_stt: str = "auto"  # "auto" | "elevenlabs" | "groq" | "local"
@@ -329,6 +599,7 @@ last_tts_provider: str = ""  # last TTS provider that succeeded
 tts_rate: int = 175  # pyttsx3 words-per-minute
 tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
+_elevenlabs_auth_failed: bool = False
 
 # ── Voice settings persistence ────────────────────────────────────────────────
 
@@ -466,6 +737,444 @@ def write_log(event: str, detail: str) -> None:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
 
+def _is_invalid_elevenlabs_auth(error_text: str) -> bool:
+    """Return True when an ElevenLabs error indicates invalid credentials."""
+    lowered = error_text.lower()
+    return "invalid api key" in lowered or "401" in lowered or "unauthorized" in lowered
+
+
+async def _broadcast_voice_settings_update() -> None:
+    """Broadcast the current runtime voice settings to connected clients."""
+    await broadcast(
+        {
+            "type": "voice_settings",
+            "preferred_stt": preferred_stt,
+            "preferred_tts": preferred_tts,
+            "tts_rate": tts_rate,
+            "tts_voice_idx": tts_voice_idx,
+        }
+    )
+
+
+async def _handle_invalid_elevenlabs_auth(error_text: str) -> None:
+    """Disable broken ElevenLabs voice paths until the user saves a new key."""
+    global _elevenlabs_auth_failed, preferred_stt, preferred_tts
+
+    if not _is_invalid_elevenlabs_auth(error_text):
+        return
+
+    already_disabled = _elevenlabs_auth_failed
+    _elevenlabs_auth_failed = True
+    changed = False
+
+    if preferred_stt in {"auto", "elevenlabs"}:
+        preferred_stt = "local"
+        changed = True
+    if preferred_tts in {"auto", "elevenlabs"}:
+        preferred_tts = "local"
+        changed = True
+
+    if already_disabled and not changed:
+        return
+
+    write_log("voice", "elevenlabs auth failed; switching voice providers to local")
+    if changed:
+        await _broadcast_voice_settings_update()
+    await broadcast(
+        {
+            "type": "transcript",
+            "role": "system",
+            "text": "⚠️ ElevenLabs authentication failed. Voice providers switched to local until a new key is saved.",
+        }
+    )
+
+
+async def _broadcast_el_agent_status(status: str, message: str | None = None) -> None:
+    payload: dict[str, Any] = {"type": "el_agent", "status": status}
+    if message:
+        payload["message"] = message
+    await broadcast(payload)
+
+
+def _el_agent_start_error() -> str | None:
+    if not HAS_CONVAI:
+        return "ConvAI SDK missing"
+    api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
+    if not api_11:
+        return "No ElevenLabs API key"
+    return None
+
+
+if HAS_CONVAI:
+
+    class SoundDeviceAudioInterface(AudioInterface):
+        INPUT_FRAMES_PER_BUFFER = 4000  # 250ms @ 16kHz
+        OUTPUT_FRAMES_PER_BUFFER = 1000  # 62.5ms @ 16kHz
+
+        def __init__(self) -> None:
+            self.input_callback: Any = None
+            self.output_queue: "queue.Queue[bytes]" = queue.Queue()
+            self.should_stop = threading.Event()
+            self.output_thread: threading.Thread | None = None
+            self.in_stream: sd.RawInputStream | None = None
+            self.out_stream: sd.RawOutputStream | None = None
+
+        def start(self, input_callback: Any) -> None:
+            self.input_callback = input_callback
+            self.output_queue = queue.Queue()
+            self.should_stop.clear()
+            self.output_thread = threading.Thread(
+                target=self._output_thread,
+                daemon=True,
+                name="el-agent-audio-out",
+            )
+            self.in_stream = sd.RawInputStream(
+                samplerate=16000,
+                channels=1,
+                dtype="int16",
+                blocksize=self.INPUT_FRAMES_PER_BUFFER,
+                callback=self._in_callback,
+            )
+            self.out_stream = sd.RawOutputStream(
+                samplerate=16000,
+                channels=1,
+                dtype="int16",
+                blocksize=self.OUTPUT_FRAMES_PER_BUFFER,
+            )
+            self.in_stream.start()
+            self.out_stream.start()
+            self.output_thread.start()
+
+        def stop(self) -> None:
+            self.should_stop.set()
+            if self.output_thread and self.output_thread.is_alive():
+                self.output_thread.join(timeout=1.0)
+            if self.in_stream is not None:
+                self.in_stream.stop()
+                self.in_stream.close()
+                self.in_stream = None
+            if self.out_stream is not None:
+                self.out_stream.stop()
+                self.out_stream.close()
+                self.out_stream = None
+
+        def output(self, audio: bytes) -> None:
+            self.output_queue.put(audio)
+
+        def interrupt(self) -> None:
+            try:
+                while True:
+                    self.output_queue.get(block=False)
+            except queue.Empty:
+                pass
+
+        def _output_thread(self) -> None:
+            while not self.should_stop.is_set():
+                try:
+                    audio = self.output_queue.get(timeout=0.25)
+                except queue.Empty:
+                    continue
+                if self.out_stream is None:
+                    return
+                self.out_stream.write(audio)
+
+        def _in_callback(self, in_data: Any, _frames: int, _time: Any, _status: Any) -> None:
+            if self.input_callback:
+                self.input_callback(bytes(in_data))
+
+
+_ocr_checked = False
+_ocr_ready = False
+_ocr_cmd_path = ""
+
+
+def _find_tesseract_executable() -> str:
+    """Return the best available Tesseract executable path, or an empty string."""
+    env_path = os.environ.get("TESSERACT_CMD", "").strip().strip('"')
+    candidates = [
+        env_path,
+        shutil.which("tesseract") or "",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR" / "tesseract.exe"),
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return ""
+
+
+def _configure_tesseract() -> str:
+    """Point pytesseract at the local Tesseract binary when one can be found."""
+    global _ocr_cmd_path
+    if not HAS_OCR:
+        return ""
+    if _ocr_cmd_path and Path(_ocr_cmd_path).exists():
+        pytesseract.pytesseract.tesseract_cmd = _ocr_cmd_path
+        return _ocr_cmd_path
+    exe_path = _find_tesseract_executable()
+    if exe_path:
+        pytesseract.pytesseract.tesseract_cmd = exe_path
+        _ocr_cmd_path = exe_path
+    return exe_path
+
+
+def _ocr_available() -> bool:
+    """True only when pytesseract is importable and the Tesseract binary is callable."""
+    global _ocr_checked, _ocr_ready
+    if not HAS_OCR:
+        return False
+    if _ocr_checked:
+        return _ocr_ready
+    try:
+        _configure_tesseract()
+        pytesseract.get_tesseract_version()
+        _ocr_ready = True
+        if _ocr_cmd_path:
+            write_log("ocr", f"ready: {_ocr_cmd_path}")
+    except Exception as e:
+        _ocr_ready = False
+        write_log("ocr", f"unavailable: {e}")
+    _ocr_checked = True
+    return _ocr_ready
+
+
+def _ocr_unavailable_message() -> str:
+    if not HAS_OCR:
+        return "OCR unavailable — pytesseract is not installed."
+    return "OCR unavailable — the Tesseract executable is missing or not discoverable."
+
+
+def _normalize_memory_text(text: str) -> str:
+    """Normalize memory text for lightweight grounding checks."""
+    normalized = text.casefold().replace("visual studio code", "vscode").replace("vs code", "vscode")
+    normalized = re.sub(r"[^a-z0-9:\\._ -]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _should_extract_memory_fact(user_text: str) -> bool:
+    """Return True only for turns that plausibly contain durable user facts."""
+    cleaned = memory._clean_text(user_text, 200)
+    if not memory._is_memorable_task(cleaned):
+        return False
+    lowered = cleaned.casefold()
+    fact_patterns = (
+        r"\bmy\b",
+        r"\bi\b",
+        r"\bcall me\b",
+        r"\bname is\b",
+        r"\bprefer\b",
+        r"\balways use\b",
+        r"\bdefault to\b",
+        r"\bfavorite\b",
+        r"\bmodels?\s+(?:are|is)\s+in\b",
+        r"\b(use|using)\b",
+        r"[A-Za-z]:\\",
+    )
+    return any(re.search(pattern, lowered) for pattern in fact_patterns)
+
+
+def _fact_is_grounded_in_user_text(fact: str, user_text: str) -> bool:
+    """Accept facts only when their key terms appear in the user's message."""
+    normalized_fact = _normalize_memory_text(fact)
+    normalized_user = _normalize_memory_text(user_text)
+    if not normalized_fact or not normalized_user:
+        return False
+    if normalized_fact in normalized_user or normalized_user in normalized_fact:
+        return True
+    fact_tokens = {token for token in normalized_fact.split() if len(token) >= 2}
+    user_tokens = {token for token in normalized_user.split() if len(token) >= 2}
+    return len(fact_tokens & user_tokens) >= 2
+
+
+_SAFE_DIRECT_APP_COMMANDS: dict[str, tuple[str, str]] = {
+    "calculator": ("start \"\" calc.exe", "Opened Calculator."),
+    "calc": ("start \"\" calc.exe", "Opened Calculator."),
+    "notepad": ("start \"\" notepad.exe", "Opened Notepad."),
+    "paint": ("start \"\" mspaint.exe", "Opened Paint."),
+    "mspaint": ("start \"\" mspaint.exe", "Opened Paint."),
+    "file explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
+    "explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
+    "task manager": ("start \"\" taskmgr.exe", "Opened Task Manager."),
+    "taskmgr": ("start \"\" taskmgr.exe", "Opened Task Manager."),
+    "settings": ("start \"\" ms-settings:", "Opened Windows Settings."),
+    "control panel": ("start \"\" control.exe", "Opened Control Panel."),
+}
+
+
+def _normalized_safe_app_target(target: str) -> str:
+    cleaned = target.strip().strip("\"'").lower()
+    cleaned = re.sub(r"\b(?:please|app|application|program)\b", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .!?")
+    if cleaned.startswith("the "):
+        cleaned = cleaned[4:]
+    return cleaned
+
+
+def _direct_operator_tool_request(text: str) -> tuple[str, dict[str, Any], str | None] | None:
+    """Return a direct tool execution plan for obvious operator commands."""
+    lowered = text.strip().lower()
+    command_text = re.sub(r"\s+", " ", lowered).strip(" .!?")
+    echo_match = re.fullmatch(r"run the echo command to output the word\s+([a-z0-9_.-]+)", lowered)
+    if echo_match:
+        token = echo_match.group(1)
+        return (
+            "run_command",
+            {"command": f"echo {token}"},
+            f"Ran the echo command and got {token}.",
+        )
+
+    browser_match = re.fullmatch(r"open\s+(.+?)\s+in\s+(?:the\s+)?browser", lowered)
+    if browser_match:
+        target = browser_match.group(1).strip().strip("\"'")
+        if target and " " not in target and "." in target and not target.startswith(("http://", "https://")):
+            target = "https://" + target
+        if target.startswith(("http://", "https://")):
+            return (
+                "browser_open",
+                {"url": target},
+                f"Opened {target} in the browser.",
+            )
+
+    app_match = re.fullmatch(r"(?:open|launch|start)\s+(.+)", command_text)
+    if app_match:
+        app_target = _normalized_safe_app_target(app_match.group(1))
+        if app_target in _SAFE_DIRECT_APP_COMMANDS:
+            command, reply = _SAFE_DIRECT_APP_COMMANDS[app_target]
+            return ("run_command", {"command": command, "timeout": 5}, reply)
+
+    if command_text in {
+        "what time is it",
+        "what is the time",
+        "current time",
+        "tell me the time",
+        "time",
+    }:
+        return ("get_time", {}, None)
+
+    if command_text in {
+        "what date is it",
+        "what is today's date",
+        "whats today's date",
+        "current date",
+        "today's date",
+        "what day is it",
+    }:
+        return ("get_date", {}, None)
+
+    if any(
+        phrase in command_text
+        for phrase in (
+            "system status",
+            "computer status",
+            "status report",
+            "cpu usage",
+            "memory usage",
+            "ram usage",
+            "disk usage",
+            "gpu usage",
+            "system info",
+            "system information",
+        )
+    ):
+        return ("get_system_info", {}, None)
+
+    if re.fullmatch(
+        r"(?:list|show|display)\s+(?:the\s+)?(?:running\s+)?processes|"
+        r"(?:what|which)\s+processes\s+are\s+running",
+        command_text,
+    ):
+        return ("list_processes", {}, None)
+
+    clipboard_match = re.fullmatch(
+        r"(?:copy|put|set)\s+(.+?)\s+(?:to|on|in)\s+(?:the\s+)?clipboard",
+        text.strip(),
+        re.I,
+    )
+    if clipboard_match:
+        value = clipboard_match.group(1).strip().strip("\"'")
+        if value:
+            return ("set_clipboard", {"text": value}, "Copied that text to the clipboard.")
+
+    screen_intent = any(
+        phrase in lowered
+        for phrase in (
+            "take a screenshot",
+            "capture a screenshot",
+            "take screenshot",
+            "capture screenshot",
+            "read the screen",
+            "what do you see",
+            "tell me what you see",
+            "what's on my screen",
+            "what is on my screen",
+        )
+    )
+    if screen_intent:
+        tool_name = (
+            "read_screen"
+            if any(
+                phrase in lowered
+                for phrase in (
+                    "read the screen",
+                    "what do you see",
+                    "tell me what you see",
+                    "what's on my screen",
+                    "what is on my screen",
+                )
+            )
+            else "screenshot"
+        )
+        return (tool_name, {}, None)
+
+    return None
+
+
+async def _single_text_stream(text: str) -> AsyncGenerator[str, Any]:
+    yield text
+
+
+def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -> str:
+    normalized = " ".join((result or "").split())
+    lowered = normalized.lower()
+    failure_markers = (
+        "tool error",
+        "browser unavailable",
+        "failed",
+        "timed out",
+        "timeout",
+        "denied",
+        "not found",
+        "error:",
+        "confirmation required",
+    )
+    if any(marker in lowered for marker in failure_markers):
+        return normalized[:240] if normalized else f"{tool_name} failed."
+    if tool_name == "screenshot":
+        return "I captured a screenshot."
+    if tool_name == "read_screen":
+        lines = [line.strip() for line in (result or "").splitlines() if line.strip()]
+        if lines and lines[0].startswith("[Screen "):
+            lines = lines[1:]
+        if not lines or lines[0].startswith("(no text detected"):
+            return "I captured the screen, but OCR did not find readable text."
+        preview = lines[0][:180]
+        return f"I captured the screen. Visible text starts with: {preview}"
+    if tool_name == "get_time":
+        return f"The current time is {normalized}." if normalized else "I checked the time."
+    if tool_name == "get_date":
+        return f"Today is {normalized}." if normalized else "I checked the date."
+    if tool_name == "get_system_info":
+        preview = "; ".join(line.strip() for line in (result or "").splitlines()[:5] if line.strip())
+        return preview[:240] if preview else "System information is unavailable."
+    if tool_name == "list_processes":
+        lines = [line.strip() for line in (result or "").splitlines() if line.strip()]
+        if not lines:
+            return "No running processes were found."
+        return "Running processes include: " + "; ".join(lines[:5])[:220]
+    return success_reply or (normalized[:240] if normalized else f"{tool_name} completed.")
+
+
 # ── Memory ────────────────────────────────────────────────────────────────────
 
 
@@ -476,30 +1185,32 @@ class Memory:
         "user": {"name": None, "preferences": []},
         "facts": [],
         "context_summary": "",
+        "voice": {"continuous_listening": False, "wake_word": False},
         "session_count": 0,
         "last_session": None,
         "task_history": [],
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data = self._load()
         self.data["session_count"] += 1
         self.data["last_session"] = datetime.now().isoformat()
         self.save()
 
-    def _load(self) -> dict:
+    def _load(self) -> dict[str, Any]:
         if MEMORY_FILE.exists():
             try:
                 data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
                 return self._normalize(data)
             except Exception:
                 pass
-        return Memory._default(None)
+        return Memory._default(None)  # type: ignore[no-untyped-call]
 
-    def _normalize(self, data: dict) -> dict:
+    def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         data.setdefault("user", {"name": None, "preferences": []})
         data.setdefault("facts", [])
         data.setdefault("context_summary", "")
+        data.setdefault("voice", {"continuous_listening": False, "wake_word": False})
         data.setdefault("session_count", 0)
         data.setdefault("last_session", None)
         data.setdefault("task_history", [])
@@ -516,8 +1227,10 @@ class Memory:
             [f for f in (self._clean_text(x, 160) for x in data["facts"]) if self._is_memorable_fact(f)]
         )[-100:]
         data["context_summary"] = self._clean_text(data.get("context_summary", ""), 600)
+        data["voice"]["continuous_listening"] = bool(data["voice"].get("continuous_listening", False))
+        data["voice"]["wake_word"] = bool(data["voice"].get("wake_word", False))
 
-        cleaned_tasks: list[dict] = []
+        cleaned_tasks: list[dict[str, Any]] = []
         seen_tasks: set[str] = set()
         for item in data["task_history"]:
             task = self._clean_text(item.get("task", ""), 120)
@@ -593,7 +1306,19 @@ class Memory:
         return True
 
     def _is_memorable_fact(self, fact: str) -> bool:
-        return not self._is_low_signal_text(fact)
+        lowered = fact.casefold().strip(" \"'.")
+        bad_patterns = (
+            "no new information",
+            "nothing new",
+            "given input",
+            "from the given input",
+            "from this exchange",
+            "extracting ",
+            "the assistant",
+            "the user asked",
+            "the user said",
+        )
+        return not self._is_low_signal_text(fact) and not any(pattern in lowered for pattern in bad_patterns)
 
     def _is_memorable_preference(self, pref: str) -> bool:
         lowered = pref.casefold()
@@ -603,9 +1328,12 @@ class Memory:
         MEMORY_FILE.write_text(json.dumps(self.data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def add_fact(self, fact: str) -> None:
-        fact = self._clean_text(fact, 160)
+        fact = self._clean_text(fact, 160).strip(" \"'")
+        if not fact:
+            return
         if self._looks_like_preference(fact):
             self.add_preference(fact)
+            return
         if self._is_memorable_fact(fact) and fact not in self.data["facts"]:
             self.data["facts"].append(fact)
             self.data["facts"] = self.data["facts"][-100:]
@@ -669,6 +1397,11 @@ class Memory:
         pref_match = re.search(r"\b(?:i prefer|prefer|always use|default to)\s+(.+)$", user_text, re.I)
         if pref_match:
             self.add_preference(f"User prefers {pref_match.group(1).strip('. ')}")
+        favorite_match = re.search(r"\bmy favorite\s+([a-z0-9 _-]{2,40})\s+is\s+(.+)$", user_text, re.I)
+        if favorite_match:
+            subject = favorite_match.group(1).strip(". ")
+            value = favorite_match.group(2).strip(". ")
+            self.add_preference(f"User prefers {value} as their favorite {subject}")
 
         if assistant_text:
             for line in assistant_text.splitlines():
@@ -694,11 +1427,22 @@ class Memory:
         lines.append(f"Sessions so far: {self.data['session_count']}")
         return "\n".join(lines)
 
-    def get_all(self) -> dict:
+    def get_all(self) -> dict[str, Any]:
         return self.data
+
+    def set_voice_flags(self, *, continuous: bool | None = None, wake_word: bool | None = None) -> None:
+        """Persist voice standby settings across restarts."""
+        voice = self.data.setdefault("voice", {"continuous_listening": False, "wake_word": False})
+        if continuous is not None:
+            voice["continuous_listening"] = bool(continuous)
+        if wake_word is not None:
+            voice["wake_word"] = bool(wake_word)
+        self.save()
 
 
 memory = Memory()
+wake_word_active = bool(memory.data.get("voice", {}).get("wake_word", False))
+continuous_listening = bool(memory.data.get("voice", {}).get("continuous_listening", False))
 
 # ── Brain: System prompts ─────────────────────────────────────────────────────
 
@@ -729,6 +1473,9 @@ CODE & DATA TASKS:
 • run_command(cmd) → PowerShell/cmd. Use for system tasks, installs, git, npm, etc.
 • search_file_content(dir, pattern, text) → grep files for text.
 • read_file / write_file / move_file / copy_file / delete_file / download_file.
+• kb_search(query) → retrieve grounded knowledge from the local RAG corpus.
+• kb_index(max_files?) → build/rebuild the local RAG index from F:/rag-v1/data.
+• kb_export_training_data(max_examples?) → export JSONL datasets for training/fine-tuning.
 
 WEB TASKS:
 • web_search(query) → real results with titles + URLs + snippets.
@@ -760,11 +1507,58 @@ SAFETY:
 You are VISION. You are in a persistent agent loop. Tools fire in sequence until the task is DONE."""
 
 
-def build_system_prompt() -> str:
+async def build_system_prompt(user_message: str = "") -> str:
     ctx = memory.get_context_block()
-    if ctx:
-        return IDENTITY_CORE + f"\nWHAT YOU KNOW:\n{ctx}\n"
-    return IDENTITY_CORE
+    base = IDENTITY_CORE + f"\nWHAT YOU KNOW:\n{ctx}\n" if ctx else IDENTITY_CORE
+    return await brain_ai.augment_system(base, user_message)
+
+
+def _brain_tool_names(actions_taken: list[str]) -> list[str]:
+    tool_names: list[str] = []
+    for action in actions_taken:
+        name = action.split(":", 1)[0].strip()
+        if name and name not in tool_names:
+            tool_names.append(name)
+    return tool_names
+
+
+def _brain_outcome(response: str, actions_taken: list[str]) -> str:
+    normalized = response.strip().lower()
+    has_actions = bool(actions_taken)
+    if not normalized and not has_actions:
+        return "failure"
+    weak_markers = (
+        "tool error",
+        "not configured",
+        "not installed",
+        "not available",
+        "unable to",
+        "could not",
+        "failed",
+        "timed out",
+    )
+    if any(marker in normalized for marker in weak_markers):
+        return "partial" if has_actions else "failure"
+    return "success"
+
+
+def _persist_assistant_turn(user_text: str, assistant_text: str, actions_taken: list[str], started_at: float) -> str:
+    normalized = _normalize_assistant_text(assistant_text).strip()
+    if not normalized:
+        return ""
+    _append_history({"role": "assistant", "content": normalized})
+    latency_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
+    asyncio.create_task(
+        brain_ai.ingest(
+            user_text,
+            normalized,
+            tools_used=_brain_tool_names(actions_taken),
+            latency_ms=latency_ms,
+            outcome=_brain_outcome(normalized, actions_taken),
+        ),
+        name="brain_ingest",
+    )
+    return normalized
 
 
 # ── Persistent SDK clients (cached per provider+key to avoid re-creating) ─────
@@ -789,8 +1583,8 @@ def get_oai_client() -> AsyncOpenAI:
         else:
             timeout = httpx.Timeout(connect=5.0, read=60.0, write=10.0, pool=5.0)
         _oai_client_cache[cache_key] = AsyncOpenAI(
-            base_url=p["base_url"],
-            api_key=key,
+            base_url=str(p["base_url"]),
+            api_key=str(key),
             timeout=timeout,
             max_retries=2,
         )
@@ -822,6 +1616,7 @@ _FALLBACK_PROVIDER_ORDER = (
     "xai",
 )
 _provider_failure_until: dict[str, float] = {}
+_ollama_failover_active = False
 
 
 def _provider_has_key(provider: str) -> bool:
@@ -833,6 +1628,21 @@ def _provider_has_key(provider: str) -> bool:
 def _provider_default_model(provider: str) -> str:
     """Return the best default model for a provider."""
     models = PROVIDERS.get(provider, {}).get("models", [])
+    if provider == "ollama" and models:
+        preferred_models = ("gpt-oss:20b", "gpt-oss:20b-cloud", "gpt-oss:120b", "gpt-oss:120b-cloud")
+        for preferred in preferred_models:
+            if preferred in models:
+                return preferred
+        preferred_families = ("gpt-oss", "llama3.2", "llama3.1", "qwen2.5", "qwen2", "smollm2")
+        for family in preferred_families:
+            for model in models:
+                if model.startswith(family):
+                    return model
+        for model in models:
+            if any(model.startswith(family) for family in _OLLAMA_TOOL_FAMILIES):
+                return model
+        if current_model in models:
+            return current_model
     return models[0] if models else current_model
 
 
@@ -851,11 +1661,13 @@ def _choose_fallback_provider(exclude: set[str] | None = None) -> str | None:
 
 async def _activate_provider(provider: str) -> None:
     """Switch the active provider/model and notify clients."""
-    global current_provider, current_model
+    global current_provider, current_model, _ollama_failover_active
     if provider == current_provider and current_model in PROVIDERS.get(provider, {}).get("models", []):
         return
     current_provider = provider
     current_model = _provider_default_model(provider)
+    if provider == "ollama":
+        _ollama_failover_active = False
     write_log("model", f"{current_provider}/{current_model}")
     await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
 
@@ -868,6 +1680,24 @@ def _no_provider_message() -> str:
     )
 
 
+async def _maybe_restore_ollama_provider() -> None:
+    """Return to local Ollama after an automatic failover once the cooldown expires."""
+    global _ollama_failover_active
+    if current_provider == "ollama" or not _ollama_failover_active:
+        return
+    if time.time() < _provider_failure_until.get("ollama", 0.0):
+        return
+
+    ollama_models = await fetch_ollama_models()
+    if not ollama_models:
+        _provider_failure_until["ollama"] = time.time() + 60.0
+        return
+
+    PROVIDERS["ollama"]["models"] = ollama_models
+    _provider_failure_until.pop("ollama", None)
+    await _activate_provider("ollama")
+
+
 # ── Ollama model discovery ────────────────────────────────────────────────────
 
 
@@ -876,9 +1706,38 @@ async def fetch_ollama_models() -> list[str]:
     try:
         client = get_ollama_client()
         resp = await client.list()
-        return [m.model for m in resp.models] if resp.models else []
+        return [m.model for m in resp.models if m.model] if resp.models else []
     except OllamaResponseError as e:
         print(f"[ollama] list error: {e.error}")
+    except Exception as e:
+        print(f"[ollama] list failed: {e}")
+
+    loop = asyncio.get_running_loop()
+
+    def _list_via_cli() -> list[str]:
+        proc = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return []
+        models: list[str] = []
+        for line in proc.stdout.splitlines()[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            name = line.split()[0]
+            if name and name != "NAME":
+                models.append(name)
+        return models
+
+    try:
+        return await loop.run_in_executor(None, _list_via_cli)
+    except Exception as e:
+        print(f"[ollama] cli list failed: {e}")
         return []
     except Exception:
         return []
@@ -887,13 +1746,688 @@ async def fetch_ollama_models() -> list[str]:
 # ── HTTP routes ───────────────────────────────────────────────────────────────
 
 
+def _merge_nested_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Merge nested config dictionaries while preserving known defaults."""
+    merged: dict[str, Any] = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_nested_dicts(dict(merged[key]), value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_command_center_config() -> dict[str, Any]:
+    """Load the non-sensitive command center config/profile file."""
+    if not COMMAND_CENTER_CONFIG_FILE.exists():
+        _save_command_center_config(DEFAULT_COMMAND_CENTER_CONFIG)
+        return dict(DEFAULT_COMMAND_CENTER_CONFIG)
+
+    payload = json.loads(COMMAND_CENTER_CONFIG_FILE.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("vision_command_center_config.json must contain a JSON object.")
+    return _merge_nested_dicts(DEFAULT_COMMAND_CENTER_CONFIG, payload)
+
+
+def _save_command_center_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Persist the non-sensitive command center config/profile file."""
+    merged = _merge_nested_dicts(DEFAULT_COMMAND_CENTER_CONFIG, config)
+    COMMAND_CENTER_CONFIG_FILE.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    return merged
+
+
+def _load_automation_state() -> dict[str, Any]:
+    """Load the persistent automation mission/routine execution history."""
+    if not AUTOMATION_STATE_FILE.exists():
+        _save_automation_state(DEFAULT_AUTOMATION_STATE)
+        return dict(DEFAULT_AUTOMATION_STATE)
+
+    payload = json.loads(AUTOMATION_STATE_FILE.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("vision_automation_state.json must contain a JSON object.")
+
+    state = _merge_nested_dicts(DEFAULT_AUTOMATION_STATE, payload)
+    if not isinstance(state.get("routine_runs"), list):
+        state["routine_runs"] = []
+    if not isinstance(state.get("mission_runs"), list):
+        state["mission_runs"] = []
+    return state
+
+
+def _save_automation_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Persist automation mission/routine execution history."""
+    merged = _merge_nested_dicts(DEFAULT_AUTOMATION_STATE, state)
+    merged["updated_at_utc"] = datetime.now().isoformat()
+    AUTOMATION_STATE_FILE.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    return merged
+
+
+def _record_automation_run(kind: str, record: dict[str, Any]) -> dict[str, Any]:
+    """Append a routine or mission run to the persistent automation history."""
+    state = _load_automation_state()
+    key = "mission_runs" if kind == "mission" else "routine_runs"
+    history = [record, *state.get(key, [])]
+    state[key] = history[:20]
+    return _save_automation_state(state)
+
+
+def _surface_file(name: str, relative_path: str, description: str) -> dict[str, Any]:
+    """Describe a repo file or folder that can be opened from the command center."""
+    absolute_path = BASE / Path(relative_path)
+    return {
+        "name": name,
+        "path": relative_path,
+        "absolute_path": str(absolute_path),
+        "description": description,
+        "exists": absolute_path.exists(),
+    }
+
+
+def _with_absolute_paths(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add absolute file paths to catalog items that already expose repo-relative paths."""
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        enriched_item = dict(item)
+        relative_path = str(enriched_item.get("path", "")).strip()
+        if relative_path:
+            absolute_path = BASE / Path(relative_path)
+            enriched_item["absolute_path"] = str(absolute_path)
+            enriched_item["exists"] = absolute_path.exists()
+        enriched.append(enriched_item)
+    return enriched
+
+
+def _load_context_brain(*, persist: bool) -> dict[str, Any]:
+    """Load or regenerate the context brain, optionally persisting the artifact."""
+    if CONTEXT_BRAIN_FILE.exists() and not persist:
+        return json.loads(CONTEXT_BRAIN_FILE.read_text(encoding="utf-8"))
+
+    brain = build_context_brain()
+    if persist or not CONTEXT_BRAIN_FILE.exists():
+        CONTEXT_BRAIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CONTEXT_BRAIN_FILE.write_text(json.dumps(brain, indent=2), encoding="utf-8")
+    return brain
+
+
+def _build_doctor_report() -> dict[str, Any]:
+    """Build a reusable runtime and repo readiness report for the command center."""
+    config = _load_command_center_config()
+    checks: list[dict[str, Any]] = []
+    recommendations: list[str] = []
+
+    def add_check(name: str, ok: bool, detail: str) -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail})
+
+    add_check("Python runtime", True, f"Python {sys.version.split()[0]} available to the active backend.")
+    add_check(
+        "Backend entrypoint",
+        (BASE / "live_chat_app.py").exists(),
+        "live_chat_app.py should exist in the repo root.",
+    )
+    add_check(
+        "Primary UI file",
+        UI_FILE.exists(),
+        f"{UI_FILE.name} {'found' if UI_FILE.exists() else 'missing'} in repo root.",
+    )
+    add_check(
+        "Command Center UI file",
+        COMMAND_CENTER_FILE.exists(),
+        f"{COMMAND_CENTER_FILE.name} {'found' if COMMAND_CENTER_FILE.exists() else 'missing'} in repo root.",
+    )
+    add_check(
+        "Command Center config",
+        COMMAND_CENTER_CONFIG_FILE.exists(),
+        f"{COMMAND_CENTER_CONFIG_FILE.name} {'found' if COMMAND_CENTER_CONFIG_FILE.exists() else 'missing'} in repo root.",
+    )
+    add_check(
+        "Launcher script",
+        (BASE / "launch_vision.ps1").exists(),
+        "launch_vision.ps1 should exist for the Windows-first startup flow.",
+    )
+    ollama_mode = str(config.get("launcher", {}).get("ollama_access_mode", "local")).strip().lower() or "local"
+    ollama_host = str(config.get("launcher", {}).get("ollama_host", "")).strip()
+    ollama_origins = str(config.get("launcher", {}).get("ollama_origins", "")).strip()
+    ollama_models_path = str(config.get("launcher", {}).get("ollama_models_path", "")).strip()
+    mode_ok = ollama_mode in {"local", "lan"}
+    host_ok = bool(ollama_host)
+    add_check(
+        "Ollama access mode",
+        mode_ok,
+        f"Configured mode: {ollama_mode}. Host: {ollama_host or '(mode-derived default)'}. Origins: {ollama_origins or '(inherit Ollama defaults)'}",
+    )
+    add_check(
+        "Ollama host",
+        host_ok,
+        f"Configured host: {ollama_host or '(not set)'}",
+    )
+    models_path_ok = bool(ollama_models_path) and Path(ollama_models_path).exists()
+    add_check(
+        "Ollama models path",
+        models_path_ok,
+        f"Configured models path: {ollama_models_path or '(not set)'}",
+    )
+    add_check(
+        "Context brain artifact",
+        CONTEXT_BRAIN_FILE.exists(),
+        f"{CONTEXT_BRAIN_FILE.name} {'present' if CONTEXT_BRAIN_FILE.exists() else 'not generated yet'}.",
+    )
+
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            health = client.get(f"http://localhost:{PORT}/api/health").json()
+            models = client.get(f"http://localhost:{PORT}/api/models").json()
+    except Exception as exc:
+        health = {}
+        models = {}
+        add_check("Loopback API reachability", False, f"Could not fetch /api/health and /api/models: {exc}")
+        recommendations.append("Start the backend or check localhost:8765 if the doctor cannot reach the API.")
+    else:
+        add_check("Loopback API reachability", True, "The command center can reach the active backend over localhost.")
+        add_check("Ollama", bool(health.get("ollama")), "Local model service readiness.")
+        add_check("Playwright browser", bool(health.get("browser")), "Playwright browser/session readiness.")
+        add_check("OCR", bool(health.get("ocr")), "Tesseract/OCR availability.")
+        add_check("GPU telemetry", bool(health.get("gpu")), "GPU monitoring availability.")
+        provider_keys = health.get("providers", {})
+        configured_keys = sum(1 for value in provider_keys.values() if value)
+        add_check(
+            "Provider keys",
+            configured_keys > 0,
+            f"{configured_keys} configured cloud-provider keys detected.",
+        )
+        current_provider = str(models.get("current_provider", ""))
+        current_model = str(models.get("current_model", ""))
+        add_check(
+            "Active model",
+            bool(current_provider and current_model),
+            f"Current model: {current_provider}/{current_model}"
+            if current_provider and current_model
+            else "No active model reported.",
+        )
+        if not health.get("ollama"):
+            recommendations.append(
+                "Start Ollama or switch to a configured cloud provider if local models are unavailable."
+            )
+        if not health.get("browser"):
+            recommendations.append(
+                "Open a browser-backed workflow once to prewarm Playwright, or inspect Playwright installation."
+            )
+        if not configured_keys and not health.get("ollama"):
+            recommendations.append(
+                "Configure at least one cloud provider key or start Ollama to ensure model availability."
+            )
+
+    if config.get("doctor", {}).get("check_context_brain", True) and not CONTEXT_BRAIN_FILE.exists():
+        recommendations.append(
+            "Run the context brain refresh from the command center to create the repo cognition artifact."
+        )
+    if config.get("doctor", {}).get("check_launchers", True) and not (BASE / "launch_vision.ps1").exists():
+        recommendations.append("Restore launch_vision.ps1 so Windows launchers remain available.")
+    if not mode_ok:
+        recommendations.append("Set launcher.ollama_access_mode to 'local' or 'lan' in the command-center profile.")
+    if not host_ok:
+        recommendations.append(
+            "Set launcher.ollama_host explicitly, ideally including :11434, so the managed launcher uses the intended bind address."
+        )
+    elif ":" not in ollama_host:
+        recommendations.append(
+            "Consider setting launcher.ollama_host with an explicit port such as 127.0.0.1:11434 or 0.0.0.0:11434."
+        )
+    elif ollama_mode == "lan":
+        if ollama_origins == "*":
+            recommendations.append(
+                "Ollama is exposed to the LAN with wildcard CORS; restrict origins unless broad access is required."
+            )
+        elif not ollama_origins:
+            recommendations.append(
+                "Set explicit Ollama origins for LAN mode so browser-based clients stay narrowly scoped."
+            )
+    if not models_path_ok:
+        recommendations.append(
+            "Set launcher.ollama_models_path to the real Ollama model library so the managed launcher can start the correct daemon."
+        )
+
+    overall_ok = all(bool(check["ok"]) for check in checks)
+    return {
+        "generated_at_utc": datetime.now().isoformat(),
+        "ok": overall_ok,
+        "summary": "Vision Doctor reports healthy runtime and repo surfaces."
+        if overall_ok
+        else "Vision Doctor found one or more readiness gaps.",
+        "checks": checks,
+        "recommendations": recommendations,
+        "config_profile": config.get("profile_name", "default"),
+    }
+
+
+def _get_automation_routines() -> list[dict[str, Any]]:
+    """Expose reusable saved automation routines to the command center."""
+    return AUTOMATION_ROUTINES
+
+
+def _get_automation_missions() -> list[dict[str, Any]]:
+    """Expose higher-level automation missions composed of multiple routines."""
+    return AUTOMATION_MISSIONS
+
+
+def _run_automation_routine(routine_id: str, *, record_history: bool = True) -> dict[str, Any]:
+    """Execute a saved command center routine."""
+    routine = next((item for item in AUTOMATION_ROUTINES if item["id"] == routine_id), None)
+    if routine is None:
+        raise ValueError(f"Unknown automation routine: {routine_id}")
+
+    action = str(routine.get("action", ""))
+    payload: dict[str, Any]
+    if action == "doctor":
+        payload = {"routine": routine, "result": _build_doctor_report()}
+    elif action == "context_brain_refresh":
+        catalog_payload = _build_command_center_payload(persist_brain=True)
+        payload = {
+            "routine": routine,
+            "result": {
+                "ok": True,
+                "summary": "Context brain regenerated and command-center catalog refreshed.",
+                "generated_at_utc": catalog_payload.get("generated_at_utc"),
+                "artifact": catalog_payload.get("artifact", {}),
+            },
+        }
+    elif action == "open_files":
+        opened: list[str] = []
+        for raw_path in routine.get("paths", []):
+            target = BASE / Path(str(raw_path))
+            os.startfile(str(target))
+            opened.append(str(target))
+        payload = {
+            "routine": routine,
+            "result": {
+                "ok": True,
+                "summary": f"Opened {len(opened)} core surfaces.",
+                "opened": opened,
+            },
+        }
+    elif action == "command":
+        proc = subprocess.run(
+            str(routine.get("command", "")),
+            cwd=str(BASE),
+            shell=True,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        output = "\n".join(part for part in [proc.stdout.strip(), proc.stderr.strip()] if part).strip()
+        payload = {
+            "routine": routine,
+            "result": {
+                "ok": proc.returncode == 0,
+                "summary": "Routine completed." if proc.returncode == 0 else "Routine failed.",
+                "exit_code": proc.returncode,
+                "output": output[-4000:],
+            },
+        }
+    else:
+        raise ValueError(f"Unsupported automation routine action: {action}")
+
+    if record_history:
+        result = payload.get("result", {})
+        _record_automation_run(
+            "routine",
+            {
+                "id": routine["id"],
+                "name": routine["name"],
+                "ok": bool(result.get("ok", True)),
+                "summary": str(result.get("summary", "")),
+                "generated_at_utc": datetime.now().isoformat(),
+            },
+        )
+    return payload
+
+
+def _run_automation_mission(mission_id: str) -> dict[str, Any]:
+    """Execute a higher-level automation mission composed of multiple routine steps."""
+    mission = next((item for item in AUTOMATION_MISSIONS if item["id"] == mission_id), None)
+    if mission is None:
+        raise ValueError(f"Unknown automation mission: {mission_id}")
+
+    started_at = datetime.now()
+    step_results: list[dict[str, Any]] = []
+    overall_ok = True
+
+    for index, step in enumerate(mission.get("steps", []), start=1):
+        kind = str(step.get("kind", ""))
+        target = str(step.get("target", ""))
+        step_name = str(step.get("name", target or f"step-{index}"))
+        if kind != "routine":
+            raise ValueError(f"Unsupported mission step kind: {kind}")
+
+        routine_payload = _run_automation_routine(target, record_history=False)
+        routine_result = routine_payload.get("result", {})
+        step_ok = bool(routine_result.get("ok", True))
+        overall_ok = overall_ok and step_ok
+        step_results.append(
+            {
+                "index": index,
+                "name": step_name,
+                "kind": kind,
+                "target": target,
+                "ok": step_ok,
+                "summary": routine_result.get("summary", ""),
+                "output": routine_result.get("output", ""),
+                "exit_code": routine_result.get("exit_code"),
+            }
+        )
+        if not step_ok:
+            break
+
+    completed_at = datetime.now()
+    payload = {
+        "mission": mission,
+        "result": {
+            "ok": overall_ok,
+            "summary": "Mission completed." if overall_ok else "Mission failed.",
+            "started_at_utc": started_at.isoformat(),
+            "completed_at_utc": completed_at.isoformat(),
+            "duration_seconds": round((completed_at - started_at).total_seconds(), 2),
+            "steps": step_results,
+        },
+    }
+    _record_automation_run(
+        "mission",
+        {
+            "id": mission["id"],
+            "name": mission["name"],
+            "ok": overall_ok,
+            "summary": str(payload["result"]["summary"]),
+            "generated_at_utc": completed_at.isoformat(),
+        },
+    )
+    return payload
+
+
+def _build_command_center_payload(*, persist_brain: bool) -> dict[str, Any]:
+    """Build the structured catalog consumed by the Vision Command Center."""
+    brain = _load_context_brain(persist=persist_brain)
+    config = _load_command_center_config()
+    automation_state = _load_automation_state()
+    quick_actions = [
+        {
+            "name": "Open Vision UI",
+            "kind": "url",
+            "target": "/",
+            "description": "Open the primary operator and chat interface in a new tab.",
+        },
+        {
+            "name": "Open repo root",
+            "kind": "tool",
+            "tool": "open_file",
+            "parameters": {"path": str(BASE)},
+            "description": "Open the Vision repository in Explorer.",
+        },
+        {
+            "name": "Open documentation index",
+            "kind": "tool",
+            "tool": "open_file",
+            "parameters": {"path": str(BASE / "DOCUMENTATION_INDEX.md")},
+            "description": "Open the top-level documentation map.",
+        },
+        {
+            "name": "Open Archon workflows",
+            "kind": "tool",
+            "tool": "open_file",
+            "parameters": {"path": str(BASE / ".archon" / "workflows")},
+            "description": "Open the repo-local Archon workflow folder.",
+        },
+        {
+            "name": "Refresh context brain",
+            "kind": "api",
+            "method": "POST",
+            "target": "/api/command-center/context-brain/refresh",
+            "description": "Regenerate and persist the machine-readable repo context brain.",
+        },
+        {
+            "name": "Run Vision Doctor",
+            "kind": "api",
+            "method": "GET",
+            "target": "/api/command-center/doctor",
+            "description": "Run a reusable readiness report across runtime, launchers, and repo control surfaces.",
+        },
+    ]
+    command_shortcuts = [
+        r"python hive_tools\context_mapper.py --output .archon\artifacts\project_context.json",
+        r"archon workflow list --cwd C:\project\vision",
+        r'archon workflow run vision-context-brain-refresh --cwd C:\project\vision "Refresh the repo context before a broad task"',
+        r'archon workflow run vision-cognitive-council --cwd C:\project\vision "Deliberate the best path for a broad or risky task"',
+    ]
+    external_resources = [
+        {
+            "name": "OpenHarness",
+            "url": "https://github.com/MaxGfeller/open-harness",
+            "description": "External MCP-capable harness that can consume Vision through vision_mcp_server.py.",
+        },
+        {
+            "name": "Archon docs",
+            "url": "https://archon.diy/book/",
+            "description": "Reference docs for the deterministic workflow engine used in this repo.",
+        },
+        {
+            "name": "Archon getting started",
+            "url": "https://archon.diy/getting-started/ai-assistants/",
+            "description": "Assistant-specific onboarding for Archon usage.",
+        },
+        {
+            "name": "Archon CLI reference",
+            "url": "https://archon.diy/reference/cli/",
+            "description": "CLI command reference for listing and running workflows.",
+        },
+    ]
+    control_layers = [
+        {
+            "id": "core",
+            "name": "Core Operator Layer",
+            "strapline": "Keep the operator awake, local, and responsive.",
+            "description": (
+                "Low-latency control loop for launcher recovery, managed Ollama startup, health visibility, "
+                "voice I/O, and direct tool execution."
+            ),
+            "responsibilities": [
+                "Managed launcher startup and doctor-driven recovery.",
+                "Local-first runtime readiness across Ollama, browser, OCR, and GPU surfaces.",
+                "Operator UI, tool execution, and real-time runtime state transitions.",
+            ],
+            "surfaces": [
+                _surface_file(
+                    "Managed Launcher", "launch_vision.ps1", "Starts Vision and the managed standalone Ollama daemon."
+                ),
+                _surface_file(
+                    "Master Launcher",
+                    "vision_master_launcher.ps1",
+                    "Desktop-oriented launcher with multi-surface startup.",
+                ),
+                _surface_file(
+                    "Primary Operator UI", "live_chat_ui.html", "Direct operator/chat surface for local action."
+                ),
+            ],
+        },
+        {
+            "id": "cognitive",
+            "name": "Cognitive Layer",
+            "strapline": "Augment the core with memory, planning, and orchestration.",
+            "description": (
+                "Higher-order context, missions, docs, skills, agents, and repo cognition that sit on top of the "
+                "core operator loop without replacing it."
+            ),
+            "responsibilities": [
+                "Context brain refresh, catalog generation, and memory-aware repo navigation.",
+                "Mission Control orchestration, automation history, and workflow launch surfaces.",
+                "Skill, agent, MCP, and documentation discovery for broad maintenance work.",
+            ],
+            "surfaces": [
+                _surface_file(
+                    "Context Brain",
+                    "hive_tools/context_mapper.py",
+                    "Generates the machine-readable repo cognition artifact.",
+                ),
+                _surface_file(
+                    "Automation State",
+                    AUTOMATION_STATE_FILE.name,
+                    "Persistent mission and routine execution history for higher-order orchestration.",
+                ),
+                _surface_file(
+                    "Command Center UI", "vision_command_center.html", "Supervisory dashboard for the layered stack."
+                ),
+            ],
+        },
+    ]
+
+    return {
+        "generated_at_utc": brain.get("generated_at_utc"),
+        "project": brain.get("project", {}),
+        "entrypoints": brain.get("entrypoints", {}),
+        "brain": brain,
+        "artifact": {
+            "path": str(CONTEXT_BRAIN_FILE),
+            "exists": CONTEXT_BRAIN_FILE.exists(),
+            "relative_path": brain.get("integration", {}).get("context_brain_output", ""),
+        },
+        "config": config,
+        "config_file": _surface_file(
+            "Command Center Config",
+            COMMAND_CENTER_CONFIG_FILE.name,
+            "User-facing non-sensitive settings for theme, launcher behavior, and command-center preferences.",
+        ),
+        "pages": [
+            {
+                "name": "Vision Operator UI",
+                "url": "/",
+                "description": "Primary live chat and operator interface.",
+            },
+            {
+                "name": "Vision Command Center",
+                "url": "/command-center",
+                "description": "Operational dashboard for the repo intelligence stack.",
+            },
+        ],
+        "quick_actions": quick_actions,
+        "docs": [
+            _surface_file("README", "README.md", "Project overview, quick start, skills, and runtime surfaces."),
+            _surface_file(
+                "Documentation Index", "DOCUMENTATION_INDEX.md", "Top-level map for runtime and customization docs."
+            ),
+            _surface_file("HIVE", "HIVE.md", "Agent swarm and customization overview."),
+            _surface_file("Architecture", "architecture.md", "Runtime architecture, flow, and protocol notes."),
+            _surface_file(
+                "Copilot Instructions",
+                ".github/copilot-instructions.md",
+                "Always-on repo guidance for future Copilot sessions.",
+            ),
+        ],
+        "core_components": [
+            _surface_file("Backend", "live_chat_app.py", "FastAPI + WebSocket backend."),
+            _surface_file("Primary UI", "live_chat_ui.html", "Main operator/chat browser UI."),
+            _surface_file(
+                "Command Center UI", "vision_command_center.html", "Secondary dashboard for launch and monitoring."
+            ),
+            _surface_file("MCP Bridge", "vision_mcp_server.py", "Repo-local MCP bridge for external harnesses."),
+            _surface_file(
+                "Context Brain", "hive_tools/context_mapper.py", "Machine-readable repo cognition generator."
+            ),
+            _surface_file(
+                "Automation State",
+                AUTOMATION_STATE_FILE.name,
+                "Persistent mission and routine execution history for command-center automation.",
+            ),
+            _surface_file("Archon Config", ".archon/config.yaml", "Repo-local Archon assistant and workflow defaults."),
+            _surface_file("Workspace MCP", ".vscode/mcp.json", "Workspace MCP server configuration."),
+            _surface_file(
+                "Command Center Config",
+                COMMAND_CENTER_CONFIG_FILE.name,
+                "Non-sensitive command-center settings and launcher preferences.",
+            ),
+        ],
+        "catalog": {
+            "skills": _with_absolute_paths(brain.get("catalog", {}).get("skills", [])),
+            "agents": _with_absolute_paths(brain.get("catalog", {}).get("agents", [])),
+        },
+        "automation": {
+            "archon_config": str(BASE / ".archon" / "config.yaml"),
+            "archon_workflows": _with_absolute_paths(brain.get("automation", {}).get("archon_workflows", [])),
+            "validation_commands": brain.get("automation", {}).get("validation_commands", []),
+            "command_shortcuts": command_shortcuts,
+        },
+        "integration": {
+            **brain.get("integration", {}),
+            "mcp_servers": brain.get("integration", {}).get("mcp_servers", []),
+            "external_resources": external_resources,
+        },
+        "control_layers": control_layers,
+        "refresh": brain.get("refresh", {}),
+        "stats": brain.get("stats", {}),
+        "routines": _get_automation_routines(),
+        "missions": _get_automation_missions(),
+        "automation_state": automation_state,
+    }
+
+
 @app.get("/")
-async def index():
+async def index() -> FileResponse:
     return FileResponse(UI_FILE)
 
 
+@app.get("/command-center")
+async def command_center() -> FileResponse:
+    return FileResponse(COMMAND_CENTER_FILE)
+
+
+@app.get("/api/command-center")
+async def api_command_center() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, lambda: _build_command_center_payload(persist_brain=False))
+    return JSONResponse(payload)
+
+
+@app.post("/api/command-center/context-brain/refresh")
+async def api_command_center_refresh() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, lambda: _build_command_center_payload(persist_brain=True))
+    return JSONResponse(payload)
+
+
+@app.get("/api/command-center/doctor")
+async def api_command_center_doctor() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, _build_doctor_report)
+    return JSONResponse(payload)
+
+
+@app.get("/api/command-center/config")
+async def api_command_center_config() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, _load_command_center_config)
+    return JSONResponse(payload)
+
+
+@app.post("/api/command-center/config")
+async def api_command_center_config_save(payload: dict[str, Any]) -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    saved = await loop.run_in_executor(None, lambda: _save_command_center_config(payload))
+    return JSONResponse(saved)
+
+
+@app.post("/api/command-center/routines/{routine_id}")
+async def api_command_center_run_routine(routine_id: str) -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, lambda: _run_automation_routine(routine_id))
+    return JSONResponse(payload)
+
+
+@app.post("/api/command-center/missions/{mission_id}")
+async def api_command_center_run_mission(mission_id: str) -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, lambda: _run_automation_mission(mission_id))
+    return JSONResponse(payload)
+
+
 @app.get("/api/models")
-async def api_models():
+async def api_models() -> JSONResponse:
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
     return JSONResponse(
@@ -913,18 +2447,19 @@ async def api_models():
 
 
 @app.post("/api/model")
-async def api_set_model(payload: dict):
-    global current_provider, current_model
+async def api_set_model(payload: dict[str, Any]) -> JSONResponse:
+    global current_provider, current_model, _ollama_failover_active
     current_provider = payload.get("provider", current_provider)
     current_model = payload.get("model", current_model)
-    history.clear()
+    _ollama_failover_active = False
+    _clear_all_histories()
     write_log("model", f"{current_provider}/{current_model}")
     await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
     return JSONResponse({"ok": True})
 
 
 @app.post("/api/memory/fact")
-async def api_add_fact(payload: dict):
+async def api_add_fact(payload: dict[str, Any]) -> JSONResponse:
     fact = payload.get("fact", "").strip()
     if fact:
         memory.add_fact(fact)
@@ -932,7 +2467,7 @@ async def api_add_fact(payload: dict):
 
 
 @app.delete("/api/memory/fact")
-async def api_del_fact(payload: dict):
+async def api_del_fact(payload: dict[str, Any]) -> JSONResponse:
     fact = payload.get("fact", "")
     if fact in memory.data["facts"]:
         memory.data["facts"].remove(fact)
@@ -941,14 +2476,14 @@ async def api_del_fact(payload: dict):
 
 
 @app.get("/api/memory")
-async def api_memory():
+async def api_memory() -> JSONResponse:
     return JSONResponse(memory.get_all())
 
 
 @app.get("/api/metrics")
-async def api_metrics():
+async def api_metrics() -> JSONResponse:
     """Return real-time system metrics: CPU, RAM, disk, GPU."""
-    data: dict = {}
+    data: dict[str, Any] = {}
     if HAS_PSUTIL:
         data["cpu"] = round(psutil.cpu_percent(interval=None), 1)
         vm = psutil.virtual_memory()
@@ -974,9 +2509,9 @@ async def api_metrics():
 
 
 @app.get("/api/health")
-async def api_health():
+async def api_health() -> JSONResponse:
     """Return component health status."""
-    result: dict = {}
+    result: dict[str, Any] = {}
     # Ollama
     try:
         async with httpx.AsyncClient(timeout=2.0) as c:
@@ -984,10 +2519,10 @@ async def api_health():
             result["ollama"] = r.status_code == 200
     except Exception:
         result["ollama"] = False
-    # ElevenLabs key
-    result["elevenlabs"] = bool(API_11 and API_11 not in ("", "none"))
+    # ElevenLabs is only healthy when credentials exist and auth has not already failed at runtime.
+    result["elevenlabs"] = bool(API_11 and API_11 not in ("", "none") and not _elevenlabs_auth_failed)
     # OCR
-    result["ocr"] = HAS_OCR
+    result["ocr"] = _ocr_available()
     # GPU
     result["gpu"] = HAS_GPU
     # Playwright (browser)
@@ -999,17 +2534,66 @@ async def api_health():
     return JSONResponse(result)
 
 
+@app.get("/api/rag/status")
+async def api_rag_status() -> JSONResponse:
+    loop = asyncio.get_running_loop()
+    payload = await loop.run_in_executor(None, _rag_manager.status)
+    return JSONResponse(payload)
+
+
+@app.post("/api/rag/index")
+async def api_rag_index(payload: dict[str, Any]) -> JSONResponse:
+    max_files = int(payload.get("max_files", 0) or 0)
+    chunk_size = int(payload.get("chunk_size", 1400) or 1400)
+    overlap = int(payload.get("overlap", 220) or 220)
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: _rag_manager.build_index(max_files=max_files, chunk_size=chunk_size, overlap=overlap),
+    )
+    return JSONResponse(result)
+
+
+@app.post("/api/rag/search")
+async def api_rag_search(payload: dict[str, Any]) -> JSONResponse:
+    query = str(payload.get("query", "")).strip()
+    limit = int(payload.get("limit", 8) or 8)
+    include_content = bool(payload.get("include_content", True))
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: _rag_manager.search(query=query, limit=limit, include_content=include_content),
+    )
+    status = 200 if result.get("ok") else 400
+    return JSONResponse(result, status_code=status)
+
+
+@app.post("/api/rag/export-training")
+async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
+    max_examples = int(payload.get("max_examples", 0) or 0)
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
+    status = 200 if result.get("ok") else 400
+    return JSONResponse(result, status_code=status)
+
+
 @app.get("/screenshot")
 async def screenshot_ep():
     loop = asyncio.get_running_loop()
 
     def _snap():
         img = pyautogui.screenshot()
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=55)
-        return base64.b64encode(buf.getvalue()).decode()
+        buf_hq = io.BytesIO()
+        img.save(buf_hq, format="JPEG", quality=85)
+        buf_ui = io.BytesIO()
+        img.save(buf_ui, format="JPEG", quality=55)
+        return (
+            base64.b64encode(buf_hq.getvalue()).decode(),
+            base64.b64encode(buf_ui.getvalue()).decode(),
+        )
 
-    return JSONResponse({"data": await loop.run_in_executor(None, _snap)})
+    hd, data = await loop.run_in_executor(None, _snap)
+    return JSONResponse({"data": data, "hd": hd})
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -1161,8 +2745,17 @@ async def api_voices():
 
 @app.post("/api/el-agent/start")
 async def api_el_agent_start():
+    if _el_active:
+        message = "ConvAI agent already running."
+        await _broadcast_el_agent_status("already_running", message)
+        return JSONResponse({"ok": True, "status": "already_running", "message": message})
+    error = _el_agent_start_error()
+    if error:
+        write_log("el_agent", f"start blocked: {error}")
+        await _broadcast_el_agent_status("error", error)
+        return JSONResponse({"ok": False, "status": "error", "error": error}, status_code=400)
     asyncio.create_task(_start_el_agent())
-    return JSONResponse({"ok": True, "status": "starting"})
+    return JSONResponse({"ok": True, "status": "starting", "message": "Connecting to ConvAI…"})
 
 
 @app.post("/api/el-agent/stop")
@@ -1175,12 +2768,14 @@ async def api_el_agent_stop():
 async def api_wake_word(body: dict):
     global wake_word_active
     wake_word_active = bool(body.get("enabled", False))
+    memory.set_voice_flags(wake_word=wake_word_active)
     return JSONResponse({"ok": True, "enabled": wake_word_active})
 
 
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
-    global muted, mode, speak_task, current_provider, current_model
+    global muted, mode, current_provider, current_model, _ollama_failover_active
+    global _elevenlabs_auth_failed
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
     global wake_word_active, continuous_listening
     await websocket.accept()
@@ -1194,6 +2789,7 @@ async def ws_ep(websocket: WebSocket):
                 "provider": current_provider,
                 "model": current_model,
                 "mode": mode,
+                "state": runtime_state,
                 "memory": memory.get_all(),
                 "wake_word": wake_word_active,
                 "continuous_listening": continuous_listening,
@@ -1218,23 +2814,37 @@ async def ws_ep(websocket: WebSocket):
             if t == "mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
-                if muted and speak_task and not speak_task.done():
-                    speak_task.cancel()
+                if muted:
+                    await _cancel_all_speak_tasks()
             elif t == "mode":
                 mode = msg.get("mode", "chat")
-                history.clear()
+                _clear_all_histories()
                 write_log("mode", mode)
             elif t == "text":
                 text = msg.get("text", "").strip()
                 if text:
                     write_log("text_in", text[:120])
-                    asyncio.create_task(handle_input(text))
+                    if _request_lane_busy(websocket):
+                        await broadcast(
+                            {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
+                            websocket,
+                        )
+                    else:
+                        _set_request_lane_busy(websocket, True)
+                        asyncio.create_task(handle_input(text, websocket))
             elif t == "input":
                 # Alias — UI sends {type:"input", text:...}
                 text = msg.get("text", "").strip()
                 if text:
                     write_log("text_in", text[:120])
-                    asyncio.create_task(handle_input(text))
+                    if _request_lane_busy(websocket):
+                        await broadcast(
+                            {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
+                            websocket,
+                        )
+                    else:
+                        _set_request_lane_busy(websocket, True)
+                        asyncio.create_task(handle_input(text, websocket))
             elif t == "execute_tool":
                 # Direct tool execution from Actions tab
                 tool_name = msg.get("tool", "")
@@ -1242,40 +2852,54 @@ async def ws_ep(websocket: WebSocket):
                 if tool_name:
 
                     async def _run_tool(n, a):
-                        await set_state("thinking")
-                        result = await exec_tool(n, a)
-                        await broadcast_action(n, a, result)
-                        await set_state("idle")
+                        with _session_context(websocket):
+                            async with _session_input_lock(websocket):
+                                try:
+                                    await set_state("thinking")
+                                    result = await exec_tool(n, a)
+                                    await broadcast_action(n, a, result)
+                                    await set_state("idle")
+                                finally:
+                                    _set_request_lane_busy(websocket, False)
 
-                    asyncio.create_task(_run_tool(tool_name, tool_args))
+                    if _request_lane_busy(websocket):
+                        await broadcast(
+                            {"type": "error", "message": "Vision is busy with another request. Try again in a moment."},
+                            websocket,
+                        )
+                    else:
+                        _set_request_lane_busy(websocket, True)
+                        asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
                 current_provider = msg.get("provider", current_provider)
                 current_model = msg.get("model", current_model)
-                history.clear()
+                _ollama_failover_active = False
+                _clear_all_histories()
                 write_log("model", f"{current_provider}/{current_model}")
                 await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
             elif t == "set_mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
-                if muted and speak_task and not speak_task.done():
-                    speak_task.cancel()
+                if muted:
+                    await _cancel_all_speak_tasks()
                 await broadcast({"type": "mute_state", "muted": muted})
                 if muted:
                     if runtime_state != "muted":
                         await set_state("muted")
-                elif not (speak_task and not speak_task.done()) and not _input_busy:
+                elif not _any_speak_active() and not _any_input_busy():
                     target_state = "listening" if (continuous_listening or wake_word_active) else "idle"
                     if runtime_state != target_state:
                         await set_state(target_state)
             elif t == "set_continuous":
                 continuous_listening = bool(msg.get("enabled", False))
+                memory.set_voice_flags(continuous=continuous_listening)
                 write_log("continuous", str(continuous_listening))
                 await broadcast({"type": "continuous_state", "enabled": continuous_listening})
                 if not muted:
                     if continuous_listening or wake_word_active:
                         if (
-                            not (speak_task and not speak_task.done())
-                            and not _input_busy
+                            not _any_speak_active()
+                            and not _any_input_busy()
                             and runtime_state != "listening"
                         ):
                             await set_state("listening")
@@ -1283,10 +2907,11 @@ async def ws_ep(websocket: WebSocket):
                         await set_state("idle")
             elif t == "set_mode":
                 mode = msg.get("mode", "chat")
-                history.clear()
+                _clear_all_histories()
                 write_log("mode", mode)
             elif t == "clear":
-                history.clear()
+                with _session_context(websocket):
+                    _clear_active_history()
                 write_log("clear", "history cleared")
             elif t == "log":
                 write_log(msg.get("event", "ui"), msg.get("detail", "")[:200])
@@ -1311,6 +2936,7 @@ async def ws_ep(websocket: WebSocket):
                             "provider": current_provider,
                             "model": current_model,
                             "mode": mode,
+                            "state": runtime_state,
                             "memory": memory.get_all(),
                             "wake_word": wake_word_active,
                             "continuous_listening": continuous_listening,
@@ -1344,6 +2970,8 @@ async def ws_ep(websocket: WebSocket):
                     env_name = env_map.get(provider, "")
                     if env_name:
                         _save_key(env_name, key)  # → os.environ + keyring + .env
+                    if provider == "elevenlabs":
+                        _elevenlabs_auth_failed = False
                     write_log("key", f"Saved key for {provider}")
                     await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
@@ -1353,21 +2981,14 @@ async def ws_ep(websocket: WebSocket):
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
                 await asyncio.to_thread(_save_settings)
-                await broadcast(
-                    {
-                        "type": "voice_settings",
-                        "preferred_stt": preferred_stt,
-                        "preferred_tts": preferred_tts,
-                        "tts_rate": tts_rate,
-                        "tts_voice_idx": tts_voice_idx,
-                    }
-                )
+                await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
                 asyncio.create_task(_start_el_agent())
             elif t == "el_agent_stop":
                 asyncio.create_task(_stop_el_agent())
             elif t == "set_wake_word":
                 wake_word_active = bool(msg.get("enabled", False))
+                memory.set_voice_flags(wake_word=wake_word_active)
                 write_log("wake_word", str(wake_word_active))
                 await broadcast({"type": "wake_word_state", "enabled": wake_word_active})
                 if wake_word_active:
@@ -1380,8 +3001,8 @@ async def ws_ep(websocket: WebSocket):
                     )
                     if (
                         not muted
-                        and not (speak_task and not speak_task.done())
-                        and not _input_busy
+                        and not _any_speak_active()
+                        and not _any_input_busy()
                         and runtime_state != "listening"
                     ):
                         await set_state("listening")
@@ -1398,37 +3019,48 @@ async def ws_ep(websocket: WebSocket):
                         target_state = "listening" if continuous_listening else "idle"
                         if (
                             runtime_state != target_state
-                            and not (speak_task and not speak_task.done())
-                            and not _input_busy
+                            and not _any_speak_active()
+                            and not _any_input_busy()
                         ):
                             await set_state(target_state)
     except WebSocketDisconnect:
+        pass
+    finally:
         clients.discard(websocket)
+        _session_histories.pop(websocket, None)
+        _session_input_busy.pop(websocket, None)
+        _session_input_locks.pop(websocket, None)
+        _set_request_lane_busy(websocket, False)
+        _session_speak_tasks.pop(websocket, None)
 
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
 
 
-async def broadcast(msg: dict) -> None:
+async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
+    resolved_target = _resolve_target(target)
     dead = set()
-    for ws in list(clients):  # snapshot to avoid "Set changed size during iteration"
+    recipients = [resolved_target] if resolved_target is not None else list(clients)
+    for ws in recipients:  # snapshot to avoid "Set changed size during iteration"
         try:
             await ws.send_text(json.dumps(msg))
         except Exception:
             dead.add(ws)
-    clients.difference_update(dead)
+    for ws in dead:
+        clients.discard(ws)
+        _session_histories.pop(ws, None)
 
 
-async def set_state(s: str) -> None:
+async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
     """Broadcast state + current active provider/model for UI indicators."""
     global runtime_state
     runtime_state = s
     write_log("state", s)
-    await broadcast({"type": "state", "state": s, "provider": current_provider, "model": current_model})
+    await broadcast({"type": "state", "state": s, "provider": current_provider, "model": current_model}, target)
 
 
-async def add_transcript(role: str, text: str) -> None:
-    await broadcast({"type": "transcript", "role": role, "text": text})
+async def add_transcript(role: str, text: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
+    await broadcast({"type": "transcript", "role": role, "text": text}, target)
 
 
 async def broadcast_volume(lvl: float) -> None:
@@ -1445,12 +3077,18 @@ async def _wait_for_quiet_input(max_wait: float = 1.2) -> None:
         await asyncio.sleep(0.03)
 
 
-async def broadcast_action(action: str, params: dict, result: str, elapsed_ms: float | None = None) -> None:
+async def broadcast_action(
+    action: str,
+    params: dict,
+    result: str,
+    elapsed_ms: float | None = None,
+    target: object | WebSocket | None = _USE_CONTEXT_TARGET,
+) -> None:
     write_log("action", f"{action} ({elapsed_ms:.0f}ms) → {result[:80]}" if elapsed_ms else f"{action} → {result[:80]}")
     msg: dict = {"type": "action", "action": action, "params": params, "result": result}
     if elapsed_ms is not None:
         msg["elapsed_ms"] = round(elapsed_ms, 1)
-    await broadcast(msg)
+    await broadcast(msg, target)
 
 
 # ── VAD ───────────────────────────────────────────────────────────────────────
@@ -1461,13 +3099,17 @@ class VAD:
         self._loud = self._quiet = 0
         self._active = False
         self._buf: list[np.ndarray] = []
+        self._preroll: deque[np.ndarray] = deque(maxlen=START_FRAMES * 3)
 
     def reset(self):
         self._loud = self._quiet = 0
         self._active = False
         self._buf = []
+        self._preroll.clear()
 
     def feed(self, frame: np.ndarray):
+        frame_copy = frame.copy()
+        self._preroll.append(frame_copy)
         rms = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
         if rms > RMS_THRESH:
             self._loud += 1
@@ -1478,10 +3120,10 @@ class VAD:
         if not self._active:
             if self._loud >= START_FRAMES:
                 self._active = True
-                self._buf = []
+                self._buf = list(self._preroll)
                 return "start", rms
         else:
-            self._buf.append(frame.copy())
+            self._buf.append(frame_copy)
             if self._quiet >= END_FRAMES:
                 frames = list(self._buf)
                 self._buf = []
@@ -1501,7 +3143,7 @@ _faster_whisper_model = None  # lazy-loaded once
 
 
 async def transcribe(frames: list[np.ndarray]) -> str:
-    global _stt_failure_until, _stt_groq_failure_until, _faster_whisper_model
+    global _stt_failure_until, _stt_groq_failure_until, _faster_whisper_model, _elevenlabs_auth_failed
 
     # If all providers recently failed, skip until cooldown expires
     if time.time() < _stt_failure_until:
@@ -1515,6 +3157,8 @@ async def transcribe(frames: list[np.ndarray]) -> str:
     loop = asyncio.get_running_loop()
 
     async def _try_elevenlabs():
+        if _elevenlabs_auth_failed:
+            return None
         api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
         if not api_11:
             return None
@@ -1534,7 +3178,10 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             write_log("stt/elevenlabs", result[:150])
             return result
         except Exception as e:
-            print(f"[stt] ElevenLabs: {str(e)[:80]}")
+            err = str(e)
+            if _is_invalid_elevenlabs_auth(err):
+                await _handle_invalid_elevenlabs_auth(err)
+            print(f"[stt] ElevenLabs: {err[:80]}")
             return None
 
     async def _try_groq():
@@ -1662,30 +3309,70 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 # ── Operator tools ────────────────────────────────────────────────────────────
 
 # Playwright browser singleton
+_pw_driver = None
 _pw_browser = None
 _pw_page = None
+_pw_lock: asyncio.Lock | None = None
 _PW_PROFILE = str(BASE / ".pw_profile")  # persistent user data dir (cookies, logins, etc.)
+
+
+async def _reset_browser_page_state() -> None:
+    global _pw_driver, _pw_browser, _pw_page
+    page = _pw_page
+    browser = _pw_browser
+    driver = _pw_driver
+    _pw_page = None
+    _pw_browser = None
+    _pw_driver = None
+    if page is not None:
+        try:
+            if not page.is_closed():
+                await page.close()
+        except Exception:
+            pass
+    if browser is not None:
+        try:
+            await browser.close()
+        except Exception:
+            pass
+    if driver is not None:
+        try:
+            await driver.stop()
+        except Exception:
+            pass
 
 
 async def get_browser_page():
     """Lazy-init a persistent Playwright Chromium browser with saved profile."""
-    global _pw_browser, _pw_page
+    global _pw_driver, _pw_browser, _pw_page, _pw_lock
     try:
         from playwright.async_api import async_playwright
 
-        if _pw_browser is None:
-            _pw = await async_playwright().start()
-            os.makedirs(_PW_PROFILE, exist_ok=True)
-            _pw_browser = await _pw.chromium.launch_persistent_context(
-                _PW_PROFILE,
-                headless=False,
-                args=["--start-maximized"],
-                no_viewport=True,
-            )
-        if _pw_page is None or _pw_page.is_closed():
-            pages = _pw_browser.pages
-            _pw_page = pages[0] if pages else await _pw_browser.new_page()
-        return _pw_page
+        if _pw_lock is None:
+            _pw_lock = asyncio.Lock()
+        async with _pw_lock:
+            last_error: Exception | None = None
+            for attempt in range(2):
+                try:
+                    if _pw_browser is None:
+                        _pw_driver = await async_playwright().start()
+                        os.makedirs(_PW_PROFILE, exist_ok=True)
+                        _pw_browser = await _pw_driver.chromium.launch_persistent_context(
+                            _PW_PROFILE,
+                            headless=False,
+                            args=["--start-maximized"],
+                            no_viewport=True,
+                        )
+                    if _pw_page is None or _pw_page.is_closed():
+                        pages = _pw_browser.pages
+                        _pw_page = pages[0] if pages else await _pw_browser.new_page()
+                    return _pw_page
+                except Exception as e:
+                    last_error = e
+                    if attempt == 0:
+                        await _reset_browser_page_state()
+                        continue
+                    raise
     except Exception as e:
         print(f"[playwright] {e}")
         return None
@@ -2067,8 +3754,64 @@ TOOLS = [
             "description": "Search and retrieve previously remembered facts from memory. Pass a query to filter, or omit to list all facts.",
             "parameters": {
                 "type": "object",
+                "properties": {"query": {"type": "string", "description": "Optional keyword to filter recalled facts"}},
+                "required": [],
+            },
+        },
+    },
+    # ── Knowledge base / RAG
+    {
+        "type": "function",
+        "function": {
+            "name": "kb_search",
+            "description": "Search the local RAG knowledge base (F:/rag-v1/data by default) for grounded context.",
+            "parameters": {
+                "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Optional keyword to filter recalled facts"}
+                    "query": {"type": "string", "description": "Search query"},
+                    "limit": {"type": "integer", "description": "Max results (1-20), default 8"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "kb_status",
+            "description": "Return RAG index status, source path, and index metadata.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "kb_index",
+            "description": "Build or rebuild the local RAG index from the configured source corpus.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_files": {
+                        "type": "integer",
+                        "description": "Optional max number of source files to index (0 = all)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "kb_export_training_data",
+            "description": "Export indexed corpus into JSONL datasets for training/finetuning and retrieval knowledge-base ingestion.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_examples": {
+                        "type": "integer",
+                        "description": "Optional max number of chunks to export (0 = all)",
+                    }
                 },
                 "required": [],
             },
@@ -2653,9 +4396,129 @@ def _make_vision_tool_result(text: str, tool_call_id: str) -> dict:
     return {"role": "tool", "tool_call_id": tool_call_id, "content": text}
 
 
+def _normalize_assistant_text(text: str) -> str:
+    """Strip simple structured wrappers some models emit around plain text replies."""
+    stripped = text.strip()
+    if not stripped:
+        return text
+    match = re.match(r'^\{\s*"text"\s*:\s*"((?:\\.|[^"\\])*)"\s*\}\s*\}?$', stripped, re.DOTALL)
+    if not match:
+        return text
+    try:
+        return json.loads(f'"{match.group(1)}"').strip()
+    except json.JSONDecodeError:
+        return text
+
+
 def _tool_err(action: str, e: Exception) -> str:
     """Standardised one-line error string for exec_tool handlers."""
     return f"{action} error: {e}"
+
+
+_CONFIRMATION_TIMEOUT_SECS = 180.0
+_pending_tool_confirmation: dict[str, Any] | None = None
+
+_CONFIRMATION_YES = {
+    "yes",
+    "y",
+    "yeah",
+    "yep",
+    "confirm",
+    "confirmed",
+    "proceed",
+    "go ahead",
+    "do it",
+    "run it",
+}
+_CONFIRMATION_NO = {"no", "n", "cancel", "abort", "stop", "never mind", "nevermind"}
+
+
+def _confirmation_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower()).strip(" .!?")
+
+
+def _is_confirmation_yes(text: str) -> bool:
+    return _confirmation_text(text) in _CONFIRMATION_YES
+
+
+def _is_confirmation_no(text: str) -> bool:
+    return _confirmation_text(text) in _CONFIRMATION_NO
+
+
+def _format_tool_args_for_confirmation(name: str, args: dict[str, Any]) -> str:
+    if name == "run_command":
+        command = str(args.get("command", "")).strip()
+        return f"run shell command `{command[:180]}`"
+    if name == "execute_python":
+        code = str(args.get("code", "")).strip().replace("\n", " ")
+        return f"execute Python code `{code[:180]}`"
+    if name == "delete_file":
+        return f"delete `{args.get('path', '')}`"
+    if name == "kill_process":
+        target = args.get("pid") or args.get("name") or "(unspecified process)"
+        return f"terminate process `{target}`"
+    if name == "move_file":
+        return f"move `{args.get('src', '')}` to `{args.get('dst', '')}`"
+    if name == "write_file":
+        return f"overwrite `{args.get('path', '')}`"
+    if name == "copy_file":
+        return f"overwrite `{args.get('dst', '')}`"
+    if name == "download_file":
+        return f"overwrite download destination `{args.get('path', '')}`"
+    return f"run `{name}`"
+
+
+def _is_safe_run_command(command: str) -> bool:
+    normalized = re.sub(r"\s+", " ", command.strip()).lower()
+    safe_commands = {re.sub(r"\s+", " ", cmd.strip()).lower() for cmd, _ in _SAFE_DIRECT_APP_COMMANDS.values()}
+    if normalized in safe_commands:
+        return True
+    return bool(re.fullmatch(r"echo\s+[a-z0-9_.-]+", normalized))
+
+
+def _tool_confirmation_reason(name: str, args: dict[str, Any]) -> str | None:
+    if name == "run_command":
+        command = str(args.get("command", ""))
+        return None if _is_safe_run_command(command) else _format_tool_args_for_confirmation(name, args)
+    if name in {"execute_python", "delete_file", "kill_process", "move_file"}:
+        return _format_tool_args_for_confirmation(name, args)
+    if name == "write_file":
+        target = str(args.get("path", ""))
+        if target and Path(target).exists():
+            return _format_tool_args_for_confirmation(name, args)
+    if name in {"copy_file", "download_file"}:
+        dest = str(args.get("dst") or args.get("path") or "")
+        if dest and Path(dest).exists():
+            return _format_tool_args_for_confirmation(name, args)
+    return None
+
+
+def _set_pending_tool_confirmation(name: str, args: dict[str, Any], summary: str) -> str:
+    global _pending_tool_confirmation
+    if _pending_tool_confirmation and not _pending_tool_confirmation_expired():
+        existing = str(_pending_tool_confirmation.get("summary", "run a pending action"))
+        return f"Confirmation already pending to {existing}. Reply `yes` to proceed or `cancel` to abort."
+    _pending_tool_confirmation = {
+        "name": name,
+        "args": dict(args),
+        "summary": summary,
+        "created_at": time.monotonic(),
+    }
+    return f"Confirmation required to {summary}. Reply `yes` to proceed or `cancel` to abort."
+
+
+def _pop_pending_tool_confirmation() -> dict[str, Any] | None:
+    global _pending_tool_confirmation
+    pending = _pending_tool_confirmation
+    _pending_tool_confirmation = None
+    return pending
+
+
+def _pending_tool_confirmation_expired() -> bool:
+    if not _pending_tool_confirmation:
+        return False
+    age = time.monotonic() - float(_pending_tool_confirmation.get("created_at", 0.0))
+    return age > _CONFIRMATION_TIMEOUT_SECS
 
 
 # Tools that are safe to automatically retry on transient failure
@@ -2675,20 +4538,28 @@ _RETRYABLE_TOOLS = {
     "click",
     "double_click",
     "right_click",
+    "kb_search",
 }
 
 
-async def exec_tool(name: str, args: dict) -> str:
+async def exec_tool(name: str, args: dict, *, confirmed: bool = False) -> str:
     """
     Execute a tool with automatic timing and exponential backoff retry on transient failure.
 
     Args:
         name: The unique identifier of the tool to execute.
         args: A dictionary of arguments for the tool.
+        confirmed: True only when executing a user-approved pending action.
 
     Returns:
         The result of the tool execution as a string, or a formatted error message.
     """
+    args = dict(args or {})
+    if not confirmed:
+        confirmation_reason = _tool_confirmation_reason(name, args)
+        if confirmation_reason:
+            return _set_pending_tool_confirmation(name, args, confirmation_reason)
+
     t0 = time.monotonic()
     last_err: Exception | None = None
     max_attempts = 3 if name in _RETRYABLE_TOOLS else 1
@@ -2742,11 +4613,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap)
         _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
-        await broadcast({"type": "screenshot", "data": snap_ui_b64})
+        await broadcast({"type": "screenshot", "data": snap_ui_b64, "hd": snap_b64})
         if name == "screenshot":
             return "(screenshot captured)"
         # read_screen: return OCR text; vision image is injected into tool result by LLM stream
-        if HAS_OCR:
+        if _ocr_available():
 
             def _ocr(im):
                 from PIL import Image as _Image
@@ -2754,7 +4625,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
                 g = im.convert("L")
                 g = ImageOps.autocontrast(g, cutoff=2)
-                g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
+                g = g.resize((g.width * 2, g.height * 2), _Image.Resampling.LANCZOS)
                 g = g.filter(ImageFilter.SHARPEN)
                 return pytesseract.image_to_string(g, config="--psm 3 --oem 3").strip()
 
@@ -2763,7 +4634,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             header = f"[Screen {screen_w}×{screen_h}px | image sent to vision model]\n"
             return header + (text[:3000] if text else "(no text detected via OCR)")
         screen_w, screen_h = pyautogui.size()
-        return f"Screenshot captured ({screen_w}×{screen_h}px). Use the image to identify UI elements."
+        return (
+            f"Screenshot captured ({screen_w}×{screen_h}px). Image sent to vision model. {_ocr_unavailable_message()}"
+        )
 
     # ── Screenshot region (zoom in for precision) ──────────────────────────────
     elif name == "screenshot_region":
@@ -2783,8 +4656,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         snap_b64, snap_ui_b64, img = await loop.run_in_executor(None, _snap_r)
         _last_screenshot_b64 = snap_b64
         _last_screenshot_time = asyncio.get_running_loop().time()
-        await broadcast({"type": "screenshot", "data": snap_ui_b64})
-        if HAS_OCR:
+        await broadcast({"type": "screenshot", "data": snap_ui_b64, "hd": snap_b64})
+        if _ocr_available():
 
             def _ocr_r(im):
                 from PIL import Image as _Image
@@ -2792,12 +4665,12 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
                 g = im.convert("L")
                 g = ImageOps.autocontrast(g, cutoff=2)
-                g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
+                g = g.resize((g.width * 2, g.height * 2), _Image.Resampling.LANCZOS)
                 return pytesseract.image_to_string(g, config="--psm 6 --oem 3").strip()
 
             ocr_text = await loop.run_in_executor(None, lambda: _ocr_r(img))
             return f"Region ({x},{y}) {w}×{h}px | OCR: {ocr_text[:1500] or '(no text)'}"
-        return f"Region ({x},{y}) {w}×{h}px captured."
+        return f"Region ({x},{y}) {w}×{h}px captured. {_ocr_unavailable_message()}"
 
     # ── Mouse ──────────────────────────────────────────────────────────────────
     elif name == "click":
@@ -2928,11 +4801,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Browser (Playwright) ───────────────────────────────────────────────────
     elif name == "browser_open":
         url = args.get("url", "")
-        page = await get_browser_page()
-        if page is None:
-            return "Browser unavailable — is Playwright installed?"
-        await page.goto(url, timeout=15000, wait_until="domcontentloaded")
-        return f"Opened: {url}"
+        try:
+            page = await get_browser_page()
+            if page is None:
+                raise RuntimeError("Browser unavailable")
+            await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            return f"Opened: {url}"
+        except Exception as e:
+            return _tool_err("browser_open", e)
     elif name == "browser_click":
         selector = args.get("selector", "")
         page = await get_browser_page()
@@ -3098,6 +4974,45 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         if not matches:
             return "No matching facts found." if query else "Memory is empty."
         return "\n".join(f"• {f}" for f in matches[:20])
+
+    elif name == "kb_status":
+        status = _rag_manager.status()
+        return json.dumps(status, ensure_ascii=False)
+
+    elif name == "kb_index":
+        max_files = int(args.get("max_files", 0) or 0)
+        result = await loop.run_in_executor(None, lambda: _rag_manager.build_index(max_files=max_files))
+        return json.dumps(result, ensure_ascii=False)
+
+    elif name == "kb_search":
+        query = str(args.get("query", "")).strip()
+        limit = int(args.get("limit", 8) or 8)
+        if not query:
+            return "kb_search error: query is required"
+        result = await loop.run_in_executor(
+            None, lambda: _rag_manager.search(query=query, limit=limit, include_content=True)
+        )
+        if not result.get("ok"):
+            return f"kb_search error: {result.get('error', 'unknown error')}"
+        rows = result.get("results", [])
+        if not rows:
+            return "No knowledge-base matches found."
+        lines: list[str] = []
+        for idx, row in enumerate(rows[:limit], start=1):
+            rel = row.get("rel_path", "")
+            snippet = str(row.get("snippet", "")).replace("\n", " ").strip()
+            content = str(row.get("content", "")).strip().replace("\n", " ")
+            if len(content) > 600:
+                content = content[:600] + "..."
+            lines.append(f"[{idx}] {rel}")
+            lines.append(f"Snippet: {snippet}")
+            lines.append(f"Content: {content}")
+        return "\n".join(lines)
+
+    elif name == "kb_export_training_data":
+        max_examples = int(args.get("max_examples", 0) or 0)
+        result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
+        return json.dumps(result, ensure_ascii=False)
 
     elif name == "window_resize":
         title, w, h = args.get("title", ""), int(args.get("width", 800)), int(args.get("height", 600))
@@ -3364,8 +5279,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _ocr_region():
             img = pyautogui.screenshot(region=(x, y, w, h))
-            if not HAS_OCR:
-                return "(OCR not available)"
+            if not _ocr_available():
+                return f"({_ocr_unavailable_message()})"
             from PIL import Image as _Image
             from PIL import ImageFilter, ImageOps
 
@@ -3373,7 +5288,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             for scale in (3, 2):
                 g = img.convert("L")
                 g = ImageOps.autocontrast(g, cutoff=1)
-                g = g.resize((g.width * scale, g.height * scale), _Image.LANCZOS)
+                g = g.resize((g.width * scale, g.height * scale), _Image.Resampling.LANCZOS)
                 g = g.filter(ImageFilter.SHARPEN)
                 for psm in (6, 11, 3):
                     txt = pytesseract.image_to_string(g, config=f"--psm {psm} --oem 3").strip()
@@ -3388,23 +5303,45 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Power tools ────────────────────────────────────────────────────────────
     elif name == "execute_python":
         code = args.get("code", "")
-        timeout = int(args.get("timeout", 30))
-
-        def _run_code():
-            stdout_buf = io.StringIO()
-            local_ns: dict = {}
-            try:
-                with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stdout_buf):
-                    exec(compile(code, "<vision_exec>", "exec"), local_ns)
-                result_val = local_ns.get("result")
-                output = stdout_buf.getvalue()
-                if result_val is not None:
-                    output = (output + f"\nresult = {result_val}").strip()
-            except Exception:
-                output = stdout_buf.getvalue() + traceback.format_exc()
+        timeout = max(1, min(int(args.get("timeout", 30)), 120))
+        wrapper = (
+            "import contextlib, io, traceback\n"
+            f"CODE = {code!r}\n"
+            "stdout_buf = io.StringIO()\n"
+            "local_ns = {}\n"
+            "try:\n"
+            "    with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stdout_buf):\n"
+            "        exec(compile(CODE, '<vision_exec>', 'exec'), local_ns)\n"
+            "    result_val = local_ns.get('result')\n"
+            "    output = stdout_buf.getvalue()\n"
+            "    if result_val is not None:\n"
+            "        output = (output + f'\\nresult = {result_val}').strip()\n"
+            "except Exception:\n"
+            "    output = stdout_buf.getvalue() + traceback.format_exc()\n"
+            "print((output[:4000] or '(code ran with no output)'), end='')\n"
+        )
+        temp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".py", delete=False) as fh:
+                fh.write(wrapper)
+                temp_path = fh.name
+            proc = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [sys.executable, temp_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                ),
+            )
+            output = (proc.stdout or proc.stderr or "").strip()
             return output[:4000] or "(code ran with no output)"
-
-        return await asyncio.wait_for(loop.run_in_executor(None, _run_code), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return f"execute_python timed out after {timeout}s and was terminated"
+        finally:
+            if temp_path:
+                with contextlib.suppress(OSError):
+                    Path(temp_path).unlink()
 
     elif name == "find_on_screen":
         search_text = args.get("text", "")
@@ -3413,14 +5350,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _find():
             img = pyautogui.screenshot()
-            if not HAS_OCR:
+            if not _ocr_available():
                 return None
             from PIL import Image as _Image
             from PIL import ImageOps
 
             g = img.convert("L")
             g = ImageOps.autocontrast(g, cutoff=1)
-            g = g.resize((g.width * 2, g.height * 2), _Image.LANCZOS)
+            g = g.resize((g.width * 2, g.height * 2), _Image.Resampling.LANCZOS)
             data = pytesseract.image_to_data(g, output_type=pytesseract.Output.DICT, config="--psm 11 --oem 3")
             sw = search_text.lower()
             for i, word in enumerate(data["text"]):
@@ -3679,8 +5616,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         region = args.get("region")
         if not target:
             return "Error: 'text' argument required"
-        if not HAS_OCR:
-            return "Error: pytesseract not installed"
+        if not _ocr_available():
+            return f"Error: {_ocr_unavailable_message()}"
         deadline = time.monotonic() + timeout
         interval = 0.5
         while time.monotonic() < deadline:
@@ -3790,7 +5727,8 @@ _TOOL_NAMES_PATTERN = (
     r"type_?\s*text|press_?\s*key|get_?\s*clipboard|set_?\s*clipboard|list_?\s*windows|"
     r"focus_?\s*window|read_?\s*file|write_?\s*file|list_?\s*files|"
     r"browser_?\s*open|browser_?\s*click|browser_?\s*fill|browser_?\s*extract|"
-    r"browser_?\s*screenshot|browser_?\s*press|move_?\s*mouse|drag|scroll"
+    r"browser_?\s*screenshot|browser_?\s*press|move_?\s*mouse|drag|scroll|"
+    r"kb_?\s*search|kb_?\s*status|kb_?\s*index|kb_?\s*export_?\s*training_?\s*data"
 )
 _BARE_TOOL_RE = re.compile(
     r"(?:TOOL_CALL:\s*)?(?P<name>" + _TOOL_NAMES_PATTERN + r")\s*\((?P<args>[^)]*)\)", re.IGNORECASE
@@ -3810,6 +5748,7 @@ _TOOL_FIRST_PARAM: dict[str, str] = {
     "list_files": "path",
     "set_clipboard": "text",
     "scroll": "direction",
+    "kb_search": "query",
 }
 
 
@@ -3879,7 +5818,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
     """Prompt-based tool calling for Ollama models without native FC support."""
     tool_suffix = _build_tool_prompt_suffix()
     sys_with_tools = system + tool_suffix
-    messages = [{"role": "system", "content": sys_with_tools}, *history]
+    messages = [{"role": "system", "content": sys_with_tools}, *_active_history()]
     yielded_any = False
     action_summary: list[str] = []
 
@@ -3893,7 +5832,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
-            print(f"[llm/prompttools] {e} - live_chat_app.py:2339")
+            print(f"[llm/prompttools] {e} - live_chat_app.py:4191")
             err = f"Error: {str(e)[:120]}"
             yield err
             return
@@ -3955,13 +5894,18 @@ async def _take_screenshot_b64() -> str:
 
     def _snap():
         img = pyautogui.screenshot()
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=70)
-        return base64.b64encode(buf.getvalue()).decode()
+        buf_hq = io.BytesIO()
+        img.save(buf_hq, format="JPEG", quality=85)
+        buf_ui = io.BytesIO()
+        img.save(buf_ui, format="JPEG", quality=70)
+        return (
+            base64.b64encode(buf_hq.getvalue()).decode(),
+            base64.b64encode(buf_ui.getvalue()).decode(),
+        )
 
-    b64 = await loop.run_in_executor(None, _snap)
-    await broadcast({"type": "screenshot", "data": b64})
-    return b64
+    b64_hq, b64_ui = await loop.run_in_executor(None, _snap)
+    await broadcast({"type": "screenshot", "data": b64_ui, "hd": b64_hq})
+    return b64_hq
 
 
 async def _execute_computer_action(action) -> dict:
@@ -4048,18 +5992,18 @@ async def _llm_stream_responses_api(user_text: str):
     oai = AsyncOpenAI(api_key=api_key, timeout=120.0)
     screen_w, screen_h = pyautogui.size()
     is_cua = current_model == "computer-use-preview"
-    system = build_system_prompt()
+    system = await build_system_prompt(user_text)
+    started_at = time.perf_counter()
     full = ""
     actions_taken: list[str] = []
 
     # Build initial input from history (skip system messages, last 14 turns)
     input_items: list[dict] = []
-    for msg in history[-14:]:
+    for msg in _active_history()[-14:]:
         role = msg.get("role", "user")
         content = msg.get("content") or ""
         if role in ("user", "assistant") and content:
             input_items.append({"role": role, "content": content})
-    input_items.append({"role": "user", "content": user_text})
 
     # Tool definitions
     if is_cua:
@@ -4218,10 +6162,9 @@ async def _llm_stream_responses_api(user_text: str):
             full += word + " "
             await asyncio.sleep(0.015)
 
-    if full:
-        history.append({"role": "assistant", "content": full})
-        # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
-    write_log("llm_responses", full[:150])
+    persisted_reply = _persist_assistant_turn(user_text, full, actions_taken, started_at)
+    # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
+    write_log("llm_responses", persisted_reply[:150] if persisted_reply else full[:150])
 
 
 _THINKING_PREFIXES = ("deepseek-r1", "qwen3", "qwq", "marco-o1", "claude-3-7")
@@ -4242,7 +6185,8 @@ async def _llm_stream_ollama(user_text: str):
     """
     global _last_screenshot_b64
     client = get_ollama_client()
-    system = build_system_prompt()
+    system = await build_system_prompt(user_text)
+    started_at = time.perf_counter()
     think = _is_thinking_model()
     full = ""
     actions_taken: list[str] = []
@@ -4254,7 +6198,7 @@ async def _llm_stream_ollama(user_text: str):
         num_ctx=8192 if _model_supports_vision() else 4096,
     )
 
-    msgs: list[dict] = [{"role": "system", "content": system}, *history[-20:]]
+    msgs: list[dict] = [{"role": "system", "content": system}, *_active_history()[-20:]]
     tools_to_use = TOOLS if mode == "operator" else []
     _MAX_STEPS = 20
     _last_tool_sig: str = ""  # detect repeated identical tool calls (infinite loop guard)
@@ -4290,10 +6234,9 @@ async def _llm_stream_ollama(user_text: str):
                 if msg.content:
                     chunk_text += msg.content
                     if mode != "operator":
-                        for word in msg.content.split():
-                            yield word + " "
-                            full += word + " "
-                            await asyncio.sleep(0.012)
+                        yield msg.content
+                        full += msg.content
+                        await asyncio.sleep(0.012)
 
                 if chunk.done:
                     break
@@ -4301,7 +6244,7 @@ async def _llm_stream_ollama(user_text: str):
         except OllamaResponseError as e:
             # Native tool calling not supported — fall back to prompt-based
             if "tool" in str(e.error).lower() or "function" in str(e.error).lower():
-                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:2727")
+                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:4603")
                 oai = get_oai_client()
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -4310,7 +6253,7 @@ async def _llm_stream_ollama(user_text: str):
             yield f"Ollama error: {e.error}"
             break
         except Exception as e:
-            print(f"[llm/ollama] {e} - live_chat_app.py:2735")
+            print(f"[llm/ollama] {e} - live_chat_app.py:4612")
             yield f"Error: {str(e)[:120]}"
             break
 
@@ -4322,10 +6265,9 @@ async def _llm_stream_ollama(user_text: str):
                 clean_text = _BARE_TOOL_RE.sub("", chunk_text).strip()
                 # Yield only the human-readable preamble
                 if clean_text:
-                    for word in clean_text.split():
-                        yield word + " "
-                        full += word + " "
-                        await asyncio.sleep(0.012)
+                    yield clean_text
+                    full += clean_text
+                    await asyncio.sleep(0.012)
                 # Execute each bare tool call
                 msgs.append({"role": "assistant", "content": chunk_text})
                 for tool_name, args in bare_calls:
@@ -4348,10 +6290,9 @@ async def _llm_stream_ollama(user_text: str):
 
         # In operator mode with no tool calls, flush buffered text now
         if mode == "operator" and chunk_text and not tool_calls_pending:
-            for word in chunk_text.split():
-                yield word + " "
-                full += word + " "
-                await asyncio.sleep(0.012)
+            yield chunk_text
+            full += chunk_text
+            await asyncio.sleep(0.012)
 
         if not tool_calls_pending:
             break
@@ -4397,15 +6338,15 @@ async def _llm_stream_ollama(user_text: str):
         else:
             msgs.append({"role": "user", "content": "Tools executed. Give a brief spoken summary."})
 
-    if full.strip():
-        history.append({"role": "assistant", "content": full.strip()})
-        # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
-    elif actions_taken:
+    final_reply = full
+    if not final_reply.strip() and actions_taken:
         summary = "Done — " + "; ".join(a.split(":")[0] for a in actions_taken[:3]) + "."
-        for word in summary.split():
-            yield word + " "
-            await asyncio.sleep(0.015)
-    write_log("llm/ollama", full[:150])
+        yield summary
+        await asyncio.sleep(0.015)
+        final_reply = summary
+    normalized_full = _persist_assistant_turn(user_text, final_reply, actions_taken, started_at)
+    # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
+    write_log("llm/ollama", normalized_full[:150] if normalized_full else final_reply[:150])
 
 
 async def _llm_stream_openai(user_text: str):
@@ -4414,7 +6355,8 @@ async def _llm_stream_openai(user_text: str):
     Catches specific openai exceptions and streams tokens live.
     """
     oai = get_oai_client()
-    system = build_system_prompt()
+    system = await build_system_prompt(user_text)
+    started_at = time.perf_counter()
     full = ""
     actions_taken: list[str] = []
 
@@ -4425,7 +6367,7 @@ async def _llm_stream_openai(user_text: str):
 
     while True:
         force_text = tool_rounds >= MAX_TOOL_ROUNDS
-        base_msgs = [{"role": "system", "content": system}, *history]
+        base_msgs = [{"role": "system", "content": system}, *_active_history()]
         if force_text and actions_taken:
             base_msgs.append(
                 {
@@ -4477,25 +6419,23 @@ async def _llm_stream_openai(user_text: str):
 
         except openai.RateLimitError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:2898")
+            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:4779")
             yield "Rate limit reached — please wait a moment."
             break
         except openai.APIStatusError as e:
             rid = getattr(e, "request_id", None)
-            print(
-                f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]} - live_chat_app.py:2902"
-            )
+            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]}")
             yield f"API error {e.status_code}: {str(e.message)[:100]}"
+            break
+        except openai.APITimeoutError:  # subclass of APIConnectionError — must come first
+            yield "Request timed out."
             break
         except openai.APIConnectionError:
             yield "Connection error — check your internet."
             break
-        except openai.APITimeoutError:
-            yield "Request timed out."
-            break
         except Exception as e:
             err_s = str(e)
-            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:2910")
+            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:4797")
             if any(k in err_s.lower() for k in ("tool", "function", "schema", "unsupported")):
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -4515,7 +6455,7 @@ async def _llm_stream_openai(user_text: str):
                 _repeat_count_oai = 0
             _last_tool_sig_oai = _sig_oai
             if _repeat_count_oai >= 2:
-                history.append(
+                _append_history(
                     {
                         "role": "user",
                         "content": "You've called the same tool repeatedly with no progress. "
@@ -4523,7 +6463,7 @@ async def _llm_stream_openai(user_text: str):
                     }
                 )
                 continue
-            history.append(
+            _append_history(
                 {
                     "role": "assistant",
                     "content": None,
@@ -4548,9 +6488,9 @@ async def _llm_stream_openai(user_text: str):
                 actions_taken.append(f"{tc['name']}: {result[:60]}")
                 # Inject screenshot image for vision-capable models
                 if tc["name"] in ("read_screen", "screenshot", "screenshot_region"):
-                    history.append(_make_vision_tool_result(result, tc["id"]))
+                    _append_history(_make_vision_tool_result(result, tc["id"]))
                 else:
-                    history.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                    _append_history({"role": "tool", "tool_call_id": tc["id"], "content": result})
             continue  # next iteration forces text reply
         else:
             if not chunk_text and actions_taken:
@@ -4561,10 +6501,9 @@ async def _llm_stream_openai(user_text: str):
                     await asyncio.sleep(0.015)
             break
 
-    if full.strip():
-        history.append({"role": "assistant", "content": full.strip()})
-        # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
-    write_log("llm/openai", full[:150])
+    persisted_reply = _persist_assistant_turn(user_text, full, actions_taken, started_at)
+    # NOTE: add_transcript is called by speak() — don't call here to avoid duplicate
+    write_log("llm/openai", persisted_reply[:150] if persisted_reply else full[:150])
 
 
 async def _llm_stream_anthropic(user_text: str):
@@ -4583,7 +6522,8 @@ async def _llm_stream_anthropic(user_text: str):
         return
 
     client = anthropic.AsyncAnthropic(api_key=api_key)
-    system = build_system_prompt()
+    system = await build_system_prompt(user_text)
+    started_at = time.perf_counter()
     full = ""
     actions_taken: list[str] = []
 
@@ -4601,14 +6541,13 @@ async def _llm_stream_anthropic(user_text: str):
 
     # Convert history to Anthropic message format (no system role in messages)
     msgs: list[dict] = []
-    for h in history[-20:]:
+    for h in _active_history()[-20:]:
         role = h.get("role", "user")
         content = h.get("content") or ""
         if role == "tool":
             continue  # skip tool result messages (handled per-round)
         if role in ("user", "assistant") and content:
             msgs.append({"role": role, "content": content})
-    msgs.append({"role": "user", "content": user_text})
 
     think = _is_thinking_model()
 
@@ -4719,14 +6658,15 @@ async def _llm_stream_anthropic(user_text: str):
         text_buf = ""
         tool_use_blocks = []
 
-    if full.strip():
-        history.append({"role": "assistant", "content": full.strip()})
-    elif actions_taken:
+    final_reply = full
+    if not final_reply.strip() and actions_taken:
         summary = "Done — " + "; ".join(a.split(":")[0] for a in actions_taken[:3]) + "."
         for word in summary.split():
             yield word + " "
             await asyncio.sleep(0.015)
-    write_log("llm/anthropic", full[:150])
+        final_reply = summary
+    persisted_reply = _persist_assistant_turn(user_text, final_reply, actions_taken, started_at)
+    write_log("llm/anthropic", persisted_reply[:150] if persisted_reply else final_reply[:150])
 
 
 # ── Context compression ───────────────────────────────────────────────────────
@@ -4747,30 +6687,77 @@ _FAST_MODEL_MAP: dict[str, str] = {
 }
 
 
-async def _fast_completion(prompt: str, max_tokens: int = 200) -> str | None:
-    """Run a cheap, non-streaming completion on any available cloud provider.
-
-    Returns the response text, or None if no provider is reachable.
-    Skips Ollama — background inference should not block the real-time voice loop.
-    """
-    provider = (
-        current_provider
-        if current_provider != "ollama" and current_provider in PROVIDERS and _provider_has_key(current_provider)
-        else _choose_fallback_provider()
-    )
-    if not provider:
+def _fast_ollama_model() -> str | None:
+    """Pick a lightweight local Ollama model for background tasks when available."""
+    models = PROVIDERS.get("ollama", {}).get("models", [])
+    if not models:
         return None
-    model = _FAST_MODEL_MAP.get(provider) or _provider_default_model(provider)
-    client = AsyncOpenAI(
-        base_url=PROVIDERS[provider]["base_url"],
-        api_key=PROVIDERS[provider]["api_key"],
+    preferred_models = (
+        "smollm2:1.7b",
+        "llama3.2:latest",
+        "llama3.1:8b",
+        "qwen2.5-coder:0.5b",
+        "qwen2.5-coder:1.5b",
+        "gpt-oss:20b",
     )
-    resp = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-    )
-    return resp.choices[0].message.content or ""
+    for preferred in preferred_models:
+        if preferred in models:
+            return preferred
+    return _provider_default_model("ollama")
+
+
+async def _fast_completion(prompt: str, max_tokens: int = 200) -> str | None:
+    """Run a cheap, non-streaming completion on the healthiest available provider."""
+    provider_candidates: list[str] = []
+    ollama_model = _fast_ollama_model()
+    if ollama_model:
+        provider_candidates.append("ollama")
+    if current_provider != "ollama" and current_provider in PROVIDERS and _provider_has_key(current_provider):
+        provider_candidates.append(current_provider)
+    for provider in _FALLBACK_PROVIDER_ORDER:
+        if provider not in provider_candidates and _provider_has_key(provider):
+            provider_candidates.append(provider)
+
+    for provider in provider_candidates:
+        try:
+            if provider == "ollama":
+                client = AsyncOpenAI(
+                    base_url=PROVIDERS["ollama"]["base_url"],
+                    api_key="ollama",
+                    timeout=httpx.Timeout(connect=3.0, read=45.0, write=10.0, pool=5.0),
+                    max_retries=1,
+                )
+                resp = await client.chat.completions.create(
+                    model=ollama_model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tokens,
+                )
+            else:
+                model = _FAST_MODEL_MAP.get(provider) or _provider_default_model(provider)
+                client = AsyncOpenAI(
+                    base_url=PROVIDERS[provider]["base_url"],
+                    api_key=PROVIDERS[provider]["api_key"],
+                    timeout=httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0),
+                    max_retries=1,
+                )
+                resp = await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tokens,
+                )
+            return resp.choices[0].message.content or ""
+        except openai.APIStatusError as e:
+            if provider != "ollama" and e.status_code in (401, 403, 429):
+                _provider_failure_until[provider] = time.time() + 600.0
+            continue
+        except (openai.APIConnectionError, openai.APITimeoutError):
+            if provider != "ollama":
+                _provider_failure_until[provider] = time.time() + 180.0
+            continue
+        except Exception:
+            continue
+
+    return None
 
 
 def _estimate_tokens(history_list: list[dict]) -> int:
@@ -4800,14 +6787,14 @@ def _estimate_tokens(history_list: list[dict]) -> int:
 
 async def _compress_history_if_needed() -> None:
     """Summarise old history turns when the context grows too large."""
-    global history
-    if _estimate_tokens(history) < _CONTEXT_TOKEN_LIMIT:
+    active_history = _active_history()
+    if _estimate_tokens(active_history) < _CONTEXT_TOKEN_LIMIT:
         return
     keep_n = _CONTEXT_KEEP_RECENT * 2  # each pair = 2 messages
-    if len(history) <= keep_n + 2:
+    if len(active_history) <= keep_n + 2:
         return  # not enough history to compress
-    old_msgs = history[:-keep_n]
-    recent_msgs = history[-keep_n:]
+    old_msgs = active_history[:-keep_n]
+    recent_msgs = active_history[-keep_n:]
     summary_prompt = (
         "Summarize the following conversation history in 3-5 concise bullet points, "
         "focusing on tasks completed, key facts learned, and important context. "
@@ -4825,7 +6812,7 @@ async def _compress_history_if_needed() -> None:
             ]
             summary_text = "\n".join(lines[:10])
         compressed = [{"role": "system", "content": f"[Conversation summary]\n{summary_text}"}]
-        history = compressed + list(recent_msgs)
+        active_history[:] = compressed + list(recent_msgs)
         memory.set_context_summary(summary_text)
         write_log("context", f"compressed {len(old_msgs)} msgs → summary ({len(summary_text)} chars)")
         await broadcast({"type": "state", "state": "context_compressed"})
@@ -4838,23 +6825,29 @@ async def _always_learn_step(user_text: str, assistant_text: str) -> None:
     if not user_text or not assistant_text:
         return
     memory.learn_from_exchange(user_text, assistant_text)
+    if not _should_extract_memory_fact(user_text):
+        return
 
     prompt = (
         "As an elite memory-architect, extract any new permanent facts about the user "
-        "or their environment from this exchange. Format as single-sentence facts. "
-        "If nothing new is learned, return 'NONE'.\n\n"
+        "or their environment from this exchange. Only return facts stated explicitly by the user. "
+        "Do not infer preferences from tests, short commands, or routine chat. "
+        "If nothing explicit is learned, return 'NONE'.\n\n"
         f"USER: {user_text}\n"
         f"ASSISTANT: {assistant_text}"
     )
     try:
         fact = await _fast_completion(prompt, max_tokens=150)
         if fact and "NONE" not in fact.upper():
+            added_any = False
             for f in fact.split("\n"):
-                f = f.strip("•- ").strip()
-                if f:
+                f = f.strip("•- ").strip(" \"'")
+                if f and _fact_is_grounded_in_user_text(f, user_text):
                     memory.add_fact(f)
-            await broadcast({"type": "memory_updated", "memory": memory.get_all()})
-            write_log("memory", f"Learned: {fact[:100]}")
+                    added_any = True
+            if added_any:
+                await broadcast({"type": "memory_updated", "memory": memory.get_all()})
+                write_log("memory", f"Learned: {fact[:100]}")
     except Exception as e:
         write_log("memory_err", str(e))
 
@@ -4864,8 +6857,10 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     Route to the right LLM backend with local-first cascade.
     Always learning: triggers a memory update after the stream completes.
     """
-    history.append({"role": "user", "content": user_text})
+    global _ollama_failover_active
+    _append_history({"role": "user", "content": user_text})
     await _compress_history_if_needed()
+    await _maybe_restore_ollama_provider()
 
     full_response = []
 
@@ -4875,11 +6870,6 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             yield chunk
         # Trigger learning in background
         asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
-
-    if _use_responses_api():
-        async for chunk in _handle_and_learn(_llm_stream_responses_api(user_text)):
-            yield chunk
-        return
 
     if current_provider == "anthropic":
         async for chunk in _handle_and_learn(_llm_stream_anthropic(user_text)):
@@ -4903,7 +6893,8 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             _provider_failure_until["ollama"] = time.time() + 120.0
             fallback_provider = _choose_fallback_provider()
             if fallback_provider:
-                print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:3279")
+                _ollama_failover_active = True
+                print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:5255")
                 await _activate_provider(fallback_provider)
             elif first_error:
                 yield _no_provider_message()
@@ -4919,11 +6910,15 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         first_error = ""
         active_provider = current_provider
         attempted_providers.add(active_provider)
+        active_stream = _llm_stream_responses_api(user_text) if _use_responses_api() else _llm_stream_openai(user_text)
 
-        async for chunk in _llm_stream_openai(user_text):
+        async for chunk in active_stream:
             collected_chunks.append(chunk)
             if len(collected_chunks) == 1 and (
-                chunk.startswith("Connection error") or chunk.startswith("API error") or chunk.startswith("Error:")
+                chunk.startswith("Connection error")
+                or chunk.startswith("API error")
+                or chunk.startswith("OpenAI API key not configured")
+                or chunk.startswith("Error:")
             ):
                 errored = True
                 first_error = chunk
@@ -4941,7 +6936,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             yield _no_provider_message()
             return
 
-        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:3290")
+        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:5297")
         await _activate_provider(fallback_provider)
 
 
@@ -4951,9 +6946,9 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
 async def speak(text_gen):
     """Stream LLM tokens to ElevenLabs in real-time for minimal latency."""
     loop = asyncio.get_running_loop()
-    global last_tts_provider, _response_lock
+    global last_tts_provider, _response_lock, _elevenlabs_auth_failed
     collected: list[str] = []
-    tts_start = time.monotonic()
+    playback_duration = 0.0
 
     async with _response_lock:
 
@@ -4977,14 +6972,14 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] pyttsx3: {e} - live_chat_app.py:3315")
+                print(f"[tts] pyttsx3: {e} - live_chat_app.py:5333")
                 return False
 
         async def _win32_tts(text: str) -> bool:
             """Speak using a Windows OneCore neural voice via win32com SAPI."""
             token_key = _onecore_voices.get(tts_voice_idx, "")
             if not token_key:
-                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:3322")
+                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:5340")
                 return False
             try:
 
@@ -5013,7 +7008,7 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] win32 onecore: {e} - live_chat_app.py:3348")
+                print(f"[tts] win32 onecore: {e} - live_chat_app.py:5369")
                 return False
 
         async def _fallback_tts(text: str) -> bool:
@@ -5032,6 +7027,16 @@ async def speak(text_gen):
             # Wrap text_gen: broadcast each token to UI as it arrives so the
             # console shows streaming text in real-time (not just after TTS finishes)
             stream_started = False
+            finalized_text = False
+
+            async def _finalize_text() -> None:
+                nonlocal finalized_text
+                if finalized_text or not collected:
+                    return
+                finalized_text = True
+                full_text = _normalize_assistant_text("".join(collected))
+                await broadcast({"type": "stream_finalize", "text": full_text})
+                await add_transcript("assistant", full_text)
 
             async def _broadcasting_gen():
                 nonlocal stream_started
@@ -5071,19 +7076,35 @@ async def speak(text_gen):
 
                 async def _speak_sentences():
                     """Consume sentence_q and speak each in sequence."""
+                    nonlocal playback_duration
                     while True:
                         sentence = await sentence_q.get()
                         if sentence is None:
                             break
                         await _wait_for_quiet_input()
+                        sentence_start = time.monotonic()
                         await _fallback_tts(sentence)
+                        playback_duration += time.monotonic() - sentence_start
 
                 # Run both concurrently: collector produces, speaker consumes
-                await asyncio.gather(_collect_sentences(), _speak_sentences())
+                collector_task = asyncio.create_task(_collect_sentences())
+                speaker_task = asyncio.create_task(_speak_sentences())
+                await collector_task
+                await _finalize_text()
+                await speaker_task
             else:
                 _eleven_gen = _broadcasting_gen()
+                eleven_gen_started = False
+                eleven_gen_done = False
+                eleven_failure_reason = ""
 
                 async def _patched_eleven() -> bool:
+                    nonlocal eleven_gen_started
+                    nonlocal eleven_gen_done
+                    nonlocal eleven_failure_reason
+                    nonlocal playback_duration
+                    if _elevenlabs_auth_failed:
+                        return False
                     api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
                     if not api_11:
                         return False
@@ -5109,14 +7130,23 @@ async def speak(text_gen):
                                 )
                             )
                             out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
+                            out_started = False
                             out.start()
+                            out_started = True
                             await broadcast({"type": "tts_active", "provider": "elevenlabs"})
                             got_audio = False
+                            audio_started_at: float | None = None
+                            audio_finished_at: float | None = None
+                            send_task: asyncio.Task | None = None
+                            recv_task: asyncio.Task | None = None
 
                             async def _send():
+                                nonlocal eleven_gen_started
+                                nonlocal eleven_gen_done
                                 # Sentence-chunk tokens before sending — stable prosody with auto_mode.
                                 # Buffer until sentence boundary, then flush whole sentence at once.
                                 buf = ""
+                                eleven_gen_started = True
                                 async for chunk in _eleven_gen:
                                     if not chunk:
                                         continue
@@ -5134,39 +7164,89 @@ async def speak(text_gen):
                                     await _wait_for_quiet_input()
                                     await ws.send(json.dumps({"text": buf.strip()}))
                                 await ws.send(json.dumps({"text": ""}))
+                                eleven_gen_done = True
 
                             async def _recv():
                                 nonlocal got_audio
-                                async for raw in ws:
+                                nonlocal audio_finished_at
+                                nonlocal audio_started_at
+                                nonlocal eleven_failure_reason
+                                while True:
+                                    try:
+                                        raw = await asyncio.wait_for(ws.recv(), timeout=12.0)
+                                    except TimeoutError as e:
+                                        raise TimeoutError("ElevenLabs stream stalled before final audio") from e
                                     try:
                                         msg = json.loads(raw)
                                         if msg.get("audio"):
-                                            out.write(np.frombuffer(base64.b64decode(msg["audio"]), dtype=np.int16))
+                                            audio_chunk = base64.b64decode(msg["audio"])
+                                            out.write(np.frombuffer(audio_chunk, dtype=np.int16))
                                             got_audio = True
+                                            chunk_now = time.monotonic()
+                                            if audio_started_at is None:
+                                                audio_started_at = chunk_now
+                                            audio_finished_at = chunk_now
                                         if msg.get("isFinal"):
                                             break
-                                    except Exception:
+                                    except json.JSONDecodeError as e:
+                                        if not eleven_failure_reason:
+                                            eleven_failure_reason = f"bad TTS payload: {e.msg}"
+                                        print(f"[tts] decode: {e.msg} - live_chat_app.py:_recv")
+                                        break
+                                    except (ValueError, binascii.Error, sd.PortAudioError) as e:
+                                        if not eleven_failure_reason:
+                                            eleven_failure_reason = str(e)[:80]
+                                        print(f"[tts] audio output: {str(e)[:80]} - live_chat_app.py:_recv")
                                         break
 
                             try:
-                                await asyncio.gather(_send(), _recv())
+                                send_task = asyncio.create_task(_send())
+                                recv_task = asyncio.create_task(_recv())
+                                await send_task
+                                await _finalize_text()
+                                await recv_task
+                            except TimeoutError:
+                                eleven_failure_reason = "stream timeout"
+                                return False
                             finally:
-                                out.stop()
+                                tasks = [task for task in (send_task, recv_task) if task is not None]
+                                for task in tasks:
+                                    if not task.done():
+                                        task.cancel()
+                                if tasks:
+                                    task_results = await asyncio.gather(*tasks, return_exceptions=True)
+                                    for result in task_results:
+                                        if isinstance(result, Exception) and not isinstance(
+                                            result, asyncio.CancelledError
+                                        ):
+                                            if not eleven_failure_reason:
+                                                eleven_failure_reason = str(result)[:80]
+                                            if _is_invalid_elevenlabs_auth(str(result)):
+                                                await _handle_invalid_elevenlabs_auth(str(result))
+                                if out_started:
+                                    out.stop()
                                 out.close()
+                            if got_audio and audio_started_at is not None and audio_finished_at is not None:
+                                playback_duration += max(audio_finished_at - audio_started_at, 0.0)
                             return got_audio
                     except asyncio.CancelledError:
-                        print("[tts] bargein - live_chat_app.py:3480")
+                        print("[tts] bargein - live_chat_app.py:5573")
                         raise
                     except Exception as e:
-                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:3482")
+                        eleven_failure_reason = str(e)[:80]
+                        if _is_invalid_elevenlabs_auth(eleven_failure_reason):
+                            await _handle_invalid_elevenlabs_auth(eleven_failure_reason)
+                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:5579")
                         return False
 
                 success = await _patched_eleven()
                 if not success:
+                    if eleven_failure_reason:
+                        write_log("tts", f"elevenlabs fallback: {eleven_failure_reason}")
                     # _eleven_gen was already consuming text_gen — continue draining
                     # it rather than creating a new _broadcasting_gen() which would
                     # try to iterate text_gen from a second coroutine and crash.
-                    if not collected:
+                    if (not eleven_gen_done and eleven_gen_started) or (not collected and not eleven_gen_started):
                         async for chunk in _eleven_gen:
                             collected.append(chunk)
                             if chunk.strip():
@@ -5177,50 +7257,81 @@ async def speak(text_gen):
                     if collected:
                         last_tts_provider = "local"
                         await broadcast({"type": "tts_active", "provider": "local"})
+                        await _finalize_text()
+                        fallback_start = time.monotonic()
                         await _fallback_tts("".join(collected))
+                        playback_duration += time.monotonic() - fallback_start
         except asyncio.CancelledError:
             return
 
-        if collected:
-            full_text = "".join(collected)
-            # stream_finalize tells the UI to lock the streaming bubble into the chat
-            await broadcast({"type": "stream_finalize", "text": full_text})
-            await add_transcript("assistant", full_text)
+        await _finalize_text()
 
-        speak.last_duration = time.monotonic() - tts_start
+        speak.last_duration = playback_duration
 
 
 # ── Input handler ─────────────────────────────────────────────────────────────
 
 
-async def handle_input(text: str) -> None:
-    global speak_task, _input_busy
-    _input_busy = True  # gate voice loop BEFORE any await
-    try:
-        # NOTE: don't call add_transcript("user") here — the UI already shows
-        # the user message locally via addMessage() when the user hits Enter.
-        # Voice input path calls add_transcript("user") directly in voice_loop.
-        memory.add_task(text)
-        await set_state("thinking")
-        if speak_task and not speak_task.done():
-            speak_task.cancel()
-            try:
-                await speak_task
-            except asyncio.CancelledError:
-                pass
-        gen = llm_stream(text)
-        speak_task = asyncio.create_task(speak(gen))
-        await speak_task
-        duration = getattr(speak, "last_duration", 0.0)
+async def handle_input(text: str, target: WebSocket | None = None) -> None:
+    input_lock = _session_input_lock(target)
+    duration = 0.0
+    with _session_context(target):
+        _set_request_lane_busy(target, True)  # gate voice loop BEFORE any await
+        try:
+            async with input_lock:
+                # NOTE: don't call add_transcript("user") here — the UI already shows
+                # the user message locally via addMessage() when the user hits Enter.
+                # Voice input path calls add_transcript("user") directly in voice_loop.
+                await _cancel_task(_session_speak_task(target))
+
+                pending_expired = _pending_tool_confirmation_expired()
+                if pending_expired:
+                    _pop_pending_tool_confirmation()
+
+                if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                    await set_state("thinking")
+                    gen = _single_text_stream("The pending action expired. Please request it again if you still want it.")
+                elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                    await set_state("thinking")
+                    if _is_confirmation_no(text):
+                        _pop_pending_tool_confirmation()
+                        gen = _single_text_stream("Cancelled the pending action.")
+                    else:
+                        pending = _pop_pending_tool_confirmation()
+                        tool_name = str(pending.get("name", "")) if pending else ""
+                        tool_args = dict(pending.get("args", {})) if pending else {}
+                        if tool_name:
+                            result = await exec_tool(tool_name, tool_args, confirmed=True)
+                            await broadcast_action(tool_name, tool_args, result)
+                            gen = _single_text_stream(_direct_tool_reply(tool_name, result, None))
+                        else:
+                            gen = _single_text_stream("There was no pending action to confirm.")
+                else:
+                    memory.add_task(text)
+                    await set_state("thinking")
+                    direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
+                    if direct_tool:
+                        tool_name, tool_args, success_reply = direct_tool
+                        result = await exec_tool(tool_name, tool_args)
+                        await broadcast_action(tool_name, tool_args, result)
+                        gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
+                    else:
+                        gen = llm_stream(text)
+                current_speak_task = asyncio.create_task(speak(gen))
+                _set_session_speak_task(target, current_speak_task)
+                await current_speak_task
+                duration = getattr(speak, "last_duration", 0.0)
+        finally:
+            _set_session_speak_task(target, None)
+            _set_request_lane_busy(target, False)  # always release even if an error occurs
         await _drain(duration)
-    finally:
-        _input_busy = False  # always release even if an error occurs
 
 
 async def _drain(tts_duration_secs: float = 0.0) -> None:
     global _tts_silence_until
-    # Suppress VAD for the TTS audio duration + 3s room reverb tail (min 5s)
-    silence_window = max(tts_duration_secs * 0.6 + 0.4, 1.0)  # min 1s (was 2s)
+    # Base suppression on actual playback time, but cap it so follow-up speech
+    # is not discarded after longer replies finish.
+    silence_window = min(max(tts_duration_secs * 0.6 + 0.4, 1.0), 2.0)
     _tts_silence_until = asyncio.get_running_loop().time() + silence_window
     await asyncio.sleep(0.4)
     if audio_q:
@@ -5229,14 +7340,15 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
                 audio_q.get_nowait()
             except asyncio.QueueEmpty:
                 break
-    await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
+    if not _request_lane_busy():
+        await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
 
 
 # ── Voice loop ────────────────────────────────────────────────────────────────
 
 
 async def voice_loop() -> None:
-    global audio_q, speak_task, _input_busy, _tts_silence_until
+    global audio_q, speak_task, _tts_silence_until
     global _voice_capture_active, _mic_hold_until
     audio_q = asyncio.Queue()
     loop = asyncio.get_running_loop()
@@ -5247,9 +7359,11 @@ async def voice_loop() -> None:
 
     vad = VAD()
     with sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=FRAME, callback=cb):
-        await set_state("listening")
-        winsound.Beep(880, 120)
-        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:3559")
+        start_state = "listening" if (continuous_listening or wake_word_active) else "idle"
+        await set_state(start_state)
+        if start_state == "listening":
+            winsound.Beep(880, 120)
+        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:5691")
         while True:
             try:
                 frame = await audio_q.get()
@@ -5260,7 +7374,7 @@ async def voice_loop() -> None:
                     _mic_hold_until = now + 0.25
                 if muted:
                     continue
-                if _input_busy:  # text input is being processed — skip VAD entirely
+                if _any_input_busy():  # text input is being processed — skip VAD entirely
                     continue
                 if not continuous_listening and not wake_word_active:
                     vad.reset()
@@ -5269,9 +7383,9 @@ async def voice_loop() -> None:
                         await set_state("idle")
                     continue
                 if speak_task and not speak_task.done():
-                    if rms > RMS_THRESH:
+                    if rms > BARGE_RMS:
                         barge += 1
-                        if barge >= START_FRAMES:
+                        if barge >= BARGE_FRAMES:
                             speak_task.cancel()
                             barge = 0
                             _tts_silence_until = 0.0  # let VAD capture immediately after barge-in
@@ -5296,7 +7410,7 @@ async def voice_loop() -> None:
                     winsound.Beep(700, 80)
                     await set_state("thinking")
                     await broadcast({"type": "partial_transcript", "text": ""})
-                    if len(data) < 12:
+                    if len(data) < MIN_UTTERANCE_FRAMES:
                         _tts_silence_until = asyncio.get_running_loop().time() + 0.5
                         await set_state("listening")
                         vad.reset()
@@ -5304,7 +7418,7 @@ async def voice_loop() -> None:
                     try:
                         text = await transcribe(data)
                     except Exception as e:
-                        print(f"[stt] transcribe error: {e} - live_chat_app.py:3593")
+                        print(f"[stt] transcribe error: {e} - live_chat_app.py:5746")
                         _voice_capture_active = False
                         await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
@@ -5316,7 +7430,7 @@ async def voice_loop() -> None:
                         await set_state("listening")
                         vad.reset()
                         continue
-                    print(f"[operator] 🎙 {text} - live_chat_app.py:3599")
+                    print(f"[operator] 🎙 {text} - live_chat_app.py:5758")
                     # ── Wake-word gate ──────────────────────────────────────
                     if wake_word_active:
                         txt_lo = text.lower().strip()
@@ -5333,9 +7447,14 @@ async def voice_loop() -> None:
                                 async def _yes_once():
                                     yield "Yes? "
 
-                                await set_state("speaking")
-                                speak_task = asyncio.create_task(speak(_yes_once()))
-                                await speak_task
+                                async with _input_lock:
+                                    _set_request_lane_busy(None, True)
+                                    try:
+                                        await set_state("speaking")
+                                        speak_task = asyncio.create_task(speak(_yes_once()))
+                                        await speak_task
+                                    finally:
+                                        _set_request_lane_busy(None, False)
                                 vad.reset()
                                 continue
                         else:
@@ -5345,23 +7464,24 @@ async def voice_loop() -> None:
                             vad.reset()
                             continue
                     # ── Normal processing ────────────────────────────────────
-                    await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
-                    await add_transcript("user", text)
-                    memory.add_task(text)
-                    gen = llm_stream(text)
-                    _input_busy = True  # gate: don't let handle_input race with voice
-                    try:
-                        speak_task = asyncio.create_task(speak(gen))
-                        await speak_task
-                        duration = getattr(speak, "last_duration", 0.0)
-                        await _drain(duration)
-                    finally:
-                        _input_busy = False
+                    async with _input_lock:
+                        _set_request_lane_busy(None, True)  # gate: don't let typed input race with voice
+                        try:
+                            await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
+                            await add_transcript("user", text)
+                            memory.add_task(text)
+                            gen = llm_stream(text)
+                            speak_task = asyncio.create_task(speak(gen))
+                            await speak_task
+                            duration = getattr(speak, "last_duration", 0.0)
+                            await _drain(duration)
+                        finally:
+                            _set_request_lane_busy(None, False)
                     vad.reset()
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:3643")
+                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:5809")
                 await asyncio.sleep(0.5)
 
 
@@ -5433,6 +7553,10 @@ _EL_TOOL_NAMES = [
     "remember",
     "recall",
     "forget",
+    "kb_status",
+    "kb_index",
+    "kb_search",
+    "kb_export_training_data",
     "window_resize",
     "window_move",
     "ao_start",
@@ -5464,54 +7588,67 @@ _EL_TOOL_NAMES = [
 async def _start_el_agent() -> None:
     global _el_conv, _el_thread, _el_active
     if _el_active:
-        await broadcast({"type": "el_agent", "status": "already_running"})
+        await _broadcast_el_agent_status("already_running", "ConvAI agent already running.")
         return
-    if not HAS_CONVAI:
-        await broadcast({"type": "el_agent", "status": "error", "msg": "ConvAI SDK missing"})
+    error = _el_agent_start_error()
+    if error:
+        write_log("el_agent", f"start blocked: {error}")
+        await _broadcast_el_agent_status("error", error)
         return
     api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
-    if not api_11:
-        await broadcast({"type": "el_agent", "status": "error", "msg": "No ElevenLabs API key"})
-        return
 
     client_tools = ClientTools()
     for name in _EL_TOOL_NAMES:
         client_tools.register(name, _make_tool_handler(name))
 
-    el_client = ElevenLabs(api_key=api_11)
-    _el_conv = Conversation(
-        el_client,
-        AGENT_ID,
-        requires_auth=True,
-        audio_interface=DefaultAudioInterface(),
-        client_tools=client_tools,
-        callback_agent_response=lambda text: asyncio.run_coroutine_threadsafe(
-            add_transcript("assistant", text), _main_loop
-        ),
-        callback_agent_response_correction=lambda orig, corr: None,
-        callback_user_transcript=lambda text: asyncio.run_coroutine_threadsafe(
-            add_transcript("user", text), _main_loop
-        ),
-    )
+    try:
+        el_client = ElevenLabs(api_key=api_11)
+        _el_conv = Conversation(
+            el_client,
+            AGENT_ID,
+            requires_auth=True,
+            audio_interface=SoundDeviceAudioInterface(),
+            client_tools=client_tools,
+            callback_agent_response=lambda text: asyncio.run_coroutine_threadsafe(
+                add_transcript("assistant", text), _main_loop
+            ),
+            callback_agent_response_correction=lambda orig, corr: None,
+            callback_user_transcript=lambda text: asyncio.run_coroutine_threadsafe(
+                add_transcript("user", text), _main_loop
+            ),
+        )
+    except Exception as e:
+        message = f"Failed to initialize ConvAI: {e}"
+        write_log("el_agent", message)
+        await _broadcast_el_agent_status("error", message)
+        return
 
     def _run():
         global _el_active
+        had_error = False
         _el_active = True
-        asyncio.run_coroutine_threadsafe(broadcast({"type": "el_agent", "status": "active"}), _main_loop)
+        asyncio.run_coroutine_threadsafe(_broadcast_el_agent_status("active", "ConvAI agent active."), _main_loop)
         write_log("el_agent", "session started")
         try:
             _el_conv.start_session()
             conv_id = _el_conv.wait_for_session_end()
             write_log("el_agent", f"session ended: {conv_id}")
         except Exception as e:
-            write_log("el_agent", f"error: {e}")
+            had_error = True
+            error_text = str(e)
+            write_log("el_agent", f"error: {error_text}")
+            if _main_loop:
+                if _is_invalid_elevenlabs_auth(error_text):
+                    asyncio.run_coroutine_threadsafe(_handle_invalid_elevenlabs_auth(error_text), _main_loop)
+                asyncio.run_coroutine_threadsafe(_broadcast_el_agent_status("error", error_text), _main_loop)
         finally:
             _el_active = False
-            asyncio.run_coroutine_threadsafe(broadcast({"type": "el_agent", "status": "idle"}), _main_loop)
+            if not had_error:
+                asyncio.run_coroutine_threadsafe(_broadcast_el_agent_status("idle", "ConvAI agent idle."), _main_loop)
 
     _el_thread = threading.Thread(target=_run, daemon=True, name="el-agent")
     _el_thread.start()
-    await broadcast({"type": "el_agent", "status": "starting"})
+    await _broadcast_el_agent_status("starting", "Connecting to ConvAI…")
     write_log("el_agent", f"starting with {len(_EL_TOOL_NAMES)} tools")
 
 
@@ -5532,21 +7669,32 @@ async def _stop_el_agent() -> None:
 
 @app.on_event("startup")
 async def startup():
-    global _main_loop, _response_lock, current_provider, current_model
+    global _main_loop, _input_lock, _response_lock, current_provider, current_model, _ollama_failover_active, _input_busy
     _main_loop = asyncio.get_running_loop()
+    _input_lock = asyncio.Lock()
     _response_lock = asyncio.Lock()
+    _session_input_locks.clear()
+    _session_input_busy.clear()
+    _session_speak_tasks.clear()
+    _active_request_targets.clear()
+    _input_busy = False
     if not API_11:
-        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:3760")
+        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:5985")
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
     if ollama_models:
-        current_model = ollama_models[0]
+        current_provider = "ollama"
+        current_model = _provider_default_model("ollama")
     elif current_provider == "ollama":
         fallback_provider = _choose_fallback_provider()
         if fallback_provider:
+            _ollama_failover_active = True
+            _provider_failure_until["ollama"] = time.time() + 15.0
             current_provider = fallback_provider
             current_model = _provider_default_model(fallback_provider)
     write_log("startup", f"port={PORT} provider={current_provider} model={current_model}")
+    brain_ai.wire_llm(_fast_completion)
+    brain_ai.start_background_tasks()
 
     async def _voice_supervisor():
         while True:
@@ -5555,11 +7703,24 @@ async def startup():
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:3775")
+                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:6007")
                 await broadcast({"type": "state", "state": "idle"})
                 await asyncio.sleep(2)
 
+    async def _restore_ollama_after_startup():
+        for _ in range(12):
+            if current_provider == "ollama" or not _ollama_failover_active:
+                return
+            await asyncio.sleep(5)
+            await _maybe_restore_ollama_provider()
+
     asyncio.create_task(_voice_supervisor())
+    asyncio.create_task(_restore_ollama_after_startup())
+
+    try:
+        asyncio.create_task(_open_ui_browser())
+    except Exception:
+        pass
 
     # Pre-warm Playwright so first browser_open call is instant
     try:
@@ -5570,15 +7731,36 @@ async def startup():
     await asyncio.sleep(1.2)
 
 
+async def _open_ui_browser():
+    """Open the main Vision UI in the user's default browser."""
+    loop = asyncio.get_running_loop()
+    cache_bust = int(UI_FILE.stat().st_mtime) if UI_FILE.exists() else int(time.time())
+    url = f"http://localhost:{PORT}/?v={cache_bust}"
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            deadline = loop.time() + 10.0
+            while loop.time() < deadline:
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code < 500:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.25)
+        opened = await loop.run_in_executor(None, lambda: webbrowser.open(url))
+        write_log("ui", f"open_browser {'ok' if opened else 'requested'} {url}")
+    except Exception as e:
+        write_log("ui", f"open_browser failed: {e}")
+
+
 async def _prewarm_playwright():
     """Launch Playwright Chromium in background at startup to avoid cold-start delay."""
     try:
         await asyncio.sleep(3)  # let server fully initialise first
         await get_browser_page()
-        print("[playwright] browser prewarmed ✓ - live_chat_app.py:3795")
+        print("[playwright] browser prewarmed ✓ - live_chat_app.py:6062")
     except Exception as e:
-        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:3797")
-    webbrowser.open(f"http://localhost:{PORT}")
+        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:6064")
 
 
 if __name__ == "__main__":

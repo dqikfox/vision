@@ -1,0 +1,45 @@
+name: vision-repo-maintenance
+description: |
+  Use when: The goal is broad repo maintenance, documentation drift repair, CI hygiene, MCP upkeep, or small reliability improvements.
+  Input: A maintenance request such as "continue maintaining the repo" or a short note describing the area to improve.
+  Does: Refreshes key Vision context, chooses one high-value change, implements it surgically, and runs a repo-safe validation step.
+
+nodes:
+  - id: assess
+    prompt: |
+      Refresh the most relevant Vision context for autonomous maintenance.
+      Start with:
+      - DOCUMENTATION_INDEX.md
+      - .github/copilot-instructions.md
+      - README.md
+      - architecture.md
+      - live_chat_app.py
+      - vision_mcp_server.py
+
+      Choose one small, high-value, repo-specific improvement.
+      Prefer:
+      1. Documentation/configuration drift
+      2. MCP and customization wiring
+      3. CI or validation workflow issues
+      4. Small correctness or maintainability fixes
+
+      Produce a concise implementation brief with the exact files to touch.
+
+  - id: implement
+    depends_on: [assess]
+    context: fresh
+    prompt: |
+      Use $assess.output as the maintenance brief.
+      Implement the change directly in this repository.
+      Keep edits surgical, preserve behavior unless the brief requires a change, and update matching docs when runtime or customization behavior changes.
+
+  - id: validate
+    depends_on: [implement]
+    bash: python -m py_compile live_chat_app.py vision_mcp_server.py launch_lmstudio_rag_mcp.py
+
+  - id: summarize
+    depends_on: [validate]
+    context: fresh
+    prompt: |
+      Summarize the maintenance change, the files touched, and the validation result.
+      If validation failed, explain the blocker plainly and point at the failing step.

@@ -6,7 +6,7 @@ tools:
   - grep_search
   - glob
   - list_directory
-  - codebase_investigator
+  - run_shell_command
 ---
 
 You are the Elite Analysis Agent (Context Architect).

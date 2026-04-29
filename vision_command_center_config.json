@@ -1,0 +1,20 @@
+{
+  "profile_name": "default",
+  "theme": "vision",
+  "auto_refresh_seconds": 30,
+  "show_external_resources": true,
+  "launcher": {
+    "open_primary_ui": true,
+    "open_command_center": false,
+    "prefer_app_window": true,
+    "ollama_access_mode": "lan",
+    "ollama_host": "0.0.0.0:11434",
+    "ollama_origins": "http://localhost:8765,http://127.0.0.1:8765,http://msi.tail886dbb.ts.net:8765,https://msi.tail886dbb.ts.net",
+    "ollama_models_path": "F:\\models"
+  },
+  "doctor": {
+    "check_context_brain": true,
+    "check_launchers": true,
+    "show_provider_keys": true
+  }
+}
