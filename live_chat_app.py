@@ -779,6 +779,7 @@ async def _handle_invalid_elevenlabs_auth(error_text: str) -> None:
 
     write_log("voice", "elevenlabs auth failed; switching voice providers to local")
     if changed:
+        await asyncio.to_thread(_save_settings)
         await _broadcast_voice_settings_update()
     await broadcast(
         {
