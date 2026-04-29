@@ -136,9 +136,13 @@ jobs:
             comment += '| ✅ Tests (`pytest`) | `Unit & Integration Tests` job |\n';
             comment += '| 📈 Coverage (`coverage.xml`) | Codecov upload / test artifacts |\n';
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment,
-            });
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment,
+              });
+            } catch (error) {
+              core.warning(`Skipping PR summary comment: ${error.message}`);
+            }
