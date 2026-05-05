@@ -528,14 +528,35 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 /* ═══════ MODEL BADGE ═══════ */
 #modelBadge{
   position:fixed;top:16px;right:80px;z-index:200;pointer-events:all;
-  font-family:var(--font-ui);font-size:9px;letter-spacing:.15em;
-  background:linear-gradient(180deg,rgba(10,16,36,.88),rgba(8,13,28,.82));backdrop-filter:blur(16px);
-  border:1px solid rgba(96,165,250,.18);border-radius:16px;
-  padding:7px 14px;color:var(--p2);cursor:pointer;
+  font-family:var(--font-ui);font-size:10px;letter-spacing:.12em;
+  background:linear-gradient(135deg,rgba(79,70,229,.18),rgba(6,182,212,.12)),
+              linear-gradient(180deg,rgba(10,16,36,.95),rgba(8,13,28,.9));
+  backdrop-filter:blur(16px);
+  border:1px solid rgba(96,165,250,.35);border-radius:20px;
+  padding:9px 18px;color:var(--p3);cursor:pointer;
   transition:all .25s;
   clip-path:none;
+  box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 0 1px rgba(96,165,250,.1),inset 0 1px 0 rgba(255,255,255,.08);
+  display:flex;align-items:center;gap:10px;
 }
-#modelBadge:hover{border-color:var(--p2);box-shadow:0 16px 38px rgba(0,0,0,.38),0 0 24px rgba(96,165,250,.22)}
+#modelBadge::before{
+  content:'';width:8px;height:8px;border-radius:50%;
+  background:var(--g2);box-shadow:0 0 8px var(--g),0 0 16px var(--g);
+  animation:modelPulse 2s ease-in-out infinite;
+}
+#modelBadge:hover{
+  border-color:var(--p2);
+  box-shadow:0 16px 38px rgba(0,0,0,.38),0 0 24px rgba(96,165,250,.22),0 0 0 1px rgba(96,165,250,.2);
+  transform:translateY(-1px);
+}
+#modelBadge.no-model::before{
+  background:var(--gold);box-shadow:0 0 8px var(--gold);
+  animation:none;
+}
+@keyframes modelPulse{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.6;transform:scale(.85)}
+}
 
 #commandCenterBadge{
   position:fixed;top:16px;right:232px;z-index:200;pointer-events:all;
@@ -987,7 +1008,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="stage">
   <div id="heroShell">
     <div class="hero-kicker">SOVEREIGN COMMAND DECK</div>
-    <div class="hero-meta">OMNISCIENT OPERATOR INTERFACE</div>
+    <div class="hero-meta" id="heroModelDisplay" style="cursor:pointer;" onclick="openPicker()">⬡ SELECT MODEL</div>
     <div class="hero-col">
       <div class="hero-card">
         <div class="hero-card-title">Divine Profile</div>
@@ -1055,8 +1076,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="metricsPanel" style="display:none"></div>
 
 <!-- ═══ LEFT PANEL — Console ═══ -->
-<div class="edge-panel pinned" id="panelLeft">
-  <div class="panel-tab-left">
+<div class="edge-panel" id="panelLeft">
+  <div class="panel-tab-left" onclick="togglePanel('panelLeft')">
     <div class="tab-icon">💬</div>CONSOLE
   </div>
   <div class="panel-body">
@@ -1079,7 +1100,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ RIGHT PANEL — Actions / Agent / System ═══ -->
 <div class="edge-panel" id="panelRight">
-  <div class="panel-tab-right">
+  <div class="panel-tab-right" onclick="togglePanel('panelRight')">
     <div class="tab-icon">⚡</div>ACTIONS
   </div>
   <div class="panel-body">
@@ -1441,8 +1462,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
             <div class="sys-zone-title">BACKEND API</div>
             <div class="sys-chip-row">
               <div class="sys-chip chip-backend">API Gateway</div>
+              <div class="sys-chip chip-backend">WebSocket Gateway</div>
               <div class="sys-chip chip-backend">Lambda / FastAPI</div>
-              <div class="sys-chip chip-stream">WebSocket Stream</div>
+              <div class="sys-chip chip-backend">Task Runner</div>
             </div>
           </div>
           <div class="sys-zone">
@@ -2133,13 +2155,16 @@ function addMessage(role, text) {
   }
   console_.appendChild(el);
   console_.scrollTop = console_.scrollHeight;
-  // Reveal left panel briefly on new message
-  document.getElementById('panelLeft').style.transform = 'translateX(0)';
-  clearTimeout(window._panelTimer);
-  window._panelTimer = setTimeout(() => {
-    if (!document.getElementById('panelLeft').classList.contains('pinned'))
-      document.getElementById('panelLeft').style.transform = '';
-  }, 4000);
+  // Reveal left panel briefly on new message (only if not pinned)
+  const panelLeft = document.getElementById('panelLeft');
+  if (panelLeft && !panelLeft.classList.contains('pinned')) {
+    panelLeft.style.transform = 'translateX(0)';
+    clearTimeout(window._panelTimer);
+    window._panelTimer = setTimeout(() => {
+      if (!panelLeft.classList.contains('pinned'))
+        panelLeft.style.transform = '';
+    }, 4000);
+  }
 }
 function showTyping() {
   if (typingEl) return;
@@ -2329,7 +2354,27 @@ function updateContinuousUI(enabled) {
 
 function updateModelBadge() {
   const b = document.getElementById('modelBadge');
-  b.textContent = currentModel ? `⬡ ${currentProvider.toUpperCase()} / ${currentModel}` : '⬡ SELECT MODEL';
+  const heroDisplay = document.getElementById('heroModelDisplay');
+  if (!b) return;
+  if (currentModel) {
+    // Truncate long model names for display
+    const displayModel = currentModel.length > 25 ? currentModel.slice(0, 22) + '...' : currentModel;
+    b.innerHTML = `<span style="color:var(--c2)">${currentProvider.toUpperCase()}</span> <span style="color:var(--tx2)">/</span> ${displayModel}`;
+    b.classList.remove('no-model');
+    b.title = `${currentProvider} / ${currentModel}`;
+    if (heroDisplay) {
+      heroDisplay.innerHTML = `<span style="color:var(--c2)">${currentProvider.toUpperCase()}</span> <span style="color:var(--tx2)">/</span> ${displayModel}`;
+      heroDisplay.title = `${currentProvider} / ${currentModel}`;
+    }
+  } else {
+    b.textContent = '⚠ SELECT MODEL';
+    b.classList.add('no-model');
+    b.title = 'Click to select a model';
+    if (heroDisplay) {
+      heroDisplay.textContent = '⬡ SELECT MODEL';
+      heroDisplay.title = 'Click to select a model';
+    }
+  }
 }
 async function openPicker() {
   document.getElementById('pickerModal').classList.add('open');
@@ -2369,7 +2414,7 @@ function renderPicker(data) {
   }
 
   // Cloud providers
-  ['openai','github','groq','deepseek','mistral','gemini'].forEach(key => {
+  ['openai','github','groq','deepseek','mistral','gemini','nvidia'].forEach(key => {
     const p = provs[key]; if (!p) return;
     const isActive = currentProvider === key;
     const hasKey = p.has_key;
@@ -2429,6 +2474,18 @@ function selectRadio(el, groupId) {
   document.getElementById(groupId).querySelectorAll('.r-opt').forEach(r => r.classList.remove('on','on-c'));
   el.classList.add('on');
 }
+
+function togglePanel(panelId) {
+  const panel = document.getElementById(panelId);
+  if (panel) {
+    panel.classList.toggle('pinned');
+    // Clear any inline transform that might conflict
+    if (!panel.classList.contains('pinned')) {
+      panel.style.transform = '';
+    }
+  }
+}
+
 function applyVoiceSettings(v) {
   voiceSettings = { ...voiceSettings, ...v };
   const applyGroup = (id, val) => {
@@ -2512,14 +2569,12 @@ function toggleElevenWidgetInPanel() {
   const unsupportedMessage = getElevenWidgetRequirementMessage();
   if (unsupportedMessage) {
     setElWidgetNotice(`${unsupportedMessage} The desktop ConvAI path uses Vision's local audio stack instead.`);
-    toast('ElevenLabs widget needs localhost or HTTPS', 'red');
     w.style.display = 'none';
     return;
   }
   loadElevenLabsWidgetScript();
   if (!elevenWidgetLoaded) {
     setElWidgetNotice('Loading the ElevenLabs widget…');
-    toast('Loading ElevenLabs widget…', 'cyan');
     return;
   }
   setElWidgetNotice('');

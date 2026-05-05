@@ -1,0 +1,22 @@
+# Vision Content Collaboration Workflow - Requirements
+# Microsoft Agent Framework SDK with Foundry integration
+
+# Step 1: Install agentserver and agent-dev-cli first (pins agent-framework-core to rc3)
+azure-ai-agentserver-agentframework==1.0.0b16
+azure-ai-agentserver-core==1.0.0b16
+agent-dev-cli==0.0.1b260316
+
+# Step 2: Install agent-framework rc6 (overrides rc3)
+agent-framework-core==1.0.0rc6
+agent-framework-foundry==1.0.0rc6
+agent-framework-openai==1.0.0rc6
+
+# Azure Identity for authentication
+azure-identity>=1.15.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Optional: For enhanced functionality
+aiohttp>=3.9.0
+pydantic>=2.5.0

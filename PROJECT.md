@@ -27,27 +27,44 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 
 ## Evolution Roadmap
 
-### Phase 1: Runtime Hardening
+### Phase 1: Runtime Hardening ✅
 - Strengthen startup validation and dependency checks
 - Improve health endpoint diagnostics and provider visibility
 - Expand tool execution smoke coverage
 
-### Phase 2: Voice and Interaction Quality
+### Phase 2: Voice and Interaction Quality ✅
 - Reduce end-to-end voice latency with tighter pipeline instrumentation
 - Improve barge-in reliability and transcript consistency
 - Add clearer user feedback states in the UI
 
-### Phase 3: Tooling and Safety
+### Phase 3: Tooling and Safety ✅
 - Expand tool guardrails and intent verification for high-risk actions
 - Standardize tool error formats and recovery suggestions
 - Add audit-friendly traces for operator actions
 
-### Phase 4: Home Ops Automation
+### Phase 4: Home Ops Automation ✅
 - Add repeatable workflows for backup verification and cleanup
 - Add network and system maintenance automation tasks
 - Add periodic health summary generation and alerts
 
-### Phase 5: Documentation and Contributor Experience
+### Phase 5: AGI Cognitive Architecture ✅ COMPLETE
+- **elite_brain.py**: Semantic memory, Tree of Thoughts, MetaCritic, Self-Evolution
+- **elite_goals.py**: Autonomous goal management with hierarchical decomposition
+- **elite_world.py**: World model with entity tracking, state inference, predictions
+- REST API endpoints for AGI operations
+- WebSocket protocol extensions for real-time cognitive updates
+- Background autonomous goal pursuit loops
+
+### Phase 6: Advanced AGI Capabilities (In Progress)
+- [ ] Hierarchical Task Networks (HTN) for complex planning
+- [ ] Temporal reasoning with deadline awareness
+- [ ] Multi-agent goal coordination
+- [ ] Causal reasoning engine
+- [ ] Theory of mind modeling
+- [ ] Automatic goal generation from user patterns
+- [ ] Strategy learning from successful plans
+
+### Phase 7: Documentation and Contributor Experience
 - Keep architecture and setup docs synchronized with runtime behavior
 - Improve onboarding flow for local setup and verification
 - Document playbooks for common failures and recovery
@@ -62,19 +79,19 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 ## Active Iteration Board
 
 ### Now (In Progress)
-- [ ] Add runtime preflight checks for keys, OCR binary, browser availability, and audio devices
-- [ ] Add structured stage timing for STT, LLM, tool-call loop, and TTS
-- [ ] Add weekly home-ops maintenance workflow and summary output
-- [ ] Add automated doc consistency checks for key runtime contracts
+- [ ] Add HTN planning for complex multi-step tasks
+- [ ] Add temporal reasoning with deadline awareness
+- [ ] Add causal reasoning engine for understanding cause-effect
 
 ### Next (Planned)
-- [ ] Add high-risk action confirmations with explicit user intent capture
-- [ ] Add standard tool error taxonomy and user-facing recovery hints
-- [ ] Add operator action trace export for debugging and audits
+- [ ] Add multi-agent goal coordination
+- [ ] Add theory of mind modeling
+- [ ] Add automatic goal generation from user patterns
 
 ### Later (Queued)
-- [ ] Add latency benchmark baselines per model/provider combination
-- [ ] Add onboarding validator that runs setup and smoke checks end-to-end
+- [ ] Add strategy learning from successful plans
+- [ ] Add meta-learning for planning efficiency
+- [ ] Add autonomous capability expansion
 
 ## Iteration Cadence
 - Planning: weekly, prioritize top 3 items from Now/Next

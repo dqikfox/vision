@@ -125,31 +125,6 @@ function Get-LanBaseUrls([int]$Port) {
     return @($addresses | Sort-Object | ForEach-Object { "http://$($_):$Port" })
 }
 
-function Get-TailscaleBaseUrls([int]$Port) {
-    try {
-        $status = & tailscale status --json 2>$null | ConvertFrom-Json
-    } catch {
-        return @()
-    }
-
-    if ($null -eq $status -or $null -eq $status.Self) {
-        return @()
-    }
-
-    $urls = @()
-    $dnsName = "$($status.Self.DNSName)".Trim().TrimEnd(".")
-    if ($dnsName) {
-        $urls += "http://${dnsName}:$Port"
-    }
-    foreach ($ip in @($status.Self.TailscaleIPs)) {
-        $ipText = "$ip".Trim()
-        if ($ipText -and $ipText -match "^\d{1,3}(\.\d{1,3}){3}$") {
-            $urls += "http://${ipText}:$Port"
-        }
-    }
-    return @($urls | Select-Object -Unique)
-}
-
 function Stop-OllamaProcesses {
     $targets = Get-CimInstance Win32_Process | Where-Object {
         ($_.Name -eq 'ollama.exe' -or $_.Name -eq 'ollama app.exe') -and $_.ExecutablePath -like '*\\Ollama\\*'
@@ -367,14 +342,6 @@ $lanUrls = Get-LanBaseUrls -Port 8765
 if ($lanUrls.Count -gt 0) {
     Write-Host "  LAN:" -ForegroundColor DarkGray
     foreach ($baseUrl in $lanUrls) {
-        Write-Host "    UI:      $baseUrl" -ForegroundColor DarkGray
-        Write-Host "    Control: $baseUrl/command-center" -ForegroundColor DarkGray
-    }
-}
-$tailscaleUrls = Get-TailscaleBaseUrls -Port 8765
-if ($tailscaleUrls.Count -gt 0) {
-    Write-Host "  Tailscale:" -ForegroundColor DarkGray
-    foreach ($baseUrl in $tailscaleUrls) {
         Write-Host "    UI:      $baseUrl" -ForegroundColor DarkGray
         Write-Host "    Control: $baseUrl/command-center" -ForegroundColor DarkGray
     }

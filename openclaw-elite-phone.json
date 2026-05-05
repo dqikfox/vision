@@ -1,0 +1,148 @@
+{
+  "name": "OpenClaw Elite Phone Integration",
+  "version": "1.0.0",
+  "description": "Full phone control via ADB for Android devices",
+
+  "phone": {
+    "adbPath": "C:\\Users\\CHANN0$\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+    "defaultScreenshotPath": "$env:USERPROFILE\\Desktop",
+    "autoConnect": false,
+    "wifiAdb": {
+      "enabled": false,
+      "defaultPort": 5555,
+      "autoReconnect": true
+    }
+  },
+
+  "mcpServers": {
+    "vision-adb": {
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy", "Bypass",
+        "-File", "C:/project/vision/openclaw-elite-phone.ps1"
+      ],
+      "description": "Vision ADB phone control integration"
+    }
+  },
+
+  "tools": {
+    "phone": {
+      "screenshot": {
+        "enabled": true,
+        "autoSave": true,
+        "defaultPath": "$env:USERPROFILE\\Desktop"
+      },
+      "input": {
+        "enabled": true,
+        "tap": true,
+        "swipe": true,
+        "text": true,
+        "keys": true
+      },
+      "apps": {
+        "enabled": true,
+        "listInstalled": true,
+        "launch": true,
+        "install": true
+      },
+      "mirror": {
+        "enabled": true,
+        "useScrcpy": true,
+        "turnScreenOff": true,
+        "stayAwake": true
+      }
+    }
+  },
+
+  "commands": {
+    "screenshot": {
+      "description": "Take a screenshot of the phone",
+      "command": "adb shell screencap /sdcard/screenshot.png && adb pull /sdcard/screenshot.png {path}",
+      "parameters": {
+        "path": "optional save path"
+      }
+    },
+    "tap": {
+      "description": "Tap on screen at coordinates",
+      "command": "adb shell input tap {x} {y}",
+      "parameters": {
+        "x": "x coordinate",
+        "y": "y coordinate"
+      }
+    },
+    "swipe": {
+      "description": "Swipe on screen",
+      "command": "adb shell input swipe {x1} {y1} {x2} {y2} {duration}",
+      "parameters": {
+        "x1": "start x",
+        "y1": "start y",
+        "x2": "end x",
+        "y2": "end y",
+        "duration": "duration in ms (default: 300)"
+      }
+    },
+    "type": {
+      "description": "Type text on phone",
+      "command": "adb shell input text {text}",
+      "parameters": {
+        "text": "text to type (spaces become %s)"
+      }
+    },
+    "key": {
+      "description": "Press a key",
+      "command": "adb shell input keyevent {code}",
+      "parameters": {
+        "key": "HOME, BACK, POWER, VOLUME_UP, VOLUME_DOWN, MENU, ENTER"
+      },
+      "keycodes": {
+        "HOME": 3,
+        "BACK": 4,
+        "POWER": 26,
+        "VOLUME_UP": 24,
+        "VOLUME_DOWN": 25,
+        "MENU": 82,
+        "ENTER": 66
+      }
+    },
+    "launch": {
+      "description": "Launch an app",
+      "command": "adb shell monkey -p {package} -c android.intent.category.LAUNCHER 1",
+      "parameters": {
+        "package": "app package name"
+      }
+    },
+    "list-apps": {
+      "description": "List installed apps",
+      "command": "adb shell pm list packages -3"
+    },
+    "mirror": {
+      "description": "Mirror phone screen",
+      "command": "scrcpy --turn-screen-off --stay-awake"
+    },
+    "wifi-connect": {
+      "description": "Connect via WiFi ADB",
+      "command": "adb tcpip 5555 && adb connect {ip}:5555",
+      "parameters": {
+        "ip": "phone IP address"
+      }
+    }
+  },
+
+  "integrations": {
+    "vision": {
+      "enabled": true,
+      "autoScreenshot": true,
+      "showInUI": true
+    },
+    "openclaw": {
+      "enabled": true,
+      "exposeToCopilot": true
+    }
+  },
+
+  "shortcuts": {
+    "screenshot": "Ctrl+Shift+P",
+    "mirror": "Ctrl+Shift+M",
+    "interactive": "Ctrl+Shift+I"
+  }
+}

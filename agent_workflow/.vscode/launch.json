@@ -1,0 +1,62 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Agent Dev CLI: Content Workflow",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "agent_dev_cli",
+            "args": [
+                "run",
+                "workflow.py"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Agent Dev CLI: Content Workflow (Server)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "agent_dev_cli",
+            "args": [
+                "run",
+                "workflow.py",
+                "server"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Direct Execution",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/content_collaboration.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "AI Toolkit Agent Inspector",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "."
+                }
+            ]
+        }
+    ]
+}

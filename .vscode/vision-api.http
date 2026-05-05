@@ -1,0 +1,129 @@
+### Vision API Quick Tests
+### Use REST Client extension (humao.rest-client) — click "Send Request" above each
+
+@base = http://localhost:8765
+
+### Health check
+GET {{base}}/api/health
+
+###
+
+### Current models
+GET {{base}}/api/models
+
+###
+
+### System metrics
+GET {{base}}/api/metrics
+
+###
+
+### Take screenshot
+GET {{base}}/screenshot
+
+###
+
+### Execute tool — screenshot
+POST {{base}}/api/tool/execute
+Content-Type: application/json
+
+{
+  "name": "screenshot",
+  "parameters": {}
+}
+
+###
+
+### Execute tool — read screen (OCR)
+POST {{base}}/api/tool/execute
+Content-Type: application/json
+
+{
+  "name": "read_screen",
+  "parameters": {}
+}
+
+###
+
+### Execute tool — run command
+POST {{base}}/api/tool/execute
+Content-Type: application/json
+
+{
+  "name": "run_command",
+  "parameters": { "command": "echo Vision is alive" }
+}
+
+###
+
+### Execute tool — get system info
+POST {{base}}/api/tool/execute
+Content-Type: application/json
+
+{
+  "name": "get_system_info",
+  "parameters": {}
+}
+
+###
+
+### Switch to DeepSeek (valid key)
+POST {{base}}/api/model
+Content-Type: application/json
+
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat"
+}
+
+###
+
+### Switch to OpenAI GPT-4.1
+POST {{base}}/api/model
+Content-Type: application/json
+
+{
+  "provider": "openai",
+  "model": "gpt-4.1"
+}
+
+###
+
+### Switch to Ollama
+POST {{base}}/api/model
+Content-Type: application/json
+
+{
+  "provider": "ollama",
+  "model": "qikfox/ultronv1:latest"
+}
+
+###
+
+### Memory — view all
+GET {{base}}/api/memory
+
+###
+
+### Memory — add fact
+POST {{base}}/api/memory/fact
+Content-Type: application/json
+
+{
+  "fact": "User prefers DeepSeek for fast responses when Ollama is slow"
+}
+
+###
+
+### ElevenLabs agent — start
+POST {{base}}/api/el-agent/start
+
+###
+
+### ElevenLabs agent — stop
+POST {{base}}/api/el-agent/stop
+
+###
+
+### Available TTS voices
+GET {{base}}/api/voices

@@ -55,6 +55,7 @@ You are operating inside the **VISION Universal Accessibility Operator** — a p
 | Home PC/network/security | `@Home Ops Steward` |
 | Pre-merge review | `@Code Review Agent` |
 | Behavior-preserving refactor | `@Refactor Agent` |
+| Azure AI deployment (FastAPI + SLM) | `@ultron-azure-ai` |
 
 ---
 

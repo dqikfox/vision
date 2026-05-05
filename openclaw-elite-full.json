@@ -1,0 +1,279 @@
+{
+  "name": "OpenClaw Elite Configuration",
+  "version": "2.0.0",
+  "description": "Elite dev setup for OpenClaw with extended MCP servers, skills, and tools",
+
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/project/vision"],
+      "description": "Read/write files in the vision project"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "${GH_TOKEN}" },
+      "description": "GitHub API — issues, PRs, code search"
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "description": "Persistent knowledge graph memory across sessions"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "Structured multi-step reasoning for complex problems"
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": { "BRAVE_API_KEY": "${BRAVE_API_KEY}" },
+      "description": "Web search via Brave Search API"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "description": "Fetch web pages and extract content"
+    },
+    "sqlite": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite", "C:/project/vision/data/openclaw-elite.db"],
+      "description": "SQLite database for persistent storage"
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/openclaw"],
+      "description": "PostgreSQL database access (if available)"
+    },
+    "redis": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-redis"],
+      "description": "Redis cache and data store"
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+      "description": "Browser automation via Puppeteer"
+    },
+    "pdf": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-pdf"],
+      "description": "Read and extract text from PDF files"
+    },
+    "everything": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everything"],
+      "description": "Search, fetch, and filesystem tools combined"
+    },
+    "vision-local": {
+      "command": "node",
+      "args": ["C:/project/vision/vision_mcp_server.js"],
+      "description": "Vision MCP server for local AI tools"
+    }
+  },
+
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__read_file",
+      "mcp__filesystem__write_file",
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__search_files",
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__move_file",
+      "mcp__filesystem__copy_file",
+      "mcp__github__search_repositories",
+      "mcp__github__get_file_contents",
+      "mcp__github__list_issues",
+      "mcp__github__create_issue",
+      "mcp__github__create_pull_request",
+      "mcp__github__get_commit",
+      "mcp__github__list_commits",
+      "mcp__github__get_pull_request",
+      "mcp__github__list_pull_requests",
+      "mcp__memory__create_entities",
+      "mcp__memory__search_nodes",
+      "mcp__memory__add_observations",
+      "mcp__memory__delete_entities",
+      "mcp__memory__delete_observations",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__brave-search__brave_web_search",
+      "mcp__brave-search__brave_local_search",
+      "mcp__fetch__fetch_url",
+      "mcp__sqlite__query",
+      "mcp__sqlite__execute",
+      "mcp__postgres__query",
+      "mcp__redis__get",
+      "mcp__redis__set",
+      "mcp__redis__delete",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_type",
+      "mcp__puppeteer__puppeteer_evaluate",
+      "mcp__pdf__read_pdf",
+      "mcp__everything__search",
+      "mcp__everything__fetch",
+      "mcp__everything__read_file"
+    ],
+    "deny": []
+  },
+
+  "skills": {
+    "enabled": [
+      "vision-runtime-ops",
+      "vision-debugging",
+      "vision-tool-dev",
+      "vision-code-review",
+      "vision-type-safety",
+      "vision-home-ops",
+      "vision-documentation-ops",
+      "vision-mcp-builder",
+      "vision-mcp-tools",
+      "vision-web-research",
+      "vision-context-ops",
+      "vision-context-brain",
+      "vision-cognitive-council",
+      "vision-performance",
+      "vision-git-ops",
+      "vision-multi-monitor",
+      "openclaw-getting-started",
+      "archon",
+      "apex-brain",
+      "bug-triage",
+      "memory-ops",
+      "release-readiness",
+      "repo-onboarding",
+      "task-decomposition",
+      "tool-routing",
+      "web-debugging"
+    ],
+    "autoLoad": true,
+    "skillPath": "C:/project/vision/.github/skills"
+  },
+
+  "tools": {
+    "builtin": {
+      "Bash": { "enabled": true, "timeout": 300000 },
+      "Read": { "enabled": true },
+      "Write": { "enabled": true },
+      "Edit": { "enabled": true },
+      "Delete": { "enabled": true, "confirm": true },
+      "Glob": { "enabled": true },
+      "Grep": { "enabled": true },
+      "LS": { "enabled": true },
+      "FetchURL": { "enabled": true },
+      "View": { "enabled": true },
+      "Task": { "enabled": true },
+      "Python": { "enabled": true, "timeout": 120000 },
+      "Node": { "enabled": true, "timeout": 60000 },
+      "Go": { "enabled": true, "timeout": 60000 },
+      "Rust": { "enabled": true, "timeout": 120000 },
+      "Ruby": { "enabled": true, "timeout": 60000 },
+      "PHP": { "enabled": true, "timeout": 60000 },
+      "Composer": { "enabled": true },
+      "Docker": { "enabled": true },
+      "Kubectl": { "enabled": true },
+      "AWS": { "enabled": true },
+      "GCloud": { "enabled": true },
+      "Azure": { "enabled": true },
+      "SendEmail": { "enabled": true },
+      "Browser": { "enabled": true }
+    },
+    "custom": {
+      "vision-tools": {
+        "path": "C:/project/vision/hive_tools",
+        "enabled": true,
+        "description": "Vision hive tools for context mapping and analysis"
+      },
+      "elite-tools": {
+        "path": "C:/project/vision",
+        "pattern": "elite_*.py",
+        "enabled": true,
+        "description": "Elite Vision modules"
+      }
+    }
+  },
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "log",
+            "message": "Executing bash command"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|Delete",
+        "hooks": [
+          {
+            "type": "confirm",
+            "message": "This will modify files. Continue?"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/metadata-updater.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "FetchURL",
+        "hooks": [
+          {
+            "type": "log",
+            "message": "URL fetched successfully"
+          }
+        ]
+      }
+    ],
+    "OnError": [
+      {
+        "type": "log",
+        "message": "Tool execution failed"
+      }
+    ]
+  },
+
+  "context": {
+    "autoLoad": true,
+    "files": [
+      "C:/project/vision/.github/copilot-instructions.md",
+      "C:/project/vision/AGENTS.md",
+      "C:/project/vision/architecture.md",
+      "C:/project/vision/README.md"
+    ],
+    "refreshInterval": 3600
+  },
+
+  "elite": {
+    "features": {
+      "smartContext": true,
+      "autoSkills": true,
+      "toolChaining": true,
+      "parallelExecution": true,
+      "sessionMemory": true,
+      "codeAnalysis": true
+    },
+    "limits": {
+      "maxParallelTools": 5,
+      "maxTokensPerRequest": 128000,
+      "timeoutMinutes": 30
+    },
+    "logging": {
+      "level": "info",
+      "file": "C:/project/vision/logs/openclaw-elite.log",
+      "sessionLog": "C:/project/vision/logs/sessions.log"
+    }
+  }
+}

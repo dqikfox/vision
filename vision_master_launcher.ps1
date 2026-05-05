@@ -73,31 +73,6 @@ function Get-LanBaseUrls([int]$Port) {
     return @($addresses | Sort-Object | ForEach-Object { "http://$($_):$Port" })
 }
 
-function Get-TailscaleBaseUrls([int]$Port) {
-    try {
-        $status = & tailscale status --json 2>$null | ConvertFrom-Json
-    } catch {
-        return @()
-    }
-
-    if ($null -eq $status -or $null -eq $status.Self) {
-        return @()
-    }
-
-    $urls = @()
-    $dnsName = "$($status.Self.DNSName)".Trim().TrimEnd(".")
-    if ($dnsName) {
-        $urls += "http://${dnsName}:$Port"
-    }
-    foreach ($ip in @($status.Self.TailscaleIPs)) {
-        $ipText = "$ip".Trim()
-        if ($ipText -and $ipText -match "^\d{1,3}(\.\d{1,3}){3}$") {
-            $urls += "http://${ipText}:$Port"
-        }
-    }
-    return @($urls | Select-Object -Unique)
-}
-
 function Open-Ui([string]$Url) {
     $browsers = @(
         "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -242,7 +217,6 @@ if (-not $SkipBrowser) {
 
 $elapsed = [Math]::Round(((Get-Date) - $startTime).TotalSeconds, 1)
 $lanUrls = Get-LanBaseUrls -Port 8765
-$tailscaleUrls = Get-TailscaleBaseUrls -Port 8765
 Write-Host ""
 Write-Host "  =======================================================" -ForegroundColor DarkCyan
 Write-Host "  MASTER STACK READY  |  Startup: ${elapsed}s" -ForegroundColor Cyan
@@ -252,12 +226,6 @@ if ($lanUrls.Count -gt 0) {
     foreach ($baseUrl in $lanUrls) {
         Write-Host "  LAN UI:  $baseUrl" -ForegroundColor DarkGray
         Write-Host "  LAN Ctl: $baseUrl/command-center" -ForegroundColor DarkGray
-    }
-}
-if ($tailscaleUrls.Count -gt 0) {
-    foreach ($baseUrl in $tailscaleUrls) {
-        Write-Host "  Tail UI: $baseUrl" -ForegroundColor DarkGray
-        Write-Host "  Tail Ctl:$baseUrl/command-center" -ForegroundColor DarkGray
     }
 }
 Write-Host "  RAG:     $RAG_DATA_ROOT" -ForegroundColor DarkGray

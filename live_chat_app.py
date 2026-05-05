@@ -16,6 +16,7 @@ import contextvars
 import fnmatch
 import io
 import json
+import logging
 import os
 import queue
 import re
@@ -36,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
+
+logger = logging.getLogger(__name__)
 
 import winsound
 
@@ -64,11 +67,15 @@ except ImportError:
 from scipy.io import wavfile  # type: ignore[import-untyped]
 
 from elite_brain import get_brain
+from elite_goals import GoalPriority, get_goal_manager
+from elite_world import EntityState, EntityType, get_world_model
 from hive_tools.context_mapper import DEFAULT_OUTPUT as CONTEXT_BRAIN_FILE
 from hive_tools.context_mapper import build_context_brain
 from vision_rag import VisionRAGManager
 
 brain_ai = get_brain()
+goal_manager = get_goal_manager()
+world_model = get_world_model()
 
 try:
     import pytesseract
@@ -397,12 +404,18 @@ PROVIDERS = {
         "api_key": _load_key("xai", "XAI_API_KEY"),
         "models": ["grok-3", "grok-3-mini", "grok-2-vision-1212", "grok-2-1212"],
     },
+    "nvidia": {
+        "label": "NVIDIA Nemotron",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "api_key": _load_key("nvidia", "NVIDIA_API_KEY"),
+        "models": ["llama-3.1-nemotron-70b-instruct", "nemotron-nano-9b-v2", "mistral-nemo", "llama3-70b-instruct"],
+    },
 }
 
 # ── Mutable state ─────────────────────────────────────────────────────────────
 
-DEFAULT_PROVIDER = "ollama"
-DEFAULT_MODEL = "cogito:latest"
+DEFAULT_PROVIDER = "nvidia"
+DEFAULT_MODEL = "llama-3.1-nemotron-70b-instruct"
 DEFAULT_MODE = "chat"
 
 current_provider = DEFAULT_PROVIDER
@@ -471,11 +484,13 @@ def _websocket_has_tool_access(websocket: WebSocket) -> bool:
         _bearer_or_header_token(websocket.headers, websocket.query_params),
     )
 
+
 audio_q: asyncio.Queue[Any] | None = None
 muted: bool = False
 mode: str = DEFAULT_MODE
 speak_task: asyncio.Task[None] | None = None
 _tts_silence_until: float = 0.0  # ignore VAD input until this timestamp
+_active_output_stream: Any | None = None  # active sounddevice output stream for barge-in stop
 _input_busy: bool = False  # True while handle_input is running (gate voice loop)
 wake_word_active: bool = False  # True = wake-word mode; requires trigger phrase
 continuous_listening: bool = False  # False = press-to-talk mode
@@ -575,7 +590,7 @@ _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → dis
 _elevenlabs_auth_failed: bool = False
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
-AGENT_ID = "agent_7201kmxc5trte9tarb626ed8dgt1"
+AGENT_ID = "agent_0701knwqnqy9e1aa3a3drdh30cva"
 _main_loop: asyncio.AbstractEventLoop | None = None
 _el_conv: "Conversation | None" = None
 _el_thread = None
@@ -723,7 +738,7 @@ if HAS_CONVAI:
 
         def __init__(self) -> None:
             self.input_callback: Any = None
-            self.output_queue: "queue.Queue[bytes]" = queue.Queue()
+            self.output_queue: queue.Queue[bytes] = queue.Queue()
             self.should_stop = threading.Event()
             self.output_thread: threading.Thread | None = None
             self.in_stream: sd.RawInputStream | None = None
@@ -1146,7 +1161,9 @@ class Memory:
         if self._looks_like_preference(fact):
             self.add_preference(fact)
             return
-        if self._is_memorable_fact(fact) and fact not in self.data["facts"]:
+        if self._is_memorable_fact(fact):
+            brain_ai.remember_fact(fact)
+        if fact not in self.data["facts"]:
             self.data["facts"].append(fact)
             self.data["facts"] = self.data["facts"][-100:]
             self.save()
@@ -1164,6 +1181,7 @@ class Memory:
             }
         )
         self.data["task_history"] = self.data["task_history"][-50:]
+        brain_ai.track_task(task[:120], status="active")
         self.save()
 
     def set_user_name(self, name: str) -> None:
@@ -1426,6 +1444,7 @@ _FALLBACK_PROVIDER_ORDER = (
     "mistral",
     "anthropic",
     "xai",
+    "nvidia",
 )
 _provider_failure_until: dict[str, float] = {}
 _ollama_failover_active = False
@@ -1467,6 +1486,18 @@ def _provider_default_model(provider: str) -> str:
                 return model
         if current_model in models:
             return current_model
+    elif provider == "nvidia" and models:
+        # Preferred NVIDIA models
+        preferred_models = (
+            "llama-3.1-nemotron-70b-instruct",
+            "nemotron-nano-9b-v2",
+            "mistral-nemo",
+        )
+        for preferred in preferred_models:
+            if preferred in models:
+                return preferred
+        # If none of the preferred models are available, return the first one
+        return models[0] if models else current_model
     return models[0] if models else current_model
 
 
@@ -2377,6 +2408,120 @@ async def api_brain_status() -> JSONResponse:
     return JSONResponse(payload)
 
 
+# ── AGI Cognitive API Endpoints ────────────────────────────────────────────────
+
+
+@app.get("/api/agi/status")
+async def api_agi_status() -> JSONResponse:
+    """Get status of AGI cognitive modules."""
+    return JSONResponse(
+        {
+            "goals": goal_manager.get_status(),
+            "world": world_model.get_status(),
+            "brain": brain_ai.status(),
+        }
+    )
+
+
+@app.post("/api/agi/goals")
+async def api_agi_create_goal(payload: dict[str, Any]) -> JSONResponse:
+    """Create a new autonomous goal."""
+    description = payload.get("description", "")
+    priority = payload.get("priority", "MEDIUM")
+    auto_decompose = payload.get("auto_decompose", True)
+
+    if not description:
+        return JSONResponse({"error": "description is required"}, status_code=400)
+
+    try:
+        goal = await goal_manager.create_goal(description, priority, auto_decompose)
+        return JSONResponse(
+            {
+                "uid": goal.uid,
+                "description": goal.description,
+                "status": goal.status.name,
+                "priority": goal.priority.name,
+            }
+        )
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/agi/goals")
+async def api_agi_list_goals() -> JSONResponse:
+    """List all goals."""
+    goals = []
+    for goal in goal_manager.graph.goals.values():
+        goals.append(
+            {
+                "uid": goal.uid,
+                "description": goal.description,
+                "status": goal.status.name,
+                "priority": goal.priority.name,
+                "parent_uid": goal.parent_uid,
+                "subgoal_count": len(goal.subgoal_uids),
+            }
+        )
+    return JSONResponse({"goals": goals})
+
+
+@app.post("/api/agi/goals/{goal_uid}/pursue")
+async def api_agi_pursue_goal(goal_uid: str) -> JSONResponse:
+    """Actively pursue a specific goal."""
+    success = await goal_manager.pursue_goal(goal_uid)
+    return JSONResponse({"success": success, "goal_uid": goal_uid})
+
+
+@app.post("/api/agi/observe")
+async def api_agi_observe(payload: dict[str, Any]) -> JSONResponse:
+    """Add an observation to the world model."""
+    content = payload.get("content", "")
+    source = payload.get("source", "api")
+    entities = payload.get("entities_involved", [])
+
+    if not content:
+        return JSONResponse({"error": "content is required"}, status_code=400)
+
+    obs = await world_model.observe(content, source, entities)
+    return JSONResponse(
+        {
+            "uid": obs.uid,
+            "timestamp": obs.timestamp,
+            "inferred_facts": obs.inferred_facts,
+        }
+    )
+
+
+@app.get("/api/agi/situation")
+async def api_agi_situation() -> JSONResponse:
+    """Get current situation summary."""
+    summary = await world_model.get_situation_summary()
+    return JSONResponse(
+        {
+            "situation": summary,
+            "entities": len(world_model.registry.entities),
+            "observations": len(world_model.buffer.observations),
+        }
+    )
+
+
+@app.post("/api/agi/predict")
+async def api_agi_predict(payload: dict[str, Any]) -> JSONResponse:
+    """Generate a prediction about future state."""
+    context = payload.get("context")
+    prediction = await world_model.generate_prediction(context)
+    if prediction:
+        return JSONResponse(
+            {
+                "uid": prediction.uid,
+                "description": prediction.description,
+                "confidence": prediction.confidence,
+                "expected_by": prediction.expected_by,
+            }
+        )
+    return JSONResponse({"prediction": None})
+
+
 @app.get("/api/rag/status")
 async def api_rag_status() -> JSONResponse:
     loop = asyncio.get_running_loop()
@@ -2654,6 +2799,18 @@ async def ws_ep(websocket: WebSocket):
             }
         )
     )
+
+    # Announce Vision is online to the newly connected client
+    await websocket.send_text(
+        json.dumps(
+            {
+                "type": "transcript",
+                "role": "system",
+                "text": "🟢 Vision is online. Voice systems ready.",
+            }
+        )
+    )
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -2725,13 +2882,19 @@ async def ws_ep(websocket: WebSocket):
                         _input_busy = True
                         asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
-                _session_providers[websocket] = str(msg.get("provider", _session_providers.get(websocket, DEFAULT_PROVIDER)))
+                _session_providers[websocket] = str(
+                    msg.get("provider", _session_providers.get(websocket, DEFAULT_PROVIDER))
+                )
                 _session_models[websocket] = str(msg.get("model", _session_models.get(websocket, DEFAULT_MODEL)))
                 with _session_context(websocket):
                     _clear_active_history()
                 write_log("model", f"{_session_providers[websocket]}/{_session_models[websocket]}")
                 await broadcast(
-                    {"type": "model_changed", "provider": _session_providers[websocket], "model": _session_models[websocket]},
+                    {
+                        "type": "model_changed",
+                        "provider": _session_providers[websocket],
+                        "model": _session_models[websocket],
+                    },
                     websocket,
                 )
             elif t == "set_mute":
@@ -2846,19 +3009,44 @@ async def ws_ep(websocket: WebSocket):
             elif t == "set_voice_settings":
                 requested_stt = msg.get("preferred_stt", preferred_stt)
                 requested_tts = msg.get("preferred_tts", preferred_tts)
+
+                # Reset auth failed flag when user explicitly tries to use ElevenLabs
+                # This allows recovery after API key is fixed
+                if requested_tts == "elevenlabs" or requested_stt == "elevenlabs":
+                    _elevenlabs_auth_failed = False
+
                 preferred_stt = _normalize_preferred_stt(requested_stt)
                 preferred_tts = _normalize_preferred_tts(requested_tts)
                 tts_rate = int(msg.get("tts_rate", tts_rate))
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
-                if preferred_stt != requested_stt or preferred_tts != requested_tts:
+
+                # Provide specific feedback about what happened
+                if requested_tts == "elevenlabs" and preferred_tts != "elevenlabs":
                     await broadcast(
                         {
                             "type": "transcript",
                             "role": "system",
-                            "text": "⚠️ Requested cloud voice provider is unavailable. Switched voice processing to local.",
+                            "text": "⚠️ ElevenLabs TTS unavailable. Check ELEVENLABS_API_KEY in .env and restart Vision.",
                         }
                     )
+                elif requested_stt == "elevenlabs" and preferred_stt != "elevenlabs":
+                    await broadcast(
+                        {
+                            "type": "transcript",
+                            "role": "system",
+                            "text": "⚠️ ElevenLabs STT unavailable. Check ELEVENLABS_API_KEY in .env and restart Vision.",
+                        }
+                    )
+                elif requested_tts == "elevenlabs" and preferred_tts == "elevenlabs":
+                    await broadcast(
+                        {
+                            "type": "transcript",
+                            "role": "system",
+                            "text": "✅ ElevenLabs TTS activated. Using Hitch voice.",
+                        }
+                    )
+
                 await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
                 asyncio.create_task(_start_el_agent())
@@ -2901,6 +3089,51 @@ async def ws_ep(websocket: WebSocket):
                             and not _input_busy
                         ):
                             await set_state(target_state)
+            # ── AGI Cognitive WebSocket Messages ────────────────────────────────
+            elif t == "agi_create_goal":
+                desc = msg.get("description", "").strip()
+                priority = msg.get("priority", "MEDIUM")
+                if desc:
+                    goal = await goal_manager.create_goal(desc, priority)
+                    await broadcast(
+                        {
+                            "type": "agi_goal_created",
+                            "uid": goal.uid,
+                            "description": goal.description,
+                            "status": goal.status.name,
+                        }
+                    )
+            elif t == "agi_pursue_goal":
+                goal_uid = msg.get("goal_uid", "")
+                if goal_uid:
+                    success = await goal_manager.pursue_goal(goal_uid)
+                    await broadcast(
+                        {
+                            "type": "agi_goal_pursued",
+                            "goal_uid": goal_uid,
+                            "success": success,
+                        }
+                    )
+            elif t == "agi_get_status":
+                await broadcast(
+                    {
+                        "type": "agi_status",
+                        "goals": goal_manager.get_status(),
+                        "world": world_model.get_status(),
+                    }
+                )
+            elif t == "agi_observe":
+                content = msg.get("content", "").strip()
+                source = msg.get("source", "websocket")
+                if content:
+                    obs = await world_model.observe(content, source)
+                    await broadcast(
+                        {
+                            "type": "agi_observation",
+                            "uid": obs.uid,
+                            "inferred_facts": obs.inferred_facts,
+                        }
+                    )
     except WebSocketDisconnect:
         pass
     finally:
@@ -6459,6 +6692,7 @@ _FAST_MODEL_MAP: dict[str, str] = {
     "mistral": "mistral-small-latest",
     "anthropic": "claude-haiku-4-5",
     "xai": "grok-3-mini",
+    "nvidia": "nemotron-nano-9b-v2",
 }
 
 
@@ -6914,6 +7148,9 @@ async def speak(text_gen):
                             out_started = False
                             out.start()
                             out_started = True
+                            # Track globally for barge-in audio stop
+                            global _active_output_stream
+                            _active_output_stream = out
                             await broadcast({"type": "tts_active", "provider": "elevenlabs"})
                             got_audio = False
                             audio_started_at: float | None = None
@@ -6924,6 +7161,7 @@ async def speak(text_gen):
                             async def _send():
                                 nonlocal eleven_gen_started
                                 nonlocal eleven_gen_done
+                                nonlocal _spoken_text_len
                                 # Sentence-chunk tokens before sending — stable prosody with auto_mode.
                                 # Buffer until sentence boundary, then flush whole sentence at once.
                                 buf = ""
@@ -6941,9 +7179,11 @@ async def speak(text_gen):
                                         if sentence:
                                             await _wait_for_quiet_input()
                                             await ws.send(json.dumps({"text": sentence + " "}))
+                                            _spoken_text_len += len(sentence) + 1  # Track spoken text
                                 if buf.strip():
                                     await _wait_for_quiet_input()
                                     await ws.send(json.dumps({"text": buf.strip()}))
+                                    _spoken_text_len += len(buf.strip())  # Track final buffer
                                 await ws.send(json.dumps({"text": ""}))
                                 eleven_gen_done = True
 
@@ -6954,7 +7194,7 @@ async def speak(text_gen):
                                 nonlocal eleven_failure_reason
                                 while True:
                                     try:
-                                        raw = await asyncio.wait_for(ws.recv(), timeout=12.0)
+                                        raw = await asyncio.wait_for(ws.recv(), timeout=30.0)
                                     except TimeoutError as e:
                                         raise TimeoutError("ElevenLabs stream stalled before final audio") from e
                                     try:
@@ -7008,6 +7248,9 @@ async def speak(text_gen):
                                 if out_started:
                                     out.stop()
                                 out.close()
+                                # Clear global reference when done
+                                if _active_output_stream is out:
+                                    _active_output_stream = None
                             if got_audio and audio_started_at is not None and audio_finished_at is not None:
                                 playback_duration += max(audio_finished_at - audio_started_at, 0.0)
                             return got_audio
@@ -7020,6 +7263,9 @@ async def speak(text_gen):
                             await _handle_invalid_elevenlabs_auth(eleven_failure_reason)
                         print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:5579")
                         return False
+
+                # Track text already sent to ElevenLabs to avoid repetition on fallback
+                _spoken_text_len = 0
 
                 success = await _patched_eleven()
                 if not success:
@@ -7035,13 +7281,19 @@ async def speak(text_gen):
                                 if not stream_started:
                                     await broadcast({"type": "stream_start"})
                                     stream_started = True
-                                await broadcast({"type": "token", "text": chunk})
+                                # Only broadcast if we haven't already done so in _broadcasting_gen
+                                if not finalized_text:
+                                    await broadcast({"type": "token", "text": chunk})
                     if collected:
                         last_tts_provider = "local"
                         await broadcast({"type": "tts_active", "provider": "local"})
                         await _finalize_text()
                         fallback_start = time.monotonic()
-                        await _fallback_tts("".join(collected))
+                        # Only speak text that wasn't already spoken by ElevenLabs
+                        full_text = "".join(collected)
+                        remaining_text = full_text[_spoken_text_len:].strip()
+                        if remaining_text:
+                            await _fallback_tts(remaining_text)
                         playback_duration += time.monotonic() - fallback_start
         except asyncio.CancelledError:
             return
@@ -7125,7 +7377,7 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
 
 async def voice_loop() -> None:
     global audio_q, speak_task, _input_busy, _tts_silence_until, manual_voice_capture
-    global _voice_capture_active, _mic_hold_until
+    global _voice_capture_active, _mic_hold_until, _active_output_stream
     audio_q = asyncio.Queue()
     loop = asyncio.get_running_loop()
     barge = 0
@@ -7163,6 +7415,13 @@ async def voice_loop() -> None:
                             speak_task.cancel()
                             barge = 0
                             _tts_silence_until = 0.0  # let VAD capture immediately after barge-in
+                            # Stop any active audio output immediately
+                            if _active_output_stream is not None:
+                                try:
+                                    _active_output_stream.stop()
+                                except Exception:
+                                    pass
+                                _active_output_stream = None
                             await set_state("listening")
                             await asyncio.sleep(0.15)
                     else:
@@ -7476,6 +7735,18 @@ async def startup():
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
+    # Wire up AGI cognitive modules
+    goal_manager.set_llm(_fast_completion)
+    goal_manager.set_tool_executor(exec_tool)
+    goal_manager.start_autonomous_loop()
+
+    world_model.set_llm(_fast_completion)
+    world_model.start_background_updates()
+
+    logger.info(
+        "AGI cognitive modules initialized: goals=%s, world=%s", goal_manager.get_status(), world_model.get_status()
+    )
+
     async def _voice_supervisor():
         while True:
             try:
@@ -7507,6 +7778,16 @@ async def startup():
         asyncio.create_task(_prewarm_playwright())
     except Exception:
         pass
+
+    # Announce startup via TTS after brief delay
+    async def _announce_startup():
+        await asyncio.sleep(2.5)
+        try:
+            await speak(async_generator("Vision is online. Systems operational."))
+        except Exception:
+            pass
+
+    asyncio.create_task(_announce_startup())
 
     await asyncio.sleep(1.2)
 

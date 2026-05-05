@@ -21,16 +21,9 @@ $UserHome = [Environment]::GetFolderPath("UserProfile")
 $OpenClawHome = Join-Path $UserHome ".openclaw"
 $OpenClawConfigPath = Join-Path $OpenClawHome "openclaw.json"
 $OllamaBaseUrl = "http://127.0.0.1:11434"
-$OllamaHost = "0.0.0.0:11434"   # bind all interfaces so Tailscale clients can reach Ollama
+$OllamaHost = "0.0.0.0:11434"   # bind all interfaces
 $GatewayPort = 18789
 $GatewayWsUrl = "ws://100.83.120.56:$GatewayPort"
-
-# Ensure OPENCLAW_ALLOW_INSECURE_PRIVATE_WS is set for tailnet-bound gateway (ws:// over Tailscale VPN).
-# Set in both current session and user persistent env so the service/task inherits it on reboot.
-$env:OPENCLAW_ALLOW_INSECURE_PRIVATE_WS = "1"
-if ([Environment]::GetEnvironmentVariable("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "User") -ne "1") {
-    [Environment]::SetEnvironmentVariable("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", "1", "User")
-}
 
 # If OLLAMA_MODELS points to an unavailable drive (e.g. external SSD), create a subst so
 # Ollama can start. Ollama reads OLLAMA_MODELS from the Windows machine registry directly —
@@ -279,7 +272,6 @@ $null = Ensure-OpenClawConfig -ConfigPath $OpenClawConfigPath -PrimaryModel $pri
 Invoke-OpenClawDoctorFix -CliPath $OpenClawExe
 
 hdr "STEP 3 - Ollama"
-# Detect if Ollama is running but bound to loopback only (prevents Tailscale access)
 $ollamaLoopbackOnly = $false
 if (Wait-ForHttp -Url "$OllamaBaseUrl/api/tags" -TimeoutSeconds 2) {
     $ollamaBinds = netstat -ano | Select-String ":11434.*LISTEN"

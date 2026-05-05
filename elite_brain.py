@@ -60,7 +60,7 @@ import re
 import time
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -80,6 +80,8 @@ METACRITIC_THRESHOLD = 0.65  # below this score triggers revision
 MAX_CONTEXT_TOKENS = 1_800  # token budget for brain-injected context block
 MAX_ADAPTATIONS = 256
 TOP_K_ADAPTATIONS = 3
+MAX_ACTIVE_TASKS = 64
+TOP_K_PROCEDURES = 3
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 
@@ -569,6 +571,234 @@ class MetaCritic:
 # ── Context Forge ──────────────────────────────────────────────────────────────
 
 
+@dataclass
+class TaskStep:
+    text: str
+    status: str = "todo"
+
+
+@dataclass
+class TaskRecord:
+    uid: str
+    goal: str
+    status: str = "active"
+    created_at: float = 0.0
+    updated_at: float = 0.0
+    success_criteria: list[str] = field(default_factory=list)
+    steps: list[TaskStep] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    last_actions: list[str] = field(default_factory=list)
+
+
+class TaskStore:
+    """Persistent active-task store for goal/subgoal continuity."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._tasks: dict[str, TaskRecord] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            for item in raw:
+                steps = [TaskStep(**step) for step in item.get("steps", [])]
+                record = TaskRecord(
+                    uid=item["uid"],
+                    goal=item["goal"],
+                    status=item.get("status", "active"),
+                    created_at=float(item.get("created_at", 0.0)),
+                    updated_at=float(item.get("updated_at", 0.0)),
+                    success_criteria=[str(x) for x in item.get("success_criteria", [])],
+                    steps=steps,
+                    notes=[str(x) for x in item.get("notes", [])],
+                    last_actions=[str(x) for x in item.get("last_actions", [])],
+                )
+                self._tasks[record.uid] = record
+        except Exception as exc:
+            logger.warning("TaskStore load error: %s", exc)
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        payload = []
+        for task in self._tasks.values():
+            payload.append(
+                {
+                    "uid": task.uid,
+                    "goal": task.goal,
+                    "status": task.status,
+                    "created_at": task.created_at,
+                    "updated_at": task.updated_at,
+                    "success_criteria": task.success_criteria,
+                    "steps": [{"text": step.text, "status": step.status} for step in task.steps],
+                    "notes": task.notes,
+                    "last_actions": task.last_actions,
+                }
+            )
+        self.path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    def _prune(self) -> None:
+        if len(self._tasks) <= MAX_ACTIVE_TASKS:
+            return
+        ranked = sorted(self._tasks.values(), key=lambda task: (task.status == "active", task.updated_at), reverse=True)
+        keep = {task.uid for task in ranked[:MAX_ACTIVE_TASKS]}
+        self._tasks = {uid: task for uid, task in self._tasks.items() if uid in keep}
+
+    def upsert_task(
+        self,
+        goal: str,
+        *,
+        status: str = "active",
+        success_criteria: list[str] | None = None,
+        steps: list[str] | None = None,
+        note: str | None = None,
+        actions: list[str] | None = None,
+    ) -> str:
+        uid = _hash_text(goal.lower())
+        now = time.time()
+        record = self._tasks.get(uid)
+        if record is None:
+            record = TaskRecord(uid=uid, goal=goal.strip(), created_at=now, updated_at=now, status=status)
+            self._tasks[uid] = record
+        record.status = status
+        record.updated_at = now
+        if success_criteria:
+            for criterion in success_criteria:
+                clean = criterion.strip()
+                if clean and clean not in record.success_criteria:
+                    record.success_criteria.append(clean)
+        if steps:
+            existing = {step.text.casefold(): step for step in record.steps}
+            for step_text in steps:
+                clean = step_text.strip()
+                if not clean:
+                    continue
+                step = existing.get(clean.casefold())
+                if step is None:
+                    record.steps.append(TaskStep(text=clean))
+        if note:
+            clean_note = note.strip()
+            if clean_note and clean_note not in record.notes:
+                record.notes.append(clean_note)
+                record.notes = record.notes[-10:]
+        if actions:
+            for action in actions:
+                clean_action = action.strip()
+                if clean_action:
+                    record.last_actions.append(clean_action)
+            record.last_actions = record.last_actions[-8:]
+        self._prune()
+        return uid
+
+    def complete_task(self, goal: str) -> None:
+        uid = _hash_text(goal.lower())
+        if uid in self._tasks:
+            self._tasks[uid].status = "completed"
+            self._tasks[uid].updated_at = time.time()
+
+    def active_tasks(self) -> list[TaskRecord]:
+        return sorted(
+            [task for task in self._tasks.values() if task.status == "active"],
+            key=lambda task: task.updated_at,
+            reverse=True,
+        )
+
+    def snapshot(self, limit: int = 5) -> list[dict[str, Any]]:
+        tasks = sorted(self._tasks.values(), key=lambda task: task.updated_at, reverse=True)
+        return [
+            {
+                "goal": task.goal,
+                "status": task.status,
+                "steps": [{"text": step.text, "status": step.status} for step in task.steps],
+                "success_criteria": task.success_criteria,
+                "notes": task.notes[-3:],
+                "last_actions": task.last_actions[-3:],
+                "updated_at": task.updated_at,
+            }
+            for task in tasks[:limit]
+        ]
+
+
+class ProcedureStore:
+    """Persistent local know-how learned from successful tool-assisted outcomes."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._entries: dict[str, dict[str, Any]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            for item in raw:
+                uid = str(item.get("uid", "")).strip()
+                if uid:
+                    self._entries[uid] = item
+        except Exception as exc:
+            logger.warning("ProcedureStore load error: %s", exc)
+
+    def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(list(self._entries.values()), ensure_ascii=False), encoding="utf-8")
+
+    def remember(self, user_message: str, tools_used: list[str], assistant_response: str, outcome: str) -> None:
+        if outcome != "success" or not tools_used:
+            return
+        basis = f"{user_message}\n{'|'.join(tools_used)}"
+        uid = _hash_text(basis.lower())
+        now = time.time()
+        existing = self._entries.get(uid)
+        if existing:
+            existing["successes"] = int(existing.get("successes", 0)) + 1
+            existing["updated_at"] = now
+            existing["assistant_response"] = _truncate(assistant_response, 80)
+            return
+        self._entries[uid] = {
+            "uid": uid,
+            "trigger": _truncate(user_message, 80),
+            "tools_used": tools_used,
+            "assistant_response": _truncate(assistant_response, 80),
+            "outcome": outcome,
+            "vector": _embed_engine.embed(user_message).tolist(),
+            "successes": 1,
+            "updated_at": now,
+        }
+
+    def query(self, text: str, top_k: int = TOP_K_PROCEDURES) -> list[dict[str, Any]]:
+        if not self._entries:
+            return []
+        q_vec = _embed_engine.embed(text)
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for entry in self._entries.values():
+            vec = np.array(entry["vector"], dtype=np.float32)
+            scored.append((float(np.dot(vec, q_vec)), entry))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        results = []
+        for sim, entry in scored:
+            if sim < 0.2:
+                continue
+            results.append(entry)
+            if len(results) >= top_k:
+                break
+        return results
+
+    def snapshot(self, limit: int = 5) -> list[dict[str, Any]]:
+        ranked = sorted(self._entries.values(), key=lambda item: (int(item.get("successes", 0)), float(item.get("updated_at", 0.0))), reverse=True)
+        return [
+            {
+                "trigger": item.get("trigger", ""),
+                "tools_used": item.get("tools_used", []),
+                "successes": item.get("successes", 0),
+                "updated_at": item.get("updated_at", 0.0),
+            }
+            for item in ranked[:limit]
+        ]
+
+
 class ContextForge:
     """
     Dynamically assembles the richest possible system-prompt addendum that
@@ -579,9 +809,11 @@ class ContextForge:
       3. Working-memory scratch pad (key entities from current conversation)
     """
 
-    def __init__(self, store: SemanticStore, episodes: EpisodicLog) -> None:
+    def __init__(self, store: SemanticStore, episodes: EpisodicLog, tasks: TaskStore, procedures: ProcedureStore) -> None:
         self.store = store
         self.episodes = episodes
+        self.tasks = tasks
+        self.procedures = procedures
         self._scratch: dict[str, str] = {}  # entity → summary
 
     def update_scratch(self, key: str, value: str) -> None:
@@ -634,7 +866,49 @@ class ContextForge:
                 sections.append("EPISODIC RECALL (what worked before):\n" + "\n".join(ep_lines))
                 budget -= used
 
-        # ── 3. Working scratch pad ─────────────────────────────────────────────
+        # ── 3. Active task state ───────────────────────────────────────────────
+        active_tasks = self.tasks.active_tasks()
+        if active_tasks and budget > 120:
+            task_lines: list[str] = []
+            used = 0
+            for task in active_tasks[:2]:
+                open_steps = [step.text for step in task.steps if step.status != "completed"][:3]
+                criteria = task.success_criteria[:2]
+                parts = [f"goal={_truncate(task.goal, 40)}"]
+                if open_steps:
+                    parts.append("next=" + "; ".join(_truncate(step, 24) for step in open_steps))
+                if criteria:
+                    parts.append("success=" + "; ".join(_truncate(item, 24) for item in criteria))
+                snippet = "• ACTIVE TASK: " + " | ".join(parts)
+                tok = _token_estimate(snippet)
+                if used + tok > budget // 3:
+                    break
+                task_lines.append(snippet)
+                used += tok
+            if task_lines:
+                sections.append("TASK STATE:\n" + "\n".join(task_lines))
+                budget -= used
+
+        # ── 4. Procedural memory ────────────────────────────────────────────────
+        procedures = self.procedures.query(user_message, top_k=TOP_K_PROCEDURES)
+        if procedures and budget > 100:
+            proc_lines: list[str] = []
+            used = 0
+            for proc in procedures:
+                snippet = (
+                    f"• PROCEDURE: for '{_truncate(str(proc.get('trigger', '')), 40)}' "
+                    f"tools={','.join(proc.get('tools_used', []))}"
+                )
+                tok = _token_estimate(snippet)
+                if used + tok > budget // 4:
+                    break
+                proc_lines.append(snippet)
+                used += tok
+            if proc_lines:
+                sections.append("PROCEDURAL RECALL (what succeeded):\n" + "\n".join(proc_lines))
+                budget -= used
+
+        # ── 5. Working scratch pad ─────────────────────────────────────────────
         if self._scratch and budget > 100:
             scratch_lines = [f"• {k}: {_truncate(v, 60)}" for k, v in list(self._scratch.items())[-8:]]
             sections.append("WORKING MEMORY:\n" + "\n".join(scratch_lines))
@@ -962,7 +1236,9 @@ class Brain:
         BRAIN_DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._store = SemanticStore(BRAIN_DATA_DIR / "semantic.json")
         self._episodes = EpisodicLog(BRAIN_DATA_DIR / "episodes.json")
-        self._forge = ContextForge(self._store, self._episodes)
+        self._tasks = TaskStore(BRAIN_DATA_DIR / "tasks.json")
+        self._procedures = ProcedureStore(BRAIN_DATA_DIR / "procedures.json")
+        self._forge = ContextForge(self._store, self._episodes, self._tasks, self._procedures)
         self._critic = MetaCritic()
         self._tree = ThoughtTree(branches=THOUGHT_BRANCHES)
         self._curiosity = CuriosityEngine(self._store)
@@ -1062,6 +1338,16 @@ class Brain:
         # Curiosity gap detection
         self._curiosity.inspect(user_message, assistant_response)
 
+        # Persistent task/procedure learning
+        if user_message.strip():
+            self._tasks.upsert_task(
+                user_message,
+                status="completed" if outcome == "success" else "active",
+                note=_truncate(assistant_response, 120),
+                actions=tools_used or [],
+            )
+        self._procedures.remember(user_message, tools_used or [], assistant_response, outcome)
+
         # Scratch-pad: remember what the user was working on
         self._forge.update_scratch("last_topic", _truncate(user_message, 80))
 
@@ -1082,6 +1368,32 @@ class Brain:
         """Manually inject a fact into the semantic store."""
         self._store.add(text, source=source, importance=importance)
 
+    def remember_fact(self, text: str, importance: float = 1.0) -> None:
+        """Canonical durable fact write path for the runtime."""
+        self._store.add(text, source="fact", importance=importance)
+
+    def track_task(
+        self,
+        goal: str,
+        *,
+        status: str = "active",
+        success_criteria: list[str] | None = None,
+        steps: list[str] | None = None,
+        note: str | None = None,
+        actions: list[str] | None = None,
+    ) -> str:
+        return self._tasks.upsert_task(
+            goal,
+            status=status,
+            success_criteria=success_criteria,
+            steps=steps,
+            note=note,
+            actions=actions,
+        )
+
+    def complete_task(self, goal: str) -> None:
+        self._tasks.complete_task(goal)
+
     def recall(self, query: str, top_k: int = TOP_K_RETRIEVAL) -> list[str]:
         """Return the text of the top-k semantically similar memories."""
         return [e.text for e in self._store.query(query, top_k=top_k)]
@@ -1099,6 +1411,8 @@ class Brain:
         try:
             self._store.save()
             self._episodes.save()
+            self._tasks.save()
+            self._procedures.save()
             self._evolution.save()
         except Exception as exc:
             logger.warning("Brain.save error: %s", exc)
@@ -1114,6 +1428,9 @@ class Brain:
             "curiosity_queue_depth": self._curiosity._queue.qsize(),
             "adaptation_rules": len(self._evolution),
             "top_adaptations": self._evolution.snapshot(),
+            "active_tasks": len(self._tasks.active_tasks()),
+            "task_snapshot": self._tasks.snapshot(),
+            "procedure_snapshot": self._procedures.snapshot(),
             "llm_wired": self._llm_fn is not None,
             "curiosity_running": bool(self._curiosity_task and not self._curiosity_task.done()),
             "scratch_keys": list(self._forge._scratch.keys()),

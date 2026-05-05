@@ -56,7 +56,7 @@ ollama pull gpt-oss:20b  # preferred local default
 ```
 
 **Launch**
-``` 
+```
 cd C:\project\vision
 python live_chat_app.py
 ```
@@ -211,10 +211,13 @@ Type `/` in any Copilot chat to browse available skills.
 | `launch_vision.ps1` | Windows launcher with health checks, doctor call, and config-aware browser behavior |
 | `vision_master_launcher.ps1` | Unified launcher that starts the core stack, checks health/doctor/models, opens both UIs, and reports live status |
 | `elite_brain.py` | Cognitive layer with memory, reasoning, critique, curiosity, and self-evolution rules learned from outcomes |
+| `elite_goals.py` | **AGI Module** — Autonomous goal management with hierarchical decomposition and planning |
+| `elite_world.py` | **AGI Module** — World model with entity tracking, state inference, and prediction |
 | `speak.py` | Standalone TTS utility |
 | `voice_toggle.py` | Background hotkeys (F9/F10/F11) |
 | `memory.json` | Persistent long-term memory (auto-created) |
 | `chat_events.log` | Full event log (auto-created) |
+| `.brain/` | AGI cognitive data storage (goals, entities, observations) |
 
 ---
 
