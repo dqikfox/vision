@@ -15,7 +15,6 @@ Usage:
 
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import re
@@ -23,14 +22,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-import aiofiles
 import chromadb
 import httpx
 import uvicorn
 from chromadb.config import Settings
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 

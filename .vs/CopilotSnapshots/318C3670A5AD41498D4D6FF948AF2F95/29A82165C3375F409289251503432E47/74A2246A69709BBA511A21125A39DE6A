@@ -1,0 +1,87 @@
+﻿import asyncio
+import sys
+from pathlib import Path
+
+async def capture_main_ui():
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        print("Installing playwright...")
+        import subprocess
+        subprocess.run([sys.executable, "-m", "pip", "install", "playwright"], check=True)
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        console_logs = []
+        errors = []
+
+        page.on('console', lambda msg: console_logs.append(f"[{msg.type}] {msg.text}"))
+        page.on('pageerror', lambda err: errors.append(str(err)))
+
+        print("Loading http://localhost:8765...")
+        await page.goto('http://localhost:8765', wait_until='networkidle')
+
+        await asyncio.sleep(3)
+
+        # Click boot enter if visible
+        try:
+            boot_enter = page.locator('#bootEnter')
+            if await boot_enter.is_visible(timeout=2000):
+                print("Clicking boot enter...")
+                await boot_enter.click()
+                await asyncio.sleep(3)
+        except:
+            print("No boot screen or already passed")
+
+        # Take screenshot
+        await page.screenshot(path='C:/project/vision/main_ui_screenshot.png', full_page=True)
+        print("Screenshot saved: main_ui_screenshot.png")
+
+        # Check page state
+        state = await page.evaluate('''() => {
+            return {
+                threeLoaded: typeof THREE !== 'undefined',
+                gltfLoaded: typeof window.GLTFLoader !== 'undefined',
+                avatarSceneExists: typeof avatarScene !== 'undefined',
+                avatarModelExists: typeof avatarModel !== 'undefined' && avatarModel !== null,
+                canvasExists: !!document.getElementById('heroAvatar'),
+                canvasWidth: document.getElementById('heroAvatar')?.width,
+                canvasHeight: document.getElementById('heroAvatar')?.height,
+                containerExists: !!document.getElementById('heroAvatarFrame'),
+                containerWidth: document.getElementById('heroAvatarFrame')?.clientWidth,
+                containerHeight: document.getElementById('heroAvatarFrame')?.clientHeight
+            };
+        }''')
+
+        print("\n=== PAGE STATE ===")
+        for key, val in state.items():
+            symbol = "OK" if val else "FAIL"
+            print(f"{symbol} {key}: {val}")
+
+        print(f"\n=== CONSOLE LOGS ({len(console_logs)}) ===")
+        for log in console_logs[-20:]:  # Last 20
+            print(log)
+
+        if errors:
+            print(f"\n=== ERRORS ({len(errors)}) ===")
+            for err in errors:
+                print(err)
+
+        await browser.close()
+
+        return state
+
+if __name__ == '__main__':
+    result = asyncio.run(capture_main_ui())
+
+    if not result.get('avatarModelExists'):
+        print("\nPROBLEM: avatarModel not loaded")
+    if not result.get('canvasExists'):
+        print("\nPROBLEM: Canvas element missing")
+    if result.get('canvasWidth') == 0 or result.get('canvasHeight') == 0:
+        print("\nPROBLEM: Canvas has zero dimensions")

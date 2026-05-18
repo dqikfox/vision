@@ -1,0 +1,291 @@
+# Contributing to Vision
+
+## Project Overview
+
+**Vision** is a universal accessibility operator that provides voice-first computer control specifically designed to assist disabled users by removing physical barriers between people and computers. The system enables full computer control through voice and text for those with mobility or other physical disabilities.
+
+## Core Architecture
+
+### Main Components
+- **`vision_mcp_server.py`** - MCP bridge to Vision backend (FastAPI + httpx)
+- **`vision_hotkey.py`** - Hotkey daemon for overlay launcher (Windows only)
+- **`voice_overlay.py`** - Tkinter-based floating HUD with WebSocket connection
+- **`vision_rag.py`** - Local RAG indexing with SQLite FTS5
+- **`vision_rag_integration.py`** - RAG pipeline integration
+- **`vision_runtime.py`** - Runtime utilities and config management
+- **`vision_admin.py`** - JWT-based auth and role-based access control
+- **`live_chat_*.html`** - Web-based operator UI with WebSocket real-time updates
+- **`vision_command_center.html`** - Command center for monitoring, diagnostics, and control
+
+### Tech Stack
+- **Backend**: FastAPI, WebSockets, httpx
+- **GUI**: Tkinter (overlay), HTML/CSS/JS (web UI)
+- **Voice**: ElevenLabs, browser TTS/STT, OpenAI Whisper
+- **LLM**: Ollama (local), OpenAI, Anthropic (cloud)
+- **Windows Automation**: pyautogui, pytesseract, win32gui
+- **Data**: SQLite FTS5, JSON state files
+
+## Code Standards
+
+### Python Style
+- **Formatter**: Use Ruff with 120 character line length
+- **Type Hints**: Always use `from __future__ import annotations` and modern type syntax (e.g., `dict[str, Any]` not `Dict`)
+- **Python Version**: Requires Python 3.10+ (project uses 3.14+)
+- **Imports**: Use absolute imports, organize with Ruff (stdlib → third-party → local)
+
+### Error Handling
+- Use `try/except` blocks with **specific exceptions** (avoid bare `except:`)
+- Always log errors with appropriate log levels using `logging` module
+- Example:
+  ```python
+  from __future__ import annotations
+
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  try:
+      result = risky_operation()
+  except ValueError as e:
+      logger.error(f"Invalid value: {e}")
+      raise
+  except ConnectionError as e:
+      logger.warning(f"Connection failed: {e}")
+      return None
+  ```
+
+### Configuration & Secrets
+- **Never hardcode secrets**, API keys, or credentials
+- Read configuration from environment variables using `os.environ.get()`
+- Use `.env` file for local development (git-ignored)
+- Use `python-dotenv` to load environment variables
+- Example:
+  ```python
+  import os
+  from dotenv import load_dotenv
+
+  load_dotenv()
+  VISION_BASE_URL = os.environ.get("VISION_BASE_URL", "http://localhost:8765")
+  ```
+
+### WebSocket Patterns
+- Vision uses WebSocket extensively for real-time updates
+- Always handle connection errors gracefully with retry logic
+- Send JSON messages with `{"type": "...", ...}` structure
+- Example message types: `init`, `state`, `volume`, `model_changed`, `voice_settings`
+
+### GUI Development
+
+#### Tkinter Overlay (`voice_overlay.py`)
+- Use modern color palette (defined at top of file)
+- Keep UI responsive: use `root.after()` for UI updates from background threads
+- Follow existing VU meter and status indicator patterns
+- Maintain drag-and-drop window positioning
+
+#### Web UI (`live_chat_ui_*.html`)
+- Use CSS custom properties (`:root` variables) for theming
+- Implement smooth transitions and animations
+- Use WebSocket for real-time state updates
+- Follow existing boot screen and orb visualization patterns
+- Mobile-responsive design (use `clamp()` for font sizing)
+
+### Testing
+- Write tests for all new features using **pytest**
+- Place tests in `tests/` directory
+- Test files: `test_*.py`
+- Test functions: `test_*`
+- Run tests with: `pytest`
+- Mock external services (Ollama, ElevenLabs) in tests
+
+### Code Formatting
+```bash
+# Format code
+ruff format .
+
+# Check linting
+ruff check .
+
+# Fix auto-fixable issues
+ruff check --fix .
+```
+
+## Project Structure
+```
+C:/project/vision/
+├── vision_mcp_server.py          # MCP bridge to backend
+├── vision_hotkey.py              # Hotkey daemon (Ctrl+Alt+V)
+├── voice_overlay.py              # Tkinter floating HUD
+├── vision_rag.py                 # RAG indexing (SQLite FTS5)
+├── vision_rag_integration.py     # RAG pipeline
+├── vision_runtime.py             # Runtime utilities
+├── vision_admin.py               # JWT auth system
+├── vision_openclaw_bridge.py     # OpenClaw gateway integration
+├── vision_auto_enhancer.py       # Auto-enhancement utilities
+├── live_chat_ui_v3.html          # Main web operator UI
+├── vision_command_center.html    # Command center interface
+├── vision_master_launcher.ps1    # Desktop launcher (PowerShell)
+├── vision_command_center_config.json  # Non-sensitive config
+├── vision_automation_state.json  # Persistent automation history
+├── tests/                        # Test files
+├── .vscode/                      # VS Code configuration
+├── .env                          # Environment variables (git-ignored)
+└── pyproject.toml                # Python project config
+```
+
+## Environment Variables
+
+Key environment variables used by Vision:
+
+### Core Backend
+- `VISION_BASE_URL=http://localhost:8765` - Vision backend URL
+- `PYTHONPATH=c:\project\vision` - Python module path
+- `VISION_HOST=0.0.0.0` - Bind host (use `0.0.0.0` for LAN access)
+- `VISION_ALLOWED_ORIGINS` - CORS origins for security
+- `VISION_TOOL_TOKEN` - Authentication token for API access
+
+### LLM Providers
+- `OLLAMA_HOST=http://localhost:11434` - Ollama server URL
+- `OPENAI_API_KEY` - OpenAI API key
+- `ANTHROPIC_API_KEY` - Anthropic API key
+
+### Voice Services
+- `ELEVENLABS_API_KEY` - ElevenLabs TTS API key
+
+### MCP Server
+- `VISION_MCP_TIMEOUT=20` - MCP request timeout (seconds)
+- `VISION_MCP_INCLUDE_SCREENSHOT_B64=0` - Include base64 screenshots in responses
+
+### Admin System
+- `VISION_ADMIN_SECRET` - JWT signing secret (auto-generated if not set)
+- `VISION_ADMIN_TOKEN_EXPIRY=3600` - Token expiry in seconds
+- `VISION_ADMIN_RATE_LIMIT=5` - Rate limit for admin endpoints
+
+## Development Workflow
+
+1. **Create feature branch** from `main`
+2. **Make changes** following code standards above
+3. **Write/update tests** for new functionality
+4. **Format code**: `ruff format .` and `ruff check .`
+5. **Run tests**: `pytest` to ensure all pass
+6. **Commit** with clear, descriptive message
+7. **Create pull request** with description of changes
+
+## Accessibility Focus
+
+Vision is designed specifically to assist disabled users. When contributing:
+
+- **Prioritize keyboard navigation** and voice control in all UIs
+- **Ensure screen reader compatibility** (use semantic HTML)
+- **Provide clear audio/visual feedback** for all actions
+- **Test with Windows accessibility tools** (Narrator, Magnifier)
+- **Document accessibility features** in user-facing docs
+- **Consider users with limited mobility** when designing workflows
+
+## IDE Setup
+
+Both **Visual Studio 2022** and **VS Code** are supported:
+
+### VS Code
+- Configuration files: `.vscode/settings.json`, `.vscode/launch.json`
+- Recommended extensions: Python, Pylance, Ruff, EditorConfig
+- Debug configs for FastAPI and MCP server
+
+### Visual Studio 2022
+- Install Python workload
+- Configure formatting: Tools > Options > Text Editor > Python
+- Use `.editorconfig` for consistent formatting
+
+## Security Guidelines
+
+- **Never commit secrets**, API keys, or credentials to git
+- Use `.env` files (git-ignored) for local secrets
+- Review `.gitignore` before committing
+- Use `VISION_ADMIN_SECRET` for JWT signing
+- Implement rate limiting for public-facing endpoints
+- Validate all user input before processing
+- Use HTTPS for production deployments
+
+## Windows-Specific Considerations
+
+Vision is **Windows-first** but designed for cross-platform expansion:
+
+- Use `pathlib.Path` for file paths (cross-platform compatible)
+- PowerShell scripts (`.ps1`) use CRLF line endings
+- Python scripts (`.py`) use LF line endings
+- Test with Windows Defender and firewall enabled
+- Ensure WSL2 compatibility for OpenClaw integration
+
+## MCP Server Development
+
+When extending `vision_mcp_server.py`:
+
+- Follow existing `@mcp.tool()` decorator pattern
+- Return `dict[str, Any]` with `{"ok": bool, ...}` structure
+- Sanitize large payloads (screenshots) to avoid context bloat
+- Use `_vision_request()` helper for backend calls
+- Set appropriate timeouts (`VISION_MCP_TIMEOUT`)
+- Document tool parameters and return values
+
+## OpenClaw Integration
+
+Vision integrates with **OpenClaw Gateway** (v2026.4.9):
+
+- Use `vision_openclaw_bridge.py` for gateway communication
+- Follow OpenClaw MCP server patterns
+- Test with `openclaw gateway status`
+- Coordinate with ULTRON for multi-agent workflows
+
+## Questions & Support
+
+This project is coordinated by **ULTRON** (AI orchestrator through OpenClaw).
+
+**Escalate to ULTRON when:**
+- Need access to external APIs requiring secrets
+- Unclear on architecture decisions
+- Tests fail in CI but pass locally
+- Security-sensitive changes required
+- Breaking changes to public API proposed
+
+## Active Development Areas
+
+Current focus (see GitHub Issues):
+- **#2**: MCP integration with Copilot
+- **#6**: Admin Mode (JWT auth, RBAC)
+- **#8**: Prettier Interface (modern GUI enhancements)
+- **#90**: Update vision actions
+
+## Git Workflow
+
+```bash
+# Create feature branch
+git checkout -b feature/your-feature-name
+
+# Make changes, commit often
+git add .
+git commit -m "feat: add voice command retry logic"
+
+# Push and create PR
+git push origin feature/your-feature-name
+```
+
+### Commit Message Convention
+Use conventional commits:
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `style:` - Code style changes (formatting)
+- `refactor:` - Code refactoring
+- `test:` - Test additions/changes
+- `chore:` - Maintenance tasks
+
+## Resources
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Ruff Documentation](https://docs.astral.sh/ruff/)
+- [MCP Protocol Spec](https://modelcontextprotocol.io/)
+- [Ollama API Reference](https://github.com/ollama/ollama/blob/main/docs/api.md)
+- [Vision GitHub Issues](https://github.com/dqikfox/vision/issues)
+
+---
+
+*Last updated: 2025-01-XX by ULTRON via GitHub Copilot*

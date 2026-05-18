@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from langgraph.graph import StateGraph
@@ -54,17 +56,28 @@ class State:
 async def call_model(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
     context = runtime.context or {}
     namespace = context.get("memory_namespace") or context.get("user_id") or "default"
+    loop = asyncio.get_running_loop()
 
     with trace_span("agent_call", {"namespace": namespace}):
-        store = FileMemoryStore(namespace=namespace)
+        store = await loop.run_in_executor(None, partial(FileMemoryStore, namespace=namespace))
         updates = extract_memory_updates(state.message)
         intent = infer_intent(state.message)
 
         if context.get("enable_memory", True):
             for key, value in updates.items():
-                store.upsert(key, value, source=context.get("user_id", "anonymous"))
+                await loop.run_in_executor(
+                    None,
+                    partial(store.upsert, key, value, source=context.get("user_id", "anonymous")),
+                )
                 if context.get("mirror_to_openharness", True):
-                    append_topic_note(f"langgraph-{namespace}-{key}", f"# {key}\n\n- value: {value}\n- source: {context.get('user_id', 'anonymous')}\n")
+                    await loop.run_in_executor(
+                        None,
+                        partial(
+                            append_topic_note,
+                            f"langgraph-{namespace}-{key}",
+                            f"# {key}\n\n- value: {value}\n- source: {context.get('user_id', 'anonymous')}\n",
+                        ),
+                    )
                 if context.get("use_open_orchestrator_memory"):
                     try:
                         add_topic_memory(
@@ -81,16 +94,24 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
                     except OwtUnavailableError:
                         pass
 
-        self_state = store.load_self_state() if context.get("self_awareness", True) else SelfState(
-            identity="Self-awareness disabled",
-            capabilities=[],
-            limitations=[],
-            operating_principles=[],
-            updated_at=datetime.now(UTC).isoformat(),
-        )
-        memory_context = render_memory_context(store) if context.get("enable_memory", True) else "Memory disabled."
-        retrieved = retrieve_relevant_memories(store, state.message)
-        retrieved_context = render_retrieval_results(retrieved)
+        if context.get("self_awareness", True):
+            self_state = await loop.run_in_executor(None, store.load_self_state)
+        else:
+            self_state = SelfState(
+                identity="Self-awareness disabled",
+                capabilities=[],
+                limitations=[],
+                operating_principles=[],
+                updated_at=datetime.now(UTC).isoformat(),
+            )
+
+        if context.get("enable_memory", True):
+            memory_context = await loop.run_in_executor(None, partial(render_memory_context, store))
+        else:
+            memory_context = "Memory disabled."
+
+        retrieved = await loop.run_in_executor(None, partial(retrieve_relevant_memories, store, state.message))
+        retrieved_context = await loop.run_in_executor(None, partial(render_retrieval_results, retrieved))
         if context.get("use_open_orchestrator_memory"):
             try:
                 owt_results = search_recall(state.message)
@@ -101,7 +122,8 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
             except OwtUnavailableError:
                 pass
         comprehension = assess_comprehension(state.message, updates)
-        reasoning_outline = build_reasoning_outline(intent, len(store.list_records()), self_state.identity)
+        memory_records = await loop.run_in_executor(None, store.list_records)
+        reasoning_outline = build_reasoning_outline(intent, len(memory_records), self_state.identity)
         reasoning_outline.append(f"Retrieved {len(retrieved)} relevant memory matches")
 
         if "api" in state.message.lower() and ("catalog" in state.message.lower() or "tool" in state.message.lower()):
@@ -129,12 +151,15 @@ async def call_model(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
             )
 
         summary = SessionSummary(
-            summary=f"Intent={intent}; updates={len(updates)}; memory_records={len(store.list_records())}; retrieved={len(retrieved)}",
+            summary=(
+                f"Intent={intent}; updates={len(updates)}; "
+                f"memory_records={len(memory_records)}; retrieved={len(retrieved)}"
+            ),
             last_user_message=state.message,
             last_agent_response=response,
             updated_at=datetime.now(UTC).isoformat(),
         )
-        store.save_session_summary(summary)
+        await loop.run_in_executor(None, partial(store.save_session_summary, summary))
 
         return {
             "response": response,

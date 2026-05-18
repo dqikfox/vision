@@ -20,7 +20,7 @@ Architecture
 Configuration
 -------------
 Reads from environment or defaults:
-  - CHROMA_DB_PATH: I:\My Drive\Z\X\rag-v1-package\vector_db\chroma_ollama
+  - CHROMA_DB_PATH: I:\\My Drive\\Z\\X\rag-v1-package\vector_db\\chroma_ollama
   - CHROMA_COLLECTION: rag_sensitive_ollama
   - OLLAMA_BASE_URL: http://127.0.0.1:11434
   - EMBEDDING_MODEL: nomic-embed-text:latest
@@ -29,13 +29,14 @@ Reads from environment or defaults:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import os
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,14 +81,13 @@ class VisionRAGClient:
 
     def _check_ollama_available(self) -> bool:
         """Check if Ollama is running."""
-        import urllib.request
         try:
             urllib.request.urlopen(f"{self.ollama_url}/api/tags", timeout=2)
             return True
         except Exception:
             return False
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current RAG system status."""
         status = {
             "chroma_path": self.chroma_path,
@@ -117,7 +117,7 @@ class VisionRAGClient:
         query: str,
         n_results: int = 5,
         include_metadata: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Query Chroma directly for relevant documents.
         Uses query_chroma_ollama.py script.
@@ -159,7 +159,7 @@ class VisionRAGClient:
         self,
         question: str,
         n_context: int = 3,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Ask a question using full RAG pipeline.
         Uses ask_rag_ollama.py script.
@@ -200,7 +200,7 @@ class VisionRAGClient:
             logger.error("RAG ask error: %s", exc)
             return {"error": str(exc)}
 
-    def _parse_chroma_results(self, output: str) -> List[Dict[str, Any]]:
+    def _parse_chroma_results(self, output: str) -> list[dict[str, Any]]:
         """Parse output from query_chroma_ollama.py."""
         results = []
         lines = output.strip().split("\n")
@@ -226,7 +226,7 @@ class VisionRAGClient:
     def format_for_vision(
         self,
         query: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         max_length: int = 2000,
     ) -> str:
         """
@@ -254,7 +254,7 @@ class VisionRAGClient:
 
 # ── Singleton Instance ───────────────────────────────────────────────────────
 
-_rag_client: Optional[VisionRAGClient] = None
+_rag_client: VisionRAGClient | None = None
 
 
 def get_rag_client() -> VisionRAGClient:
@@ -267,14 +267,15 @@ def get_rag_client() -> VisionRAGClient:
 
 # ── Tool Interface for Vision ────────────────────────────────────────────────
 
+
 async def rag_query_tool(query: str, n_results: int = 5) -> str:
     """
     Tool interface for Vision's tool system.
     Queries the local RAG system and returns formatted results.
     """
     client = get_rag_client()
-    results = client.query_chroma(query, n_results)
-    return client.format_for_vision(query, results)
+    results = await asyncio.to_thread(client.query_chroma, query, n_results)
+    return await asyncio.to_thread(client.format_for_vision, query, results)
 
 
 async def rag_ask_tool(question: str) -> str:
@@ -283,7 +284,7 @@ async def rag_ask_tool(question: str) -> str:
     Asks a question using the RAG pipeline.
     """
     client = get_rag_client()
-    result = client.ask_rag(question)
+    result = await asyncio.to_thread(client.ask_rag, question)
 
     if "error" in result:
         return f"RAG Error: {result['error']}"
@@ -294,7 +295,7 @@ async def rag_ask_tool(question: str) -> str:
 async def rag_status_tool() -> str:
     """Tool interface for RAG status check."""
     client = get_rag_client()
-    status = client.get_status()
+    status = await asyncio.to_thread(client.get_status)
 
     lines = [
         "RAG System Status:",
@@ -306,10 +307,12 @@ async def rag_status_tool() -> str:
     ]
 
     if "indexed_docs" in status:
-        lines.extend([
-            f"  Indexed: {status['indexed_docs']:,} / {status['total_docs']:,} documents",
-            f"  Build Complete: {'✅' if status['build_complete'] else '⏳ In Progress'}",
-        ])
+        lines.extend(
+            [
+                f"  Indexed: {status['indexed_docs']:,} / {status['total_docs']:,} documents",
+                f"  Build Complete: {'✅' if status['build_complete'] else '⏳ In Progress'}",
+            ]
+        )
 
     return "\n".join(lines)
 

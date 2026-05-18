@@ -16,6 +16,7 @@
 | Extend MCP or tool access | `.vscode/mcp.json` | `vision_mcp_server.py` |
 | Improve docs or repo context | `.github/skills/vision-documentation-ops/SKILL.md` | this file |
 | Work on home PC or network operations | `.github/skills/vision-home-ops/SKILL.md` | `.github/copilot-instructions.md` |
+| Understand accessibility features | `ACCESSIBILITY_AND_VOICE_IMPROVEMENTS.md` | `accessibility_integration_guide.md` |
 
 ---
 
@@ -26,6 +27,11 @@
 | `README.md` | Project overview, quick start, skills, agents, major features | First orientation |
 | `setup.md` | Environment setup, dependencies, startup and troubleshooting | Installing or repairing the stack |
 | `architecture.md` | Runtime architecture, data flow, protocol, memory model | Understanding backend behavior |
+| `ACCESSIBILITY_AND_VOICE_IMPROVEMENTS.md` | Detailed accessibility features and voice improvements for disabled users | Understanding accessibility capabilities |
+| `accessibility_integration_guide.md` | Comprehensive guide for integrating accessibility features | Implementing accessibility features |
+| `ACCESSIBILITY_INTEGRATION_SUMMARY.md` | Summary of implemented accessibility features | Quick reference for accessibility features |
+| `FINAL_ACCESSIBILITY_INTEGRATION_REPORT.md` | Final report on accessibility integration work | Complete overview of accessibility integration |
+| `ACCESSIBILITY_FEATURES_COMPLETE_INTEGRATION.md` | Complete accessibility features integration guide | Comprehensive reference for all accessibility features |
 | `live_chat_app.py` | Source of truth for backend logic | Any real runtime change |
 | `live_chat_ui.html` | Primary browser UI | UI or WebSocket integration work |
 | `vision_command_center.html` | Secondary command-center GUI for launch, monitoring, and repo intelligence control | Operating the broader Vision stack |
@@ -43,6 +49,7 @@
 | File | Purpose | When to Use |
 |---|---|---|
 | `.github/copilot-instructions.md` | Always-on repo guidance for Copilot | Before changing behavior or conventions |
+| `C:\project\skills` | Shared local skill repo for reusable cross-project workflows | When a general skill may already exist outside Vision |
 | `HIVE.md` | Agent swarm and customization overview | Understanding agent/skill layout |
 | `.github/agents/vision-maintainer.agent.md` | Runtime/debug/code-change specialist | Backend and protocol work |
 | `.github/agents/openclaw-operator.agent.md` | OpenClaw installation and gateway specialist | OpenClaw onboarding and repair |
@@ -86,6 +93,8 @@
 | Control Android devices through ADB | `vision-adb-control` |
 | Repair MCP setup | `mcp-recovery` |
 | Work with OpenClaw | `openclaw-getting-started` |
+| Improve accessibility features | `vision-accessibility` |
+| Test accessibility features | `vision-accessibility-test` |
 
 ---
 
@@ -99,7 +108,7 @@
 | `.archon/config.yaml` | Repo-local Archon defaults for assistants, docs path, and bundled workflow loading |
 | `.archon/workflows/` | Repo-local Archon workflows for deterministic maintenance and integration runs |
 | `launch_lmstudio_rag_mcp.py` | Env-aware launcher for the `lmstudio-rag` filesystem MCP server |
-| `RAG_PLUGIN_WORKSPACE` (fallback: `F:\rag-v1` on Windows, `~/rag-v1` elsewhere) | User-owned LM Studio plugin workspace available as local RAG/plugin context |
+| `RAG_PLUGIN_WORKSPACE` (fallback: `F:\rag-v1\vision-corpus` on Windows, `~/rag-v1/vision-corpus` elsewhere) | User-owned LM Studio plugin workspace available as local RAG/plugin context |
 
 Current important MCP surfaces include:
 - `github`

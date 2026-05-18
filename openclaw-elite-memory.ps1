@@ -6,6 +6,7 @@ param(
     [switch]$ShowStatus,
     [switch]$ShowMemory,
     [switch]$ClearMemory,
+    [switch]$Force,
     [switch]$ExportMemory,
     [string]$ImportPath = "",
     [switch]$SelfAwareness,
@@ -162,7 +163,7 @@ function Initialize-MemorySystem {
 
 function Get-Memory {
     if (Test-Path $script:MemoryPath) {
-        return Get-Content $script:MemoryPath | ConvertFrom-Json
+        return Get-Content -Raw $script:MemoryPath | ConvertFrom-Json
     }
     return $null
 }
@@ -173,7 +174,7 @@ function Save-Memory($Memory) {
 
 function Get-Context {
     if (Test-Path $script:ContextPath) {
-        return Get-Content $script:ContextPath | ConvertFrom-Json
+        return Get-Content -Raw $script:ContextPath | ConvertFrom-Json
     }
     return $null
 }
@@ -184,7 +185,7 @@ function Save-Context($Context) {
 
 function Get-Learning {
     if (Test-Path $script:LearningPath) {
-        return Get-Content $script:LearningPath | ConvertFrom-Json
+        return Get-Content -Raw $script:LearningPath | ConvertFrom-Json
     }
     return $null
 }
@@ -365,6 +366,14 @@ function Clear-MemoryData {
     # Backup first
     $backupPath = Export-MemoryData
     Write-Status "Memory backed up to: $backupPath" 'Info'
+
+    if (-not $Force) {
+        $confirmation = Read-Host "Delete memory files now? Type YES to confirm"
+        if ($confirmation -ne 'YES') {
+            Write-Status 'Memory clear canceled' 'Info'
+            return
+        }
+    }
 
     # Clear files
     Remove-Item $script:MemoryPath -ErrorAction SilentlyContinue

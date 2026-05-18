@@ -1,7 +1,7 @@
 # VISION Project File
 
 ## Mission
-Build and maintain VISION as a reliable, secure, and high-performance accessibility operator that enables full computer control through voice and text.
+Build and maintain VISION as a reliable, secure, and high-performance accessibility operator that enables full computer control through voice and text, specifically designed to assist disabled users by removing physical barriers between people and computers.
 
 ## Current Scope
 - Windows-first runtime with FastAPI + WebSocket backend

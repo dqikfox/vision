@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Avatar Debug</title>
+<style>
+body { background: #111; color: #0f0; font-family: monospace; padding: 20px; }
+.pass { color: #0f0; }
+.fail { color: #f00; }
+pre { background: #222; padding: 10px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>3D Avatar Debug</h1>
+<div id="results"></div>
+
+<script>
+const results = document.getElementById('results');
+
+async function test(name, fn) {
+  const div = document.createElement('div');
+  try {
+    const result = await fn();
+    div.className = 'pass';
+    div.innerHTML = `✅ ${name}: ${result}`;
+  } catch (err) {
+    div.className = 'fail';
+    div.innerHTML = `❌ ${name}: ${err.message}`;
+    console.error(name, err);
+  }
+  results.appendChild(div);
+}
+
+async function runTests() {
+  // Test 1: Fetch GLB
+  await test('GLB file fetch', async () => {
+    const resp = await fetch('/assets/ultron-avatar.glb');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    const blob = await resp.blob();
+    return `${resp.status} OK, ${blob.size} bytes, type: ${resp.headers.get('content-type')}`;
+  });
+
+  // Test 2: Check Three.js
+  await test('THREE loaded', async () => {
+    return typeof THREE !== 'undefined' ? 'YES' : 'NO - waiting...';
+  });
+
+  // Test 3: Check GLTFLoader
+  await test('GLTFLoader loaded', async () => {
+    return typeof window.GLTFLoader !== 'undefined' ? 'YES' : 'NO - waiting...';
+  });
+
+  // Test 4: Canvas element
+  await test('Canvas element exists', async () => {
+    const canvas = document.getElementById('heroAvatar');
+    if (!canvas) throw new Error('Element not found');
+    return `Found: ${canvas.tagName}`;
+  });
+
+  // Wait for modules to load
+  setTimeout(() => {
+    test('THREE loaded (delayed)', async () => {
+      return typeof THREE !== 'undefined' ? 'YES' : 'NO - failed to load';
+    });
+    test('GLTFLoader loaded (delayed)', async () => {
+      return typeof window.GLTFLoader !== 'undefined' ? 'YES' : 'NO - failed to load';
+    });
+  }, 2000);
+}
+
+runTests();
+
+// Log all fetch requests
+const originalFetch = window.fetch;
+window.fetch = function(...args) {
+  console.log('FETCH:', args[0]);
+  return originalFetch.apply(this, args).then(resp => {
+    console.log('  Response:', resp.status, resp.statusText);
+    return resp;
+  }).catch(err => {
+    console.error('  Error:', err);
+    throw err;
+  });
+};
+</script>
+</body>
+</html>

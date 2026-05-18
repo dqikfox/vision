@@ -1,0 +1,61 @@
+﻿Loading http://localhost:8765 ...
+
+=== RUNTIME STATE ===
+{
+  "THREE": true,
+  "GLTFLoader": false,
+  "avatarScene": true,
+  "avatarCamera": true,
+  "avatarRenderer": true,
+  "avatarModel": true,
+  "canvas": {
+    "exists": true,
+    "width": 558,
+    "height": 636,
+    "clientWidth": 554,
+    "clientHeight": 632,
+    "visible": true
+  },
+  "frame": {
+    "exists": true,
+    "clientWidth": 558,
+    "clientHeight": 636
+  }
+}
+
+=== CONSOLE (last 30) ===
+[log] Waiting for Three.js modules to load...
+[log] Three.js and GLTFLoader loaded successfully
+[log] Initializing 3D Avatar...
+[log] Canvas and container found, proceeding...
+[log] Creating GLTFLoader...
+[log] Loading model from /assets/ultron-avatar.glb...
+[log] Starting animation loop...
+[log] Loading: 15%
+[log] Loading: 20%
+[log] Loading: 21%
+[log] Loading: 24%
+[log] Loading: 25%
+[log] Loading: 42%
+[log] Loading: 69%
+[log] Loading: 79%
+[log] Loading: 81%
+[log] Loading: 82%
+[log] Loading: 85%
+[log] Loading: 98%
+[log] Loading: 100%
+[warning] [.WebGL-0x71e4052ee400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[warning] [.WebGL-0x71e4052ee400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[log] Model load success callback triggered
+[log] Model bounds: {center: Vector3, size: Vector3}
+[log] Model added to scene, camera positioned
+[log] 3D Ultron avatar loaded successfully
+[warning] [.WebGL-0x71e4052ee400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[warning] [.WebGL-0x71e4052ee400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+[log] Renderer active, frame count check...
+[log] Renderer info: {memory: Object, render: Object, programs: Array(3), autoReset: true, reset: }
+
+=== JS ERRORS ===
+No JavaScript errors
+
+Screenshot saved to: ui_runtime_state.png

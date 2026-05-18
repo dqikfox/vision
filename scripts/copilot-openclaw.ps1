@@ -13,17 +13,18 @@ if ([string]::IsNullOrWhiteSpace($gatewayToken)) {
     throw 'OpenClaw gateway token is missing from the local config.'
 }
 
-# Detect gateway URL from config
-$bind = if ($config.gateway.bind) { $config.gateway.bind } else { "loopback" }
 $port = if ($config.gateway.port) { $config.gateway.port } else { 18789 }
 
 # Determine base URL based on bind configuration
-$baseUrl = "http://127.0.0.1:$port/v1"
+$resolvedBind = if ([string]::IsNullOrWhiteSpace($config.gateway.bind) -or $config.gateway.bind -eq 'loopback') {
+    '127.0.0.1'
+} else {
+    $config.gateway.bind
+}
+$baseUrl = "http://${resolvedBind}:$port/v1"
 
 $model = 'openclaw/default'
 
-# Set token persistently for user
-[Environment]::SetEnvironmentVariable('OPENCLAW_GATEWAY_TOKEN', $gatewayToken, 'User')
 $env:OPENCLAW_GATEWAY_TOKEN = $gatewayToken
 
 $env:COPILOT_PROVIDER_TYPE = 'openai'

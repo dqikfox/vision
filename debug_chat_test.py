@@ -1,5 +1,6 @@
 import asyncio
 import json
+
 import websockets
 
 WS = "ws://localhost:8765/ws"
@@ -39,7 +40,7 @@ async def test_chat():
                             return
                         else:
                             print("Found transcript but doesn't contain VISION_TEST_OK")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("Timeout waiting for message")
                 break
 

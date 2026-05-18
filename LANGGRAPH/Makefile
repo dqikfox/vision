@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests
+.PHONY: all format format_diff lint lint_diff lint_package lint_tests test test_watch test_profile integration_tests help extended_tests spell_check spell_fix
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -10,7 +10,7 @@ test:
 	python -m pytest $(TEST_FILE)
 
 integration_tests:
-	python -m pytest tests/integration_tests 
+	python -m pytest tests/integration_tests
 
 test_watch:
 	python -m ptw --snapshot-update --now . -- -vv tests/unit_tests
@@ -39,7 +39,6 @@ lint lint_diff lint_package lint_tests:
 	python -m ruff check .
 	[ "$(PYTHON_FILES)" = "" ] || python -m ruff format $(PYTHON_FILES) --diff
 	[ "$(PYTHON_FILES)" = "" ] || python -m ruff check --select I $(PYTHON_FILES)
-	[ "$(PYTHON_FILES)" = "" ] || python -m mypy --strict $(PYTHON_FILES)
 	[ "$(PYTHON_FILES)" = "" ] || mkdir -p $(MYPY_CACHE) && python -m mypy --strict $(PYTHON_FILES) --cache-dir $(MYPY_CACHE)
 
 format format_diff:
@@ -59,9 +58,17 @@ spell_fix:
 help:
 	@echo '----'
 	@echo 'format                       - run code formatters'
+	@echo 'format_diff                  - show formatting diff for changed files'
 	@echo 'lint                         - run linters'
+	@echo 'lint_diff                    - run linters on changed files'
+	@echo 'lint_package                 - run linters on src'
+	@echo 'lint_tests                   - run linters on tests'
 	@echo 'test                         - run unit tests'
-	@echo 'tests                        - run unit tests'
 	@echo 'test TEST_FILE=<test_file>   - run all tests in file'
 	@echo 'test_watch                   - run unit tests in watch mode'
+	@echo 'test_profile                 - profile unit tests'
+	@echo 'integration_tests            - run integration tests'
+	@echo 'extended_tests               - run extended tests'
+	@echo 'spell_check                  - run codespell'
+	@echo 'spell_fix                    - fix codespell findings'
 

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from elite_brain import Brain
 
 
@@ -17,6 +19,7 @@ def _retarget_brain_paths(brain: Brain, tmp_path: Path) -> None:
     brain._evolution._rules.clear()
 
 
+@pytest.mark.asyncio
 async def test_brain_ingest_persists_task_and_procedure(tmp_path) -> None:
     brain = Brain()
     _retarget_brain_paths(brain, tmp_path)
@@ -42,6 +45,7 @@ async def test_brain_ingest_persists_task_and_procedure(tmp_path) -> None:
     assert proc_data[0]["successes"] == 1
 
 
+@pytest.mark.asyncio
 async def test_brain_augment_system_includes_task_and_procedure_context(tmp_path) -> None:
     brain = Brain()
     _retarget_brain_paths(brain, tmp_path)
@@ -66,6 +70,7 @@ async def test_brain_augment_system_includes_task_and_procedure_context(tmp_path
     assert "tools=read_file,write_file" in prompt
 
 
+@pytest.mark.asyncio
 async def test_brain_status_reports_task_and_procedure_snapshots(tmp_path) -> None:
     brain = Brain()
     _retarget_brain_paths(brain, tmp_path)
@@ -74,6 +79,6 @@ async def test_brain_status_reports_task_and_procedure_snapshots(tmp_path) -> No
     brain._procedures.remember("Audit memory", ["read_file"], "Success.", "success")
 
     status = brain.status()
-    assert status["active_tasks"] >= 1
+    assert status["active_tasks"] == 1
     assert status["task_snapshot"][0]["goal"] == "Audit memory"
     assert status["procedure_snapshot"][0]["tools_used"] == ["read_file"]

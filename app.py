@@ -1,31 +1,32 @@
-import os
-import json
-import requests
 import logging
-import threading
-import time
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+import os
+
+import anthropic
+import requests
+from flask import Flask, jsonify, render_template_string, request, send_from_directory
 from flask_cors import CORS
 from openai import OpenAI
-import anthropic
 
 # --- PRODUCTION LOGGING ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("MultiverseCommandPro")
 
 # --- CORE CONFIGURATION ---
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
 
 def get_openai_client():
     api_key = os.environ.get("OPENAI_API_KEY")
     return OpenAI(api_key=api_key) if api_key else None
 
+
 def get_anthropic_client():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     return anthropic.Anthropic(api_key=api_key) if api_key else None
+
 
 # --- ELITE CINEMATIC UI (ONE-SHOT MASTERPIECE) ---
 HTML_TEMPLATE = """
@@ -57,16 +58,16 @@ HTML_TEMPLATE = """
         *::-webkit-scrollbar-track { background: transparent; }
         *::-webkit-scrollbar-thumb { background-color: var(--primary); border-radius: 10px; }
 
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: var(--bg-dark); 
-            color: #e2e8f0; 
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: #e2e8f0;
             height: 100vh;
             margin: 0;
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            background-image: 
+            background-image:
                 radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.1) 0%, transparent 40%),
                 radial-gradient(circle at 80% 80%, rgba(244, 63, 94, 0.05) 0%, transparent 40%);
         }
@@ -391,7 +392,7 @@ HTML_TEMPLATE = """
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            
+
             <div class="grid grid-cols-2 gap-6 mb-6">
                 <div class="input-group">
                     <label>Origin Provider</label>
@@ -435,14 +436,14 @@ HTML_TEMPLATE = """
         function summonHero() {
             const id = 'agent_' + Math.random().toString(36).substr(2, 6);
             const baseData = ROSTER[agents.length % ROSTER.length];
-            
+
             const template = document.getElementById('hero-card-template');
             const clone = template.content.cloneNode(true);
             const card = clone.querySelector('.hero-card');
             card.id = 'card-' + id;
             card.querySelector('.hero-icon').src = baseData.img;
             card.querySelector('.hero-name').value = baseData.name;
-            
+
             const providerSelect = card.querySelector('.provider-select');
             const modelSelect = card.querySelector('.model-select');
             const targetSelect = card.querySelector('.target-select');
@@ -522,7 +523,7 @@ HTML_TEMPLATE = """
             if (isRunning) return;
             isRunning = true;
             document.getElementById('start-battle').textContent = 'CLASH IN PROGRESS';
-            
+
             let currentId = document.getElementById('start-hero').value;
             let currentMsg = document.getElementById('initial-prompt').value;
             const log = document.getElementById('chat-log');
@@ -550,10 +551,10 @@ HTML_TEMPLATE = """
                         body: JSON.stringify({ provider, model, system, message: currentMsg })
                     });
                     const res = await r.json();
-                    
+
                     await triggerStrike(agent);
                     bubble.textContent = res.output.substring(0, 100) + "...";
-                    
+
                     const entry = document.createElement('div');
                     entry.className = 'log-entry';
                     entry.style.borderColor = agent.baseData.color;
@@ -567,7 +568,7 @@ HTML_TEMPLATE = """
                     log.prepend(entry);
 
                     await new Promise(r => setTimeout(r, 4000));
-                    
+
                     bubble.classList.remove('active');
                     agent.avatar.classList.remove('active-aura');
                     await moveTo(agent.avatar, 10 + Math.random() * 80, 10 + Math.random() * 70);
@@ -601,55 +602,69 @@ HTML_TEMPLATE = """
 </html>
 """
 
-@app.route('/')
+
+@app.route("/")
 def index():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/<path:path>')
+
+@app.route("/<path:path>")
 def serve_assets(path):
     return send_from_directory(app.static_folder, path)
 
-@app.route('/api/models', methods=['GET'])
+
+@app.route("/api/models", methods=["GET"])
 def fetch_models():
-    provider = request.args.get('provider', 'ollama')
+    provider = request.args.get("provider", "ollama")
     try:
-        if provider == 'ollama':
+        if provider == "ollama":
             r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
-            return jsonify({"models": [{"id": m['name'], "name": m['name']} for m in r.json().get('models', [])]})
-        elif provider == 'openai':
+            return jsonify({"models": [{"id": m["name"], "name": m["name"]} for m in r.json().get("models", [])]})
+        elif provider == "openai":
             c = get_openai_client()
-            if not c: return jsonify({"error": "Missing Key"}), 400
-            return jsonify({"models": [{"id": m.id, "name": m.id} for m in c.models.list().data if 'gpt' in m.id]})
-        elif provider == 'anthropic':
-            if not get_anthropic_client(): return jsonify({"error": "Missing Key"}), 400
+            if not c:
+                return jsonify({"error": "Missing Key"}), 400
+            return jsonify({"models": [{"id": m.id, "name": m.id} for m in c.models.list().data if "gpt" in m.id]})
+        elif provider == "anthropic":
+            if not get_anthropic_client():
+                return jsonify({"error": "Missing Key"}), 400
             return jsonify({"models": [{"id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet"}]})
         return jsonify({"models": []})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/chat', methods=['POST'])
+
+@app.route("/api/chat", methods=["POST"])
 def handle_chat():
     d = request.json
-    p, m, s, msg = d.get('provider'), d.get('model'), d.get('system', ""), d.get('message', "")
+    p, m, s, msg = d.get("provider"), d.get("model"), d.get("system", ""), d.get("message", "")
     try:
-        if p == 'ollama':
-            r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json={
-                "model": m, "system": s, "prompt": msg, "stream": False
-            }, timeout=180)
-            return jsonify({"output": r.json().get('response', '')})
-        elif p == 'openai':
-            r = get_openai_client().chat.completions.create(
+        if p == "ollama":
+            r = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={"model": m, "system": s, "prompt": msg, "stream": False},
+                timeout=180,
+            )
+            return jsonify({"output": r.json().get("response", "")})
+        elif p == "openai":
+            client = get_openai_client()
+            if client is None:
+                return jsonify({"error": "OpenAI API key not configured"}), 400
+            r = client.chat.completions.create(
                 model=m, messages=[{"role": "system", "content": s}, {"role": "user", "content": msg}]
             )
             return jsonify({"output": r.choices[0].message.content})
-        elif p == 'anthropic':
-            r = get_anthropic_client().messages.create(
-                model=m, max_tokens=2048, system=s, messages=[{"role": "user", "content": msg}]
-            )
+        elif p == "anthropic":
+            client = get_anthropic_client()
+            if client is None:
+                return jsonify({"error": "Anthropic API key not configured"}), 400
+            r = client.messages.create(model=m, max_tokens=2048, system=s, messages=[{"role": "user", "content": msg}])
             return jsonify({"output": r.content[0].text})
+        return jsonify({"error": f"Unsupported provider: {p}"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     logger.info("Starting Multiverse Command: Elite Masterpiece Edition...")
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=False)

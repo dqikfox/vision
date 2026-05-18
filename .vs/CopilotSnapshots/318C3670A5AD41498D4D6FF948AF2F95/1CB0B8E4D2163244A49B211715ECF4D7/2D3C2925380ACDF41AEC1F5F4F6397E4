@@ -1,0 +1,69 @@
+﻿import asyncio
+from playwright.sync_api import sync_playwright
+import json
+
+def main():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
+
+        console_msgs = []
+        js_errors = []
+
+        page.on('console', lambda msg: console_msgs.append(f'[{msg.type}] {msg.text}'))
+        page.on('pageerror', lambda err: js_errors.append(str(err)))
+
+        print("Loading http://localhost:8765 ...")
+        page.goto('http://localhost:8765', wait_until='networkidle')
+        page.wait_for_timeout(3000)
+
+        state = page.evaluate('''() => {
+            const canvas = document.getElementById('heroAvatar');
+            const frame = document.getElementById('heroAvatarFrame');
+            return {
+                THREE: typeof THREE !== 'undefined',
+                GLTFLoader: typeof THREE !== 'undefined' && typeof THREE.GLTFLoader !== 'undefined',
+                avatarScene: typeof avatarScene !== 'undefined' && avatarScene !== null,
+                avatarCamera: typeof avatarCamera !== 'undefined' && avatarCamera !== null,
+                avatarRenderer: typeof avatarRenderer !== 'undefined' && avatarRenderer !== null,
+                avatarModel: typeof avatarModel !== 'undefined' && avatarModel !== null,
+                canvas: {
+                    exists: canvas !== null,
+                    width: canvas?.width || 0,
+                    height: canvas?.height || 0,
+                    clientWidth: canvas?.clientWidth || 0,
+                    clientHeight: canvas?.clientHeight || 0,
+                    visible: canvas ? window.getComputedStyle(canvas).display !== 'none' : false
+                },
+                frame: {
+                    exists: frame !== null,
+                    clientWidth: frame?.clientWidth || 0,
+                    clientHeight: frame?.clientHeight || 0
+                }
+            };
+        }''')
+
+        page.screenshot(path='ui_runtime_state.png', full_page=True)
+
+        print("\n=== RUNTIME STATE ===")
+        print(json.dumps(state, indent=2))
+
+        print("\n=== CONSOLE (last 30) ===")
+        for msg in console_msgs[-30:]:
+            print(msg)
+
+        print("\n=== JS ERRORS ===")
+        if js_errors:
+            for err in js_errors:
+                print(err)
+        else:
+            print("No JavaScript errors")
+
+        print("\n Screenshot saved to: ui_runtime_state.png")
+
+        input("\nPress Enter to close browser...")
+        browser.close()
+
+if __name__ == '__main__':
+    main()

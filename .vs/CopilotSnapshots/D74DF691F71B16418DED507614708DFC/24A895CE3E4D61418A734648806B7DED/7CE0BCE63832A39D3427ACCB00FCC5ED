@@ -1,0 +1,27 @@
+﻿# Vision environment — all valid API keys
+# ElevenLabs: sk_a99d3... is VALID (confirmed working — voice tested)
+# sk_5f2c... is the OLD invalid key that caused 401 auth failures
+
+# ── Local Ollama ───────────────────────────────────────────────────────────────
+OLLAMA_HOST=http://localhost:11434
+VISION_DEFAULT_PROVIDER=ollama
+VISION_DEFAULT_MODEL=devstral:latest
+
+ELEVENLABS_API_KEY=sk_a99d3caeef2c2dc6e98567110d905e724af83375e5c29d9d
+ELEVENLABS_AGENT_ID=agent_01jz2wq70mfetr2b7nchrhew1t
+OPENAI_API_KEY=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
+DEEPSEEK_API_KEY=sk-585fbd0a7885488496c63a123d2b2440
+GITHUB_TOKEN=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
+HF_TOKEN=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
+PINECONE_API_KEY=pcsk_5aWkqm_8QSRF7mJ31TNTxSCo3iBUvWtbgaT1u5LY2Bnn767MoRBXB82yVob5Y4ypXfNJcC
+VERCEL_API_KEY=vcp_0ZvLCUI7GETz1tLjmOqb9B8LngNwHArWPKhLCbOHjiupSbCjPF1TuoOv
+SUPABASE_PAT=sbp_3d5d983f62520d0634e80a0465abe555dc9ec34b
+SUPABASE_URL=https://jdkddrfloluhkytxdkkh.supabase.co
+NVIDIA_API_KEY=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
+LANGCHAIN_API_KEY=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
+TELEGRAM_BOT_TOKEN=8746389490:AAG8Tr7HIpCdIfzidneputcLzuRN9cSnNjQ
+# Invalid/expired — kept for reference only:
+# GROQ_API_KEY=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  (403)
+# MISTRAL_API_KEY=C41ZZpQXmRFy8IwmECDItNZZ9O2RB9sZ  (401)
+# GEMINI_API_KEY=AIzaSyAXRBP9DtXP8WzQLVjLs4uP8BSZKNJ5h7A  (403)
+# ANTHROPIC_API_KEY=  (not set)

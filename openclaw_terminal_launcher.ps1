@@ -7,7 +7,9 @@ param(
     [string]$ModelId = "llama3.2:3b",
     [switch]$ValidateOnly,
     [switch]$NoTui,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [string]$OllamaHostDefault = $(if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { '127.0.0.1:11434' }),
+    [string]$GatewayHost = $(if ($env:OPENCLAW_GATEWAY_HOST) { $env:OPENCLAW_GATEWAY_HOST } else { '127.0.0.1' })
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +23,9 @@ $UserHome = [Environment]::GetFolderPath("UserProfile")
 $OpenClawHome = Join-Path $UserHome ".openclaw"
 $OpenClawConfigPath = Join-Path $OpenClawHome "openclaw.json"
 $OllamaBaseUrl = "http://127.0.0.1:11434"
-$OllamaHost = "0.0.0.0:11434"   # bind all interfaces
+$OllamaHost = $OllamaHostDefault
 $GatewayPort = 18789
-$GatewayWsUrl = "ws://100.83.120.56:$GatewayPort"
+$GatewayWsUrl = "ws://${GatewayHost}:$GatewayPort"
 
 # If OLLAMA_MODELS points to an unavailable drive (e.g. external SSD), create a subst so
 # Ollama can start. Ollama reads OLLAMA_MODELS from the Windows machine registry directly —

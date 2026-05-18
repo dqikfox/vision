@@ -6,6 +6,22 @@
 <title>VISION — Universal Accessibility Operator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet"/>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+window.THREE = THREE;
+window.GLTFLoader = GLTFLoader;
+window.THREE_LOADED = true;
+console.log('Three.js and GLTFLoader loaded successfully');
+</script>
 <style>
 /* ═══════ ROOT ═══════ */
 :root{
@@ -24,6 +40,24 @@
   --panel-shadow:0 28px 90px rgba(0,0,0,.45);
   --metal:#050913;--metal2:#0c1528;
   --font-ui:'Orbitron',monospace;--font-mono:'Share Tech Mono',monospace;
+}
+
+/* High Contrast Mode Variables */
+:root.high-contrast {
+  --bg:#000000;--bg2:#111111;
+  --p:#00ffff;--p2:#00ffff;--p3:#00ffff;
+  --c:#ffff00;--c2:#ffff00;--c3:#ffff00;
+  --g:#00ff00;--g2:#00ff00;
+  --gold:#ffff00;--gold2:#ffff00;
+  --r:#ff0000;--r2:#ff0000;
+  --dim:#888888;
+  --tx:#ffffff;--tx2:#dddddd;
+  --glow:rgba(0,255,255,.45);--cglow:rgba(255,255,0,.32);
+  --panel-bg:rgba(0,0,0,.9);
+  --panel-border:rgba(0,255,255,.5);
+  --panel-gloss:rgba(255,255,255,.1);
+  --panel-shadow:0 28px 90px rgba(0,0,0,.7);
+  --metal:#000000;--metal2:#111111;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg)}
@@ -101,25 +135,25 @@ body::after{
   position:fixed;inset:0;z-index:1;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   pointer-events:none;
-  padding:104px 0 168px;
+  padding:124px 28px 196px;
 }
 
 /* ═══════ HERO COMMAND DECK ═══════ */
 #heroShell{
   position:relative;
-  width:min(1040px,92vw);
-  min-height:560px;
-  display:grid;
-  grid-template-columns:220px minmax(320px,1fr) 220px;
+  width:min(1120px,94vw);
+  min-height:620px;
+  display:flex;
   align-items:center;
-  gap:24px;
-  padding:54px 34px 96px;
-  border-radius:36px;
+  justify-content:center;
+  padding:86px 42px 112px;
+  border-radius:40px;
   background:
-    linear-gradient(180deg,rgba(10,16,36,.86),rgba(6,10,22,.82)),
-    radial-gradient(circle at top,rgba(96,165,250,.08),transparent 42%);
-  border:1px solid rgba(96,165,250,.18);
-  box-shadow:0 42px 140px rgba(0,0,0,.46), inset 0 1px 0 rgba(255,255,255,.05);
+    radial-gradient(circle at 18% 18%, rgba(96,165,250,.16), transparent 24%),
+    radial-gradient(circle at 84% 18%, rgba(34,211,238,.14), transparent 26%),
+    linear-gradient(180deg,rgba(10,16,36,.92),rgba(6,10,22,.86));
+  border:1px solid rgba(96,165,250,.24);
+  box-shadow:0 52px 160px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.05);
   overflow:hidden;
 }
 #heroShell::before{
@@ -143,11 +177,66 @@ body::after{
 }
 .hero-kicker{left:30px;color:var(--c2)}
 .hero-meta{right:30px;color:var(--p3)}
+.hero-stage-grid{
+  width:100%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.hero-copy{
+  display:none;
+}
+.hero-title{
+  font-family:var(--font-ui);
+  font-size:clamp(40px,5vw,72px);
+  line-height:.98;
+  letter-spacing:.12em;
+  color:#eef6ff;
+  text-shadow:0 0 32px rgba(96,165,250,.22);
+}
+.hero-title span{
+  display:block;
+  color:var(--c2);
+  text-shadow:0 0 34px rgba(34,211,238,.24);
+}
+.hero-lead{
+  max-width:56ch;
+  font-size:14px;
+  line-height:1.9;
+  color:var(--tx2);
+}
+.hero-pill-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+}
+.hero-pill{
+  min-width:164px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid rgba(96,165,250,.16);
+  background:linear-gradient(180deg,rgba(12,18,38,.82),rgba(8,12,25,.72));
+  box-shadow:0 18px 40px rgba(0,0,0,.22);
+}
+.hero-pill-label{
+  font-family:var(--font-ui);
+  font-size:8px;
+  letter-spacing:.2em;
+  color:var(--tx2);
+  margin-bottom:8px;
+}
+.hero-pill-value{
+  font-family:var(--font-ui);
+  font-size:11px;
+  letter-spacing:.14em;
+  color:var(--p3);
+  word-break:break-word;
+}
 .hero-col{display:flex;flex-direction:column;gap:14px}
 .hero-card{
   position:relative;
-  padding:16px 16px 15px;
-  border-radius:20px;
+  padding:18px 18px 17px;
+  border-radius:22px;
   background:linear-gradient(180deg,rgba(12,18,38,.78),rgba(8,12,25,.66));
   border:1px solid rgba(96,165,250,.12);
   box-shadow:0 14px 34px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.03);
@@ -178,7 +267,116 @@ body::after{
   position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
   pointer-events:none;
   flex-shrink:0;
-  min-height:360px;
+  min-height:420px;
+}
+.hero-avatar-stage{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:440px;
+}
+.hero-avatar-backdrop{
+  position:absolute;
+  inset:80px 80px 56px;
+  border-radius:44px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(34,211,238,.22), transparent 34%),
+    radial-gradient(circle at 50% 72%, rgba(79,70,229,.22), transparent 46%),
+    linear-gradient(180deg, rgba(7,11,24,.52), rgba(5,8,18,.16));
+  filter:blur(12px);
+}
+.hero-avatar-frame{
+  position:relative;
+  width:min(560px,80vw);
+  aspect-ratio:1/1.14;
+  border-radius:40px;
+  overflow:hidden;
+  border:1px solid rgba(103,232,249,.3);
+  background:
+    linear-gradient(180deg, rgba(10,14,32,.72), rgba(5,9,18,.94)),
+    radial-gradient(circle at top, rgba(103,232,249,.12), transparent 44%);
+  box-shadow:
+    0 42px 110px rgba(0,0,0,.5),
+    0 0 0 1px rgba(96,165,250,.12),
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 40px rgba(79,70,229,.16);
+  z-index:2;
+}
+
+.hero-avatar-frame::before{
+  content:'';
+  position:absolute;
+  inset:12px;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.08);
+  pointer-events:none;
+}
+.hero-avatar-frame::after{
+  content:'';
+  position:absolute;
+  left:0;right:0;bottom:0;height:30%;
+  background:linear-gradient(180deg,transparent,rgba(3,6,17,.82));
+  pointer-events:none;
+}
+#heroAvatar{
+  width:100%;
+  height:100%;
+  display:block;
+  transition:transform .5s ease, filter .5s ease;
+}
+#heroAvatar.canvas-3d{
+  object-fit:unset;
+  object-position:unset;
+  filter:none;
+  transform:none;
+}
+.hero-avatar-stage #orbCanvas{
+  position:absolute;
+  inset:50%;
+  transform:translate(-50%,-50%);
+  width:520px;
+  height:520px;
+  opacity:.18;
+  mix-blend-mode:screen;
+}
+.hero-status-stack{
+  position:absolute;
+  left:18px;
+  right:18px;
+  bottom:20px;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  z-index:2;
+}
+.hero-status-card{
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(96,165,250,.16);
+  background:rgba(5,9,18,.7);
+  backdrop-filter:blur(12px);
+  box-shadow:0 16px 34px rgba(0,0,0,.24);
+}
+.hero-status-label{
+  font-family:var(--font-ui);
+  font-size:8px;
+  letter-spacing:.18em;
+  color:var(--tx2);
+  margin-bottom:6px;
+}
+.hero-status-value{
+  font-family:var(--font-ui);
+  font-size:11px;
+  letter-spacing:.12em;
+  color:var(--tx);
+  word-break:break-word;
+}
+.hero-status-note{
+  margin-top:4px;
+  font-size:10px;
+  color:var(--tx2);
+  line-height:1.5;
 }
 #orbCanvas{
   width:320px;height:320px;
@@ -200,6 +398,26 @@ body::after{
 .hero-footer{
   position:absolute;left:50%;bottom:28px;transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+#heroShell[data-runtime-state="thinking"] .hero-avatar-frame{
+  border-color:rgba(245,158,11,.5);
+  box-shadow:0 34px 90px rgba(0,0,0,.44),0 0 30px rgba(245,158,11,.18);
+}
+#heroShell[data-runtime-state="speaking"] .hero-avatar-frame{
+  border-color:rgba(34,197,94,.5);
+  box-shadow:0 34px 90px rgba(0,0,0,.44),0 0 34px rgba(34,197,94,.2);
+}
+#heroShell[data-runtime-state="listening"] .hero-avatar-frame,
+#heroShell[data-runtime-state="recording"] .hero-avatar-frame{
+  border-color:rgba(34,211,238,.54);
+  box-shadow:0 34px 90px rgba(0,0,0,.44),0 0 34px rgba(34,211,238,.22);
+}
+#heroShell[data-runtime-state="speaking"] #heroAvatar{
+  transform:scale(1.045);
+  filter:contrast(1.1) saturate(1.16) drop-shadow(0 0 28px rgba(34,197,94,.14));
+}
+#heroShell[data-runtime-state="thinking"] #heroAvatar{
+  filter:contrast(1.08) saturate(1.14) hue-rotate(-8deg);
 }
 
 /* Orbiting data rings */
@@ -227,25 +445,19 @@ body::after{
 
 @media (max-width: 1100px){
   #heroShell{
-    width:min(920px,94vw);
-    grid-template-columns:1fr;
-    gap:18px;
-    padding:66px 24px 92px;
-  }
-  .hero-col{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    width:min(1000px,95vw);
+    padding:80px 28px 104px;
   }
 }
 @media (max-width: 760px){
-  #stage{padding:116px 0 182px}
+  #stage{padding:120px 16px 198px}
   #heroShell{
     min-height:auto;
-    padding:72px 18px 88px;
+    padding:78px 18px 96px;
     border-radius:28px;
   }
-  .hero-col{grid-template-columns:1fr}
-  #orbCanvas{width:260px;height:260px}
+  .hero-avatar-stage #orbCanvas{width:320px;height:320px}
+  .hero-avatar-frame{width:min(100%,380px);border-radius:28px}
   .ring1{width:300px;height:300px}
   .ring2{width:344px;height:344px}
   .ring3{width:390px;height:390px}
@@ -254,14 +466,14 @@ body::after{
 /* ═══════ INPUT BAR — bottom center, always visible ═══════ */
 #inputBar{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
-  width:min(700px,88vw);z-index:100;pointer-events:all;
-  display:flex;align-items:center;gap:10px;
+  width:min(860px,90vw);z-index:100;pointer-events:all;
+  display:flex;align-items:center;gap:14px;
 }
 #inputWrap{
   flex:1;display:flex;align-items:center;
   background:linear-gradient(180deg,rgba(7,10,24,.88),rgba(9,14,30,.8));
   border:1px solid rgba(96,165,250,.22);
-  border-radius:18px;padding:8px 10px 8px 22px;
+  border-radius:22px;padding:10px 12px 10px 22px;
   backdrop-filter:blur(22px);
   box-shadow:0 0 0 1px rgba(255,255,255,.03),0 18px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.04);
   transition:border-color .3s,box-shadow .3s;
@@ -277,13 +489,13 @@ body::after{
 }
 #textInput::placeholder{color:var(--dim)}
 .input-icon-btn{
-  width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-size:16px;
+  width:46px;height:46px;border-radius:16px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
   transition:all .25s;background:transparent;color:var(--tx2);flex-shrink:0;
 }
-.input-icon-btn:hover{color:var(--tx);background:rgba(255,255,255,.06)}
+.input-icon-btn:hover{color:var(--tx);background:rgba(255,255,255,.08)}
 .input-send-btn{
-  width:52px;height:52px;border-radius:18px;border:none;cursor:pointer;
+  width:58px;height:58px;border-radius:20px;border:none;cursor:pointer;
   background:linear-gradient(135deg,var(--p),var(--c));
   display:flex;align-items:center;justify-content:center;font-size:18px;
   box-shadow:0 14px 32px rgba(0,0,0,.35),0 0 22px rgba(96,165,250,.22);
@@ -301,14 +513,14 @@ body::after{
 
 /* LEFT PANEL — Console/Chat */
 #panelLeft{
-  left:0;top:0;bottom:0;width:380px;
+  left:0;top:0;bottom:0;width:400px;
   flex-direction:row;
-  transform:translateX(calc(-100% + 36px));
+  transform:translateX(calc(-100% + 44px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
 }
 #panelLeft:hover,#panelLeft.pinned{transform:translateX(0)}
 .panel-tab-left{
-  width:36px;height:100%;flex-shrink:0;cursor:pointer;
+  width:44px;height:100%;flex-shrink:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(10,16,36,.96),rgba(8,12,26,.88));border-right:1px solid var(--panel-border);
   display:flex;align-items:center;justify-content:center;
   writing-mode:vertical-rl;text-orientation:mixed;
@@ -323,14 +535,14 @@ body::after{
 
 /* RIGHT PANEL — Actions */
 #panelRight{
-  right:0;top:0;bottom:0;width:340px;
+  right:0;top:0;bottom:0;width:384px;
   flex-direction:row-reverse;
-  transform:translateX(calc(100% - 36px));
+  transform:translateX(calc(100% - 44px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
 }
 #panelRight:hover,#panelRight.pinned{transform:translateX(0)}
 .panel-tab-right{
-  width:36px;height:100%;flex-shrink:0;cursor:pointer;
+  width:44px;height:100%;flex-shrink:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(10,16,36,.96),rgba(8,12,26,.88));border-left:1px solid var(--panel-border);
   display:flex;align-items:center;justify-content:center;
   writing-mode:vertical-lr;text-orientation:mixed;
@@ -344,14 +556,14 @@ body::after{
 
 /* TOP PANEL — Settings */
 #panelTop{
-  top:0;left:0;right:0;height:320px;
+  top:0;left:0;right:0;height:368px;
   flex-direction:column;
-  transform:translateY(calc(-100% + 36px));
+  transform:translateY(calc(-100% + 44px));
   transition:transform .35s cubic-bezier(.4,0,.2,1);
 }
 #panelTop:hover,#panelTop.pinned{transform:translateY(0)}
 .panel-tab-top{
-  height:36px;width:100%;flex-shrink:0;cursor:pointer;
+  height:44px;width:100%;flex-shrink:0;cursor:pointer;
   background:linear-gradient(180deg,rgba(10,16,36,.96),rgba(8,12,26,.88));border-bottom:1px solid var(--panel-border);
   display:flex;align-items:center;justify-content:center;gap:16px;
   font-family:var(--font-ui);font-size:9px;letter-spacing:.3em;color:var(--gold);
@@ -418,8 +630,8 @@ body::after{
 .action-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:4px 0}
 .act-btn{
   background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(96,165,250,.12);
-  border-radius:14px;padding:11px 12px;cursor:pointer;
-  font-family:var(--font-mono);font-size:11px;color:var(--tx2);
+  border-radius:16px;padding:13px 14px;cursor:pointer;
+  font-family:var(--font-mono);font-size:12px;color:var(--tx2);
   text-align:left;transition:all .2s;display:flex;align-items:center;gap:7px;
   box-shadow:0 10px 28px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.03);
 }
@@ -438,17 +650,48 @@ body::after{
 }
 
 /* ═══════ SETTINGS PANEL TOP ═══════ */
-.cfg-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;padding:16px}
+.cfg-grid{display:grid;grid-template-columns:1.15fr 1.15fr .9fr;gap:20px;padding:18px}
 .cfg-block{display:flex;flex-direction:column;gap:8px}
 .cfg-lbl{font-family:var(--font-ui);font-size:8px;letter-spacing:.25em;color:rgba(29,78,216,.5);margin-bottom:2px}
-.radio-row{display:flex;gap:6px;flex-wrap:wrap}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap}
 .r-opt{
-  padding:5px 11px;border-radius:3px;cursor:pointer;font-size:10px;
+  padding:8px 13px;border-radius:12px;cursor:pointer;font-size:10px;
   border:1px solid rgba(29,78,216,.15);background:rgba(255,255,255,.02);
   color:var(--tx2);transition:all .2s;font-family:var(--font-ui);letter-spacing:.1em;
 }
 .r-opt.on{background:rgba(29,78,216,.18);border-color:var(--p);color:var(--p3)}
 .r-opt.on-c{background:rgba(6,182,212,.15);border-color:var(--c);color:var(--c3)}
+.voice-provider-summary{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:4px;
+  margin-bottom:2px;
+}
+.voice-provider-copy{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.voice-provider-title{
+  font-family:var(--font-ui);
+  font-size:8px;
+  letter-spacing:.16em;
+  color:var(--p3);
+}
+.voice-provider-note{
+  font-size:10px;
+  color:var(--tx2);
+  line-height:1.45;
+}
+.voice-load-hint{
+  font-family:var(--font-ui);
+  font-size:8px;
+  color:var(--dim);
+  margin-top:6px;
+  letter-spacing:.1em;
+}
 .key-row{display:flex;gap:6px}
 .key-inp{
   flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.15);
@@ -512,7 +755,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   display:flex;flex-direction:column;gap:8px;pointer-events:all;align-items:flex-end;
 }
 .corner-btn{
-  width:48px;height:48px;border-radius:16px;border:1px solid rgba(96,165,250,.18);
+  width:56px;height:56px;border-radius:18px;border:1px solid rgba(96,165,250,.18);
   background:linear-gradient(180deg,rgba(8,12,26,.9),rgba(9,15,32,.82));backdrop-filter:blur(16px);
   display:flex;align-items:center;justify-content:center;font-size:16px;
   cursor:pointer;transition:all .25s;color:var(--tx2);
@@ -522,7 +765,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .corner-btn:hover{border-color:var(--p2);color:var(--p3);box-shadow:0 16px 34px rgba(0,0,0,.4),0 0 24px rgba(96,165,250,.22);transform:translateY(-1px)}
 .corner-btn.active{border-color:var(--r);color:var(--r);box-shadow:0 0 16px rgba(239,68,68,.4)}
 .corner-btn.mode-op{border-color:var(--c);color:var(--c2)}
-.corner-btn-lbl{font-family:var(--font-ui);font-size:7px;letter-spacing:.15em;
+.corner-btn-lbl{font-family:var(--font-ui);font-size:8px;letter-spacing:.15em;
   color:var(--tx2);text-align:center;margin-top:2px}
 
 /* ═══════ MODEL BADGE ═══════ */
@@ -556,6 +799,88 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 @keyframes modelPulse{
   0%,100%{opacity:1;transform:scale(1)}
   50%{opacity:.6;transform:scale(.85)}
+}
+
+#modelControlPanel{
+  position:fixed;top:56px;right:16px;z-index:200;pointer-events:all;
+  width:min(470px,calc(100vw - 32px));
+  background:linear-gradient(135deg,rgba(79,70,229,.12),rgba(6,182,212,.08)),
+              linear-gradient(180deg,rgba(10,16,36,.96),rgba(8,13,28,.92));
+  backdrop-filter:blur(18px);
+  border:1px solid rgba(96,165,250,.28);
+  border-radius:18px;
+  padding:12px 14px;
+  box-shadow:0 16px 42px rgba(0,0,0,.45),0 0 0 1px rgba(96,165,250,.08),inset 0 1px 0 rgba(255,255,255,.06);
+  display:flex;flex-direction:column;gap:10px;
+}
+.model-panel-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  font-family:var(--font-ui);font-size:9px;letter-spacing:.22em;color:var(--p2);
+}
+.model-panel-live{
+  display:grid;grid-template-columns:1fr 1.25fr;gap:8px;
+}
+.model-live-card{
+  min-width:0;
+  padding:10px 12px;border-radius:12px;
+  border:1px solid rgba(96,165,250,.14);
+  background:rgba(4,8,20,.62);
+}
+.model-live-label{
+  font-family:var(--font-ui);font-size:8px;letter-spacing:.18em;color:var(--tx2);
+  margin-bottom:4px;
+}
+.model-live-value{
+  font-family:var(--font-mono);font-size:12px;color:var(--tx);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.model-selector-grid{
+  display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:8px;align-items:end;
+}
+.model-select-wrap{
+  display:flex;flex-direction:column;gap:4px;min-width:0;
+}
+.model-select-label{
+  font-family:var(--font-ui);font-size:8px;letter-spacing:.16em;color:var(--tx2);
+}
+.model-select{
+  width:100%;
+  background:rgba(29,78,216,.08);
+  border:1px solid rgba(96,165,250,.2);
+  border-radius:10px;
+  color:var(--tx);
+  padding:10px 12px;
+  font-size:12px;
+  font-family:var(--font-mono);
+  outline:none;
+}
+.model-select:focus{
+  border-color:var(--p2);
+  box-shadow:0 0 0 1px rgba(96,165,250,.18),0 0 18px rgba(96,165,250,.16);
+}
+.model-select:disabled{opacity:.65;cursor:not-allowed}
+.model-panel-btn{
+  height:42px;
+  padding:0 16px;border-radius:12px;border:1px solid rgba(96,165,250,.2);
+  background:rgba(29,78,216,.14);color:var(--p3);
+  font-family:var(--font-ui);font-size:9px;letter-spacing:.14em;
+  cursor:pointer;transition:all .2s;
+}
+.model-panel-btn:hover{
+  border-color:var(--p2);
+  box-shadow:0 0 18px rgba(96,165,250,.15);
+}
+.model-panel-note{
+  font-family:var(--font-ui);font-size:8px;letter-spacing:.12em;color:var(--tx2);
+}
+@media (max-width: 900px){
+  #modelControlPanel{
+    top:104px;left:16px;right:16px;width:auto;
+  }
+  .model-panel-live,
+  .model-selector-grid{
+    grid-template-columns:1fr;
+  }
 }
 
 #commandCenterBadge{
@@ -944,6 +1269,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </style>
 </head>
 <body>
+  <!-- Skip Links for Accessibility -->
+  <a href="#chatInput" class="skip-link">Skip to chat input</a>
+  <a href="#panelLeft" class="skip-link">Skip to chat history</a>
+  <a href="#panelRight" class="skip-link">Skip to actions panel</a>
+  <a href="#panelTop" class="skip-link">Skip to settings</a>
 
 <!-- ═══ BOOT ═══ -->
 <div id="boot">
@@ -1003,54 +1333,51 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <a id="commandCenterBadge" href="/command-center" target="_blank" rel="noopener">CMD CENTER</a>
 <div id="systemMapBadge" class="sys-map-badge-pulse" onclick="openSystemMap()">SYSTEM MAP</div>
 <div id="modelBadge" onclick="openPicker()">⬡ SELECT MODEL</div>
+<div id="modelControlPanel">
+  <div class="model-panel-head">
+    <span>LIVE MODEL ROUTING</span>
+    <button type="button" class="model-panel-btn" onclick="refreshModelSelectors()">REFRESH</button>
+  </div>
+  <div class="model-panel-live">
+    <div class="model-live-card">
+      <div class="model-live-label">RUNNING PROVIDER</div>
+      <div class="model-live-value" id="runningProviderValue">Loading...</div>
+    </div>
+    <div class="model-live-card">
+      <div class="model-live-label">RUNNING MODEL</div>
+      <div class="model-live-value" id="runningModelValue">Loading...</div>
+    </div>
+  </div>
+  <div class="model-selector-grid">
+    <label class="model-select-wrap">
+      <span class="model-select-label">MODEL PROVIDER</span>
+      <select id="providerSelect" class="model-select" onchange="handleProviderSelectChange()">
+        <option value="">Loading...</option>
+      </select>
+    </label>
+    <label class="model-select-wrap">
+      <span class="model-select-label">MODEL</span>
+      <select id="modelSelect" class="model-select" onchange="handleModelSelectChange()">
+        <option value="">Loading...</option>
+      </select>
+    </label>
+    <button type="button" class="model-panel-btn" onclick="openPicker()">ADVANCED</button>
+  </div>
+  <div class="model-panel-note" id="modelSelectorNote">Connect to Vision to load available providers and models.</div>
+</div>
 
 <!-- ═══ STAGE / HERO ═══ -->
 <div id="stage">
-  <div id="heroShell">
+  <div id="heroShell" data-runtime-state="idle">
     <div class="hero-kicker">SOVEREIGN COMMAND DECK</div>
     <div class="hero-meta" id="heroModelDisplay" style="cursor:pointer;" onclick="openPicker()">⬡ SELECT MODEL</div>
-    <div class="hero-col">
-      <div class="hero-card">
-        <div class="hero-card-title">Divine Profile</div>
-        <p>Absolute desktop command with voice, text, browser, memory, and automation fused into a single throne.</p>
-      </div>
-      <div class="hero-card">
-        <div class="hero-card-title">Sovereign Modes</div>
-        <div class="hero-chip-row">
-          <div class="hero-chip accent">Operator</div>
-          <div class="hero-chip">Chat</div>
-          <div class="hero-chip">Voice</div>
-          <div class="hero-chip good">Realtime</div>
+    <div class="hero-stage-grid">
+      <div id="hero" class="hero-avatar-stage">
+        <div class="hero-avatar-backdrop"></div>
+        <canvas id="orbCanvas" width="320" height="320"></canvas>
+        <div class="hero-avatar-frame" id="heroAvatarFrame">
+          <canvas id="heroAvatar" class="canvas-3d"></canvas>
         </div>
-      </div>
-      <div class="hero-card">
-        <div class="hero-card-title">Dominion Plane</div>
-        <p>Command Center, System Map, provider routing, and tool execution remain one decree away from the core throne.</p>
-      </div>
-    </div>
-    <div id="hero">
-      <div class="orbit-ring ring1"><div class="ring-dot"></div></div>
-      <div class="orbit-ring ring2"><div class="ring-dot"></div></div>
-      <div class="orbit-ring ring3"><div class="ring-dot"></div></div>
-      <canvas id="orbCanvas" width="320" height="320"></canvas>
-    </div>
-    <div class="hero-col">
-      <div class="hero-card">
-        <div class="hero-card-title">Omniscience Stack</div>
-        <div class="hero-chip-row">
-          <div class="hero-chip">Screen</div>
-          <div class="hero-chip">Memory</div>
-          <div class="hero-chip accent">Tools</div>
-          <div class="hero-chip">Metrics</div>
-        </div>
-      </div>
-      <div class="hero-card">
-        <div class="hero-card-title">Edict Style</div>
-        <p>Rapid HUD feedback, living system telemetry, and direct dominion over actions, agents, and architecture context.</p>
-      </div>
-      <div class="hero-card">
-        <div class="hero-card-title">Realm Ops Ready</div>
-        <p>Built to govern a single-user PC realm with reliability, monitoring, and automation-first command rituals.</p>
       </div>
     </div>
     <div class="hero-footer">
@@ -1266,7 +1593,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ TOP PANEL — Settings ═══ -->
-<div class="edge-panel" id="panelTop">
+<div class="edge-panel" id="panelTop" role="region" aria-label="Settings Panel">
   <div class="panel-tab-top">
     ⚙ VISION CONFIGURATION
     <span style="margin-left:auto;font-size:10px;color:var(--dim)">↑ HOVER TO COLLAPSE</span>
@@ -1274,48 +1601,65 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="panel-body">
     <div class="cfg-grid">
       <div class="cfg-block">
-        <div class="cfg-lbl">🎙 SPEECH INPUT (STT)</div>
-        <div class="radio-row" id="sttRadios">
-          <div class="r-opt on" data-val="auto" onclick="selectRadio(this,'sttRadios')">AUTO</div>
-          <div class="r-opt" data-val="elevenlabs" onclick="selectRadio(this,'sttRadios')">ELEVENLABS</div>
-          <div class="r-opt" data-val="groq" onclick="selectRadio(this,'sttRadios')">GROQ</div>
-          <div class="r-opt" data-val="local" onclick="selectRadio(this,'sttRadios')">LOCAL</div>
+        <div class="cfg-lbl" role="heading" aria-level="3" id="stt-label">🎙 SPEECH INPUT (STT)</div>
+        <div class="radio-row" id="sttRadios" role="radiogroup" aria-label="Speech to text options">
+          <div class="r-opt on" data-val="auto" onclick="selectRadio(this,'sttRadios')" role="radio" aria-checked="true" tabindex="0">AUTO</div>
+          <div class="r-opt" data-val="elevenlabs" onclick="selectRadio(this,'sttRadios')" role="radio" aria-checked="false" tabindex="0">ELEVENLABS</div>
+          <div class="r-opt" data-val="groq" onclick="selectRadio(this,'sttRadios')" role="radio" aria-checked="false" tabindex="0">GROQ</div>
+          <div class="r-opt" data-val="local" onclick="selectRadio(this,'sttRadios')" role="radio" aria-checked="false" tabindex="0">LOCAL</div>
         </div>
-        <div class="cfg-lbl" style="margin-top:10px">🔊 VOICE OUTPUT (TTS)</div>
-        <div class="radio-row" id="ttsRadios">
-          <div class="r-opt on" data-val="auto" onclick="selectRadio(this,'ttsRadios')">AUTO</div>
-          <div class="r-opt" data-val="elevenlabs" onclick="selectRadio(this,'ttsRadios')">ELEVENLABS</div>
-          <div class="r-opt" data-val="local" onclick="selectRadio(this,'ttsRadios')">LOCAL</div>
+        <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="3" id="tts-label">🔊 VOICE OUTPUT (TTS)</div>
+        <div class="radio-row" id="ttsRadios" role="radiogroup" aria-label="Text to speech options">
+          <div class="r-opt on" data-val="auto" onclick="selectRadio(this,'ttsRadios')" role="radio" aria-checked="true" tabindex="0">AUTO</div>
+          <div class="r-opt" data-val="elevenlabs" onclick="selectRadio(this,'ttsRadios')" role="radio" aria-checked="false" tabindex="0">ELEVENLABS</div>
+          <div class="r-opt" data-val="local" onclick="selectRadio(this,'ttsRadios')" role="radio" aria-checked="false" tabindex="0">LOCAL</div>
         </div>
       </div>
       <div class="cfg-block">
-        <div class="cfg-lbl">🗣 LOCAL VOICE</div>
-        <div class="radio-row" id="voiceRadios">
-          <div class="r-opt on" data-val="0" onclick="selectRadio(this,'voiceRadios')">DAVID ♂</div>
-          <div class="r-opt" data-val="1" onclick="selectRadio(this,'voiceRadios')">ZIRA ♀</div>
+        <div class="cfg-lbl" role="heading" aria-level="3" id="voice-label">🗣 VOICE PALETTE</div>
+        <div class="voice-provider-summary">
+          <div id="voiceProviderBadge" class="provider-pill p-auto">AUTO</div>
+          <div class="voice-provider-copy">
+            <div class="voice-provider-title" id="voiceProviderTitle">ACTIVE TTS PROVIDER</div>
+            <div class="voice-provider-note" id="voiceProviderNote">Loading provider-aware voices…</div>
+          </div>
         </div>
-        <div style="font-family:var(--font-ui);font-size:8px;color:var(--dim);margin-top:4px;letter-spacing:.1em" id="voiceLoadHint">Loading voices…</div>
-        <div class="cfg-lbl" style="margin-top:10px">⚡ SPEECH RATE</div>
+        <div class="radio-row" id="voiceRadios" role="radiogroup" aria-label="Voice selection">
+          <div class="r-opt on" data-val="0" onclick="selectRadio(this,'voiceRadios')" role="radio" aria-checked="true" tabindex="0">DAVID ♂</div>
+          <div class="r-opt" data-val="1" onclick="selectRadio(this,'voiceRadios')" role="radio" aria-checked="false" tabindex="0">ZIRA ♀</div>
+        </div>
+        <div class="voice-load-hint" id="voiceLoadHint">Loading voices…</div>
+        <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="3">⚡ SPEECH RATE</div>
         <div class="tts-rate-row">
-          <input type="range" id="ttsRate" min="100" max="280" value="175" oninput="document.getElementById('ttsRateVal').textContent=this.value">
-          <span id="ttsRateVal" style="color:var(--p2);font-size:12px;width:35px;text-align:right">175</span>
+          <input type="range" id="ttsRate" min="50" max="400" value="175" oninput="document.getElementById('ttsRateVal').textContent=this.value" aria-label="Speech rate slider">
+          <span id="ttsRateVal" style="color:var(--p2);font-size:12px;width:35px;text-align:right" aria-live="polite">175</span>
         </div>
-        <div class="cfg-lbl" style="margin-top:10px">🎭 ELEVENLABS AGENT</div>
-        <div class="radio-row">
-          <div class="r-opt" onclick="toggleElevenWidget(true)">SHOW</div>
-          <div class="r-opt" onclick="toggleElevenWidget(false)">HIDE</div>
+        <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="3" id="agent-label">🎭 ELEVENLABS AGENT</div>
+        <div class="radio-row" role="radiogroup" aria-label="ElevenLabs agent widget">
+          <div class="r-opt" onclick="toggleElevenWidget(true)" role="radio" aria-checked="false" tabindex="0">SHOW</div>
+          <div class="r-opt" onclick="toggleElevenWidget(false)" role="radio" aria-checked="true" tabindex="0">HIDE</div>
         </div>
       </div>
       <div class="cfg-block">
-        <div class="cfg-lbl">🔑 API KEYS</div>
+        <div class="cfg-lbl" role="heading" aria-level="3">🔑 API KEYS</div>
         <div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto">
           <div id="keysList"></div>
         </div>
-        <button onclick="saveVoiceSettings()" style="margin-top:12px;padding:8px;border-radius:4px;border:1px solid var(--p);background:rgba(29,78,216,.12);color:var(--p3);font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(29,78,216,.28)'" onmouseout="this.style.background='rgba(29,78,216,.12)'">
+        <button onclick="saveVoiceSettings()" style="margin-top:12px;padding:8px;border-radius:4px;border:1px solid var(--p);background:rgba(29,78,216,.12);color:var(--p3);font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(29,78,216,.28)'" onmouseout="this.style.background='rgba(29,78,216,.12)'" aria-label="Apply voice settings">
           ◆ APPLY SETTINGS
         </button>
+        <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="3" id="accessibility-label">♿ ACCESSIBILITY</div>
+        <div class="radio-row" role="radiogroup" aria-label="High contrast mode">
+          <div class="r-opt" onclick="toggleHighContrast(true)" role="radio" aria-checked="false" tabindex="0">HIGH CONTRAST</div>
+          <div class="r-opt on" onclick="toggleHighContrast(false)" role="radio" aria-checked="true" tabindex="0">NORMAL</div>
+        </div>
+        <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="3" id="keyboard-label">⌨ KEYBOARD NAV</div>
+          <div class="radio-row" role="radiogroup" aria-label="Keyboard navigation">
+            <div class="r-opt" onclick="toggleKeyboardNav(true)" role="radio" aria-checked="false" tabindex="0">ENABLE</div>
+            <div class="r-opt on" onclick="toggleKeyboardNav(false)" role="radio" aria-checked="true" tabindex="0">DISABLE</div>
+          </div>
         <div style="margin-top:16px;border-top:1px solid rgba(29,78,216,.2);padding-top:12px">
-          <div style="font-size:9px;letter-spacing:.15em;color:var(--p3);margin-bottom:6px">⬡ AGENT ORCHESTRATOR</div>
+          <div style="font-size:9px;letter-spacing:.15em;color:var(--p3);margin-bottom:6px" role="heading" aria-level="3">⬡ AGENT ORCHESTRATOR</div>
           <div style="font-size:9px;color:rgba(255,255,255,.45);line-height:1.6">
             Webhook (openclaw notifier):<br>
             <code id="agentOrchestratorWebhook" style="color:var(--p3);font-size:8px;user-select:all">http://localhost:8765/webhook/agent-orchestrator</code>
@@ -1324,6 +1668,27 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
             In agent-orchestrator.yaml:<br>
             <code id="agentOrchestratorYaml" style="color:rgba(255,255,255,.5);font-size:8px">notifiers: [openclaw]<br>openclaw:<br>&nbsp;&nbsp;url: http://localhost:8765/webhook/agent-orchestrator</code>
           </div>
+        </div>
+        <div style="margin-top:16px;border-top:1px solid rgba(29,78,216,.2);padding-top:12px">
+          <div class="cfg-lbl" role="heading" aria-level="3">🔊 VOICE CUSTOMIZATION</div>
+          <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="4">🎤 PITCH</div>
+          <div class="tts-rate-row">
+            <input type="range" id="ttsPitch" min="0" max="100" value="50" oninput="document.getElementById('ttsPitchVal').textContent=this.value" aria-label="Voice pitch slider">
+            <span id="ttsPitchVal" style="color:var(--p2);font-size:12px;width:35px;text-align:right" aria-live="polite">50</span>
+          </div>
+          <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="4">🔈 VOLUME</div>
+          <div class="tts-rate-row">
+            <input type="range" id="ttsVolume" min="0" max="100" value="100" oninput="document.getElementById('ttsVolumeVal').textContent=this.value" aria-label="Voice volume slider">
+            <span id="ttsVolumeVal" style="color:var(--p2);font-size:12px;width:35px;text-align:right" aria-live="polite">100</span>
+          </div>
+          <div class="cfg-lbl" style="margin-top:10px" role="heading" aria-level="4">🔍 MAGNIFICATION</div>
+          <div class="tts-rate-row">
+            <input type="range" id="magnification" min="100" max="300" value="100" oninput="document.getElementById('magnificationVal').textContent=(this.value/100).toFixed(1)" aria-label="Magnification slider">
+            <span id="magnificationVal" style="color:var(--p2);font-size:12px;width:35px;text-align:right" aria-live="polite">1.0</span>
+          </div>
+          <button onclick="saveAccessibilityVoiceSettings()" style="margin-top:12px;padding:8px;border-radius:4px;border:1px solid var(--p);background:rgba(29,78,216,.12);color:var(--p3);font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(29,78,216,.28)'" onmouseout="this.style.background='rgba(29,78,216,.12)'" aria-label="Apply voice customization settings">
+            ◆ APPLY VOICE SETTINGS
+          </button>
         </div>
       </div>
     </div>
@@ -1496,6 +1861,327 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <script>
 /* ═══════════════════════════════════════
+   3D AVATAR RENDERER
+═══════════════════════════════════════ */
+console.log('3D Avatar script loaded');
+let avatarScene, avatarCamera, avatarRenderer, avatarModel, avatarMixer;
+let avatarAnimationId = null;
+let clock = null;
+
+function init3DAvatar() {
+  // Wait for Three.js to load
+  if (typeof THREE === 'undefined' || typeof window.GLTFLoader === 'undefined' || !window.THREE_LOADED) {
+    console.log('Waiting for Three.js modules to load...');
+    setTimeout(init3DAvatar, 100);
+    return;
+  }
+
+  console.log('Initializing 3D Avatar...');
+
+  const canvas = document.getElementById('heroAvatar');
+  // Use the main hero frame as the renderer container so avatar is centered in the centre square
+  const container = document.getElementById('heroAvatarFrame');
+  // Ensure canvas is a child of the frame
+  try { container.appendChild(canvas); } catch (e) { /* ignore if already attached */ }
+
+  if (!canvas) {
+    console.error('heroAvatar canvas not found!');
+    return;
+  }
+  if (!container) {
+    console.error('heroAvatarFrame container not found!');
+    return;
+  }
+
+  console.log('Canvas and container found, proceeding...');
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  // Scene
+  avatarScene = new THREE.Scene();
+  avatarScene.background = null; // Transparent for overlay
+
+  // Camera
+  avatarCamera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+  avatarCamera.position.set(0, 0.09375, 1.75);
+  avatarCamera.lookAt(0, 0.09375, 0);
+
+  // Renderer
+  avatarRenderer = new THREE.WebGLRenderer({ 
+    canvas: canvas, 
+    alpha: true, 
+    antialias: true,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: true
+  });
+  avatarRenderer.setSize(width, height);
+  avatarRenderer.setPixelRatio(window.devicePixelRatio);
+  avatarRenderer.shadowMap.enabled = true;
+  avatarRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  avatarRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  avatarRenderer.toneMappingExposure = 2.5;
+  avatarRenderer.setClearColor(0x000000, 0); // Clear to transparent
+
+  // Initialize clock
+  clock = new THREE.Clock();
+
+  // Lighting - Ultron-themed with enhanced visibility
+  const ambientLight = new THREE.AmbientLight(0x8b87ff, 1.0);
+  avatarScene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0x22d3ee, 2.0);
+  keyLight.position.set(2, 3, 2);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.width = 1024;
+  keyLight.shadow.mapSize.height = 1024;
+  avatarScene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xa78bfa, 1.2);
+  fillLight.position.set(-2, 1, -1);
+  avatarScene.add(fillLight);
+
+  const rimLight = new THREE.PointLight(0x06b6d4, 1.8, 10);
+  rimLight.position.set(0, 2, -2);
+  avatarScene.add(rimLight);
+
+  // Back accent light for depth
+  const backLight = new THREE.PointLight(0x6366f1, 1.0, 8);
+  backLight.position.set(0, 0.5, -1.5);
+  avatarScene.add(backLight);
+
+  console.log('Enhanced Ultron lighting setup complete');
+
+  // Load model
+  console.log('Creating GLTFLoader...');
+  const loader = new window.GLTFLoader();
+  console.log('Loading model from /assets/ultron-avatar.glb...');
+  loader.load(
+    '/assets/ultron-avatar.glb',
+    function (gltf) {
+      console.log('Model load success callback triggered');
+      avatarModel = gltf.scene;
+
+      // Calculate bounds
+      const box = new THREE.Box3().setFromObject(avatarModel);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+
+      console.log(`Model original size: ${size.y.toFixed(3)}m tall`);
+
+      // Scale to 0.1875 units tall (1/16 of original 3 units)
+      const targetHeight = 0.1875;
+      const scale = targetHeight / size.y;
+      console.log(`Scaling from ${size.y.toFixed(3)}m to ${targetHeight}m = scale ${scale.toFixed(4)}`);
+      avatarModel.scale.setScalar(scale);
+
+      // Center at origin
+      const scaledCenter = center.clone().multiplyScalar(scale);
+      avatarModel.position.set(-scaledCenter.x, -scaledCenter.y, -scaledCenter.z);
+
+      avatarScene.add(avatarModel);
+
+      // Camera positioned to show full avatar (calculated from model bounds)
+      // Center camera lookAt on origin so the model is centered in the hero frame
+      avatarCamera.position.set(0, -0.019, 1.75);
+      avatarCamera.lookAt(0, 0, 0);
+
+      console.log('Model added to scene and centered in hero frame');
+
+      // Apply materials with Ultron colors - enhanced visibility
+      avatarModel.traverse(function (child) {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+
+          if (child.material) {
+            // Clone material to avoid affecting other instances
+            child.material = child.material.clone();
+
+            // Base color - bright indigo/blue
+            child.material.color = new THREE.Color(0x8b87ff);
+
+            // Metallic properties for robot appearance
+            child.material.metalness = 0.9;
+            child.material.roughness = 0.15;
+
+            // Strong emissive glow - Ultron's signature blue/purple
+            child.material.emissive = new THREE.Color(0x6366f1);
+            child.material.emissiveIntensity = 0.8;
+
+            // Ensure material updates
+            child.material.needsUpdate = true;
+          }
+        }
+      });
+
+      console.log('Ultron materials applied to model');
+
+      // Setup animations if available
+      if (gltf.animations && gltf.animations.length > 0) {
+        avatarMixer = new THREE.AnimationMixer(avatarModel);
+        const idleAction = avatarMixer.clipAction(gltf.animations[0]);
+        idleAction.play();
+      }
+
+      console.log('3D Ultron avatar loaded successfully');
+    },
+    function (xhr) {
+      const percent = ((xhr.loaded / xhr.total) * 100).toFixed(0);
+      console.log(`Loading: ${percent}%`);
+    },
+    function (error) {
+      console.error('Error loading 3D avatar:', error);
+      console.error('Error details:', error.message, error.stack);
+      // Fallback: create stylized geometry
+      createFallbackAvatar();
+    }
+  );
+
+  // Handle resize
+  const resizeObserver = new ResizeObserver(() => {
+    const newWidth = container.clientWidth;
+    const newHeight = container.clientHeight;
+    avatarCamera.aspect = newWidth / newHeight;
+    avatarCamera.updateProjectionMatrix();
+    avatarRenderer.setSize(newWidth, newHeight);
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+  });
+  resizeObserver.observe(container);
+
+  // Start animation loop
+  console.log('Starting animation loop...');
+  animate3DAvatar();
+
+  // Add visual confirmation that renderer is working
+  setTimeout(() => {
+    if (avatarRenderer) {
+      console.log('Renderer active, frame count check...');
+      const info = avatarRenderer.info;
+      console.log('Renderer info:', info);
+    }
+  }, 2000);
+}
+
+function createFallbackAvatar() {
+  console.log('Creating fallback avatar geometry...');
+  // Stylized Ultron-like robot head
+  const group = new THREE.Group();
+
+  // Head - brighter, more visible
+  const headGeo = new THREE.SphereGeometry(0.5, 32, 32);
+  const headMat = new THREE.MeshStandardMaterial({
+    color: 0x6366f1,
+    metalness: 0.9,
+    roughness: 0.2,
+    emissive: 0x4f46e5,
+    emissiveIntensity: 0.5
+  });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 1;
+  head.castShadow = true;
+  group.add(head);
+
+  // Eyes (glowing bright cyan)
+  const eyeGeo = new THREE.SphereGeometry(0.08, 16, 16);
+  const eyeMat = new THREE.MeshStandardMaterial({
+    color: 0x06b6d4,
+    emissive: 0x06b6d4,
+    emissiveIntensity: 3
+  });
+
+  const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+  leftEye.position.set(-0.15, 1.1, 0.4);
+  group.add(leftEye);
+
+  const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+  rightEye.position.set(0.15, 1.1, 0.4);
+  group.add(rightEye);
+
+  // Jaw accent - brighter metallic
+  const jawGeo = new THREE.BoxGeometry(0.4, 0.15, 0.4);
+  const jawMat = new THREE.MeshStandardMaterial({
+    color: 0x4f46e5,
+    metalness: 0.85,
+    roughness: 0.25,
+    emissive: 0x312e81,
+    emissiveIntensity: 0.3
+  });
+  const jaw = new THREE.Mesh(jawGeo, jawMat);
+  jaw.position.set(0, 0.7, 0.35);
+  jaw.castShadow = true;
+  group.add(jaw);
+
+  avatarModel = group;
+  avatarScene.add(group);
+  console.log('Fallback 3D avatar created and added to scene with enhanced styling');
+}
+
+function animate3DAvatar() {
+  avatarAnimationId = requestAnimationFrame(animate3DAvatar);
+
+  const delta = clock ? clock.getDelta() : 0.016;
+
+  // Update mixer for animations
+  if (avatarMixer) {
+    avatarMixer.update(delta);
+  }
+
+  // Idle rotation - gentle spin only
+  if (avatarModel && state === 'idle') {
+    avatarModel.rotation.y += 0.003;
+  }
+
+  // State-based animations - reduced/removed vertical bobbing
+  if (avatarModel) {
+    const time = Date.now() * 0.001;
+
+    switch (state) {
+      case 'listening':
+      case 'recording':
+        // Gentle rotation only, no vertical bob
+        avatarModel.rotation.x = Math.sin(time * 1.5) * 0.01;
+        break;
+      case 'thinking':
+        // Rotation only
+        avatarModel.rotation.y += 0.01;
+        break;
+      case 'speaking':
+        // Minimal tilt only, no vertical bob
+        avatarModel.rotation.z = Math.sin(time * 2) * 0.008;
+        break;
+      default:
+        // Return to neutral
+        avatarModel.rotation.x *= 0.95;
+        avatarModel.rotation.z *= 0.95;
+    }
+  }
+
+  // Render the scene
+  if (avatarRenderer && avatarScene && avatarCamera) {
+    avatarRenderer.render(avatarScene, avatarCamera);
+  }
+}
+
+// Debug: log render state
+setTimeout(() => {
+  console.log('=== AVATAR RENDER DEBUG (4s) ===');
+  console.log('Scene children:', avatarScene ? avatarScene.children.length : 'null');
+  console.log('Model exists:', avatarModel ? 'yes' : 'no');
+  console.log('Renderer:', avatarRenderer ? 'yes' : 'no');
+  if (avatarModel) {
+    console.log('Model pos:', avatarModel.position);
+    console.log('Model visible:', avatarModel.visible);
+  }
+}, 4000);
+</script>
+
+<script>
+/* ═══════════════════════════════════════
    CONFIG
 ═══════════════════════════════════════ */
 const DEFAULT_API_URL = 'http://localhost:8765';
@@ -1510,7 +2196,11 @@ let ws, wsRetry = 0, wsTimer;
 let state = 'idle', muted = false, currentMode = 'chat';
 let wakeWordEnabled = false;
 let currentProvider = '', currentModel = '';
-let voiceSettings = { preferred_stt:'auto', preferred_tts:'auto', tts_rate:175, tts_voice_idx:0 };
+let voiceSettings = { preferred_stt:'auto', preferred_tts:'auto', tts_rate:175, tts_voice_idx:0, tts_voice_id:'' };
+let voiceCatalog = {
+  local: { label:'Windows Local Voices', available:false, voices:[] },
+  elevenlabs: { label:'ElevenLabs', available:false, voices:[] },
+};
 let typingEl = null;
 let streamEl = null;   // active streaming assistant bubble
 let startTime = Date.now();
@@ -1534,6 +2224,7 @@ function ensureBootServices() {
   syncLanExamples();
   initElevenLabsUi();
   startBgCanvas();
+  init3DAvatar();
   connect();
 }
 
@@ -1613,6 +2304,21 @@ function dismissBoot() {
   setTimeout(() => { document.getElementById('boot').style.display = 'none'; }, 900);
   ensureBootServices();
 }
+
+function bootScreenActive() {
+  const boot = document.getElementById('boot');
+  return !!boot && getComputedStyle(boot).display !== 'none' && !boot.classList.contains('out');
+}
+
+window.dismissBoot = dismissBoot;
+document.getElementById('bootEnter')?.addEventListener('click', dismissBoot);
+document.addEventListener('keydown', (e) => {
+  if (!bootScreenActive()) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    dismissBoot();
+  }
+});
 
 window.addEventListener('DOMContentLoaded', ensureBootServices);
 ensureBootServices();
@@ -1872,6 +2578,7 @@ function handleMsg(msg) {
       currentModel    = msg.model    || '';
       currentMode     = msg.mode || currentMode;
       updateModelBadge();
+      refreshModelSelectors();
       if (msg.memory) renderMemory(msg.memory);
       if (msg.voice)  applyVoiceSettings(msg.voice);
       if (msg.wake_word !== undefined) {
@@ -1943,6 +2650,8 @@ function handleMsg(msg) {
       break;
     case 'key_saved':
       toast(`Key saved: ${msg.provider}`, 'green');
+      if (msg.provider === 'elevenlabs') loadVoices();
+      refreshModelSelectors();
       break;
     case 'voice_settings':
       applyVoiceSettings(msg);
@@ -1951,6 +2660,7 @@ function handleMsg(msg) {
       currentProvider = msg.provider;
       currentModel    = msg.model;
       updateModelBadge();
+      syncModelSelectorsToCurrent();
       toast(`Model: ${msg.provider}/${msg.model}`, 'purple');
       break;
     case 'volume':
@@ -2065,7 +2775,7 @@ let _pollingStarted = false;
 function startPolling() {
   if (_pollingStarted) return;
   _pollingStarted = true;
-  fetchMetrics(); fetchHealth(); loadVoices();
+  fetchMetrics(); fetchHealth(); loadVoices(); loadAccessibilitySettings();
   setInterval(fetchMetrics, 3000);
   setInterval(fetchHealth, 8000);
 }
@@ -2090,6 +2800,8 @@ const stateColors = {
 function setState(s) {
   state = s;
   setOrbState(s);
+  const heroShell = document.getElementById('heroShell');
+  if (heroShell) heroShell.dataset.runtimeState = s;
   const lbl = document.getElementById('stateLabel');
   lbl.textContent = stateLabels[s] || s.toUpperCase();
   lbl.style.color = stateColors[s] || 'var(--p2)';
@@ -2114,6 +2826,7 @@ function setState(s) {
   // Mic button recording glow
   const micBtn = document.getElementById('micBtn');
   if (micBtn) micBtn.classList.toggle('recording-glow', s === 'recording' || s === 'listening');
+  updateHeroDeck();
 }
 function updateProviderPill(elemId, provider, active) {
   const el = document.getElementById(elemId);
@@ -2122,6 +2835,105 @@ function updateProviderPill(elemId, provider, active) {
   const classes = { elevenlabs: 'p-elevenlabs', groq: 'p-groq', local: 'p-local', 'local-onecore': 'p-local', 'local-sapi': 'p-local', auto: 'p-auto' };
   el.textContent = labels[provider] || provider.toUpperCase();
   el.className = 'provider-pill ' + (classes[provider] || 'p-auto') + (active ? ' p-active' : '');
+}
+function voiceProviderLabel(provider) {
+  const labels = { auto:'Auto', elevenlabs:'ElevenLabs', local:'Local Windows' };
+  return labels[provider] || provider.toUpperCase();
+}
+function resolveVoiceProvider(preferred = voiceSettings.preferred_tts || 'auto') {
+  if (preferred === 'elevenlabs' && voiceCatalog.elevenlabs?.available) return 'elevenlabs';
+  if (preferred === 'local') return 'local';
+  return voiceCatalog.elevenlabs?.available ? 'elevenlabs' : 'local';
+}
+function getVoiceEntry(provider = resolveVoiceProvider()) {
+  const selectedProvider = provider === 'elevenlabs' ? 'elevenlabs' : 'local';
+  const voices = voiceCatalog[selectedProvider]?.voices || [];
+  if (!voices.length) return null;
+  if (selectedProvider === 'elevenlabs') {
+    return voices.find((voice) => voice.id === voiceSettings.tts_voice_id) || voices[0];
+  }
+  return voices.find((voice) => String(voice.index) === String(voiceSettings.tts_voice_idx ?? 0)) || voices[0];
+}
+function updateVoiceProviderSummary(preferred = voiceSettings.preferred_tts || 'auto') {
+  const resolved = resolveVoiceProvider(preferred);
+  const badge = document.getElementById('voiceProviderBadge');
+  const title = document.getElementById('voiceProviderTitle');
+  const note = document.getElementById('voiceProviderNote');
+  const hint = document.getElementById('voiceLoadHint');
+  const providerMeta = voiceCatalog[resolved] || { label: voiceProviderLabel(resolved), voices: [] };
+  const providerVoices = providerMeta.voices || [];
+  const displayLabel = preferred === 'auto'
+    ? `AUTO → ${voiceProviderLabel(resolved).toUpperCase()}`
+    : preferred !== resolved
+      ? `${voiceProviderLabel(preferred).toUpperCase()} → ${voiceProviderLabel(resolved).toUpperCase()}`
+      : voiceProviderLabel(preferred).toUpperCase();
+  if (badge) {
+    updateProviderPill('voiceProviderBadge', resolved, false);
+    badge.textContent = displayLabel;
+  }
+  if (title) title.textContent = `${providerMeta.label || voiceProviderLabel(resolved)} VOICES`;
+  if (note) {
+    note.textContent = preferred === 'auto'
+      ? `Auto will currently use ${providerMeta.label || voiceProviderLabel(resolved)} and show only matching voices.`
+      : `Showing only voices that work with ${providerMeta.label || voiceProviderLabel(resolved)}.`;
+  }
+  if (hint) {
+    hint.textContent = providerVoices.length
+      ? `${providerVoices.length} ${providerMeta.label || voiceProviderLabel(resolved)} voices ready.`
+      : `No ${providerMeta.label || voiceProviderLabel(resolved)} voices available.`;
+  }
+}
+function renderVoiceOptions(preferred = voiceSettings.preferred_tts || 'auto') {
+  const container = document.getElementById('voiceRadios');
+  const label = document.getElementById('voice-label');
+  if (!container) return;
+  const resolved = resolveVoiceProvider(preferred);
+  const providerMeta = voiceCatalog[resolved] || { label: voiceProviderLabel(resolved), voices: [] };
+  const voices = providerMeta.voices || [];
+  if (label) {
+    label.textContent = resolved === 'elevenlabs' ? '🗣 ELEVENLABS VOICES' : '🗣 LOCAL WINDOWS VOICES';
+  }
+  updateVoiceProviderSummary(preferred);
+  if (!voices.length) {
+    container.innerHTML = '<div class="r-opt on" data-provider="local" data-index="0" data-voice-id="">NO VOICES</div>';
+    return;
+  }
+  container.innerHTML = voices.map((voice) => {
+    const voiceProvider = resolved === 'elevenlabs' ? 'elevenlabs' : 'local';
+    const dataVal = voiceProvider === 'elevenlabs' ? escAttr(voice.id) : escAttr(String(voice.index));
+    const voiceId = voiceProvider === 'elevenlabs' ? escAttr(voice.id) : '';
+    const voiceIndex = voiceProvider === 'local' ? escAttr(String(voice.index)) : '';
+    return `<div class="r-opt" data-val="${dataVal}" data-provider="${voiceProvider}" data-index="${voiceIndex}" data-voice-id="${voiceId}" onclick="selectRadio(this,'voiceRadios')" role="radio" aria-checked="false" tabindex="0">${escHtml(voice.name)}</div>`;
+  }).join('');
+  const selected = getVoiceEntry(resolved);
+  const match = resolved === 'elevenlabs'
+    ? container.querySelector(`[data-voice-id="${CSS.escape(selected?.id || '')}"]`)
+    : container.querySelector(`[data-index="${CSS.escape(String(selected?.index ?? ''))}"]`);
+  const first = container.querySelector('.r-opt');
+  if (match) match.classList.add('on');
+  else if (first) first.classList.add('on');
+}
+function updateHeroDeck() {
+  const providerRuntime = document.getElementById('heroProviderRuntime');
+  const modelRuntime = document.getElementById('heroModelRuntime');
+  const voiceRuntime = document.getElementById('heroVoiceRuntime');
+  const voiceProvider = document.getElementById('heroVoiceProvider');
+  const voiceSelection = document.getElementById('heroVoiceSelection');
+  const heroState = document.getElementById('heroStateRuntime');
+  const resolvedVoiceProvider = resolveVoiceProvider();
+  const voice = getVoiceEntry(resolvedVoiceProvider);
+  if (providerRuntime) providerRuntime.textContent = providerLabel(currentProvider);
+  if (modelRuntime) modelRuntime.textContent = currentModel || 'No model selected';
+  if (voiceRuntime) voiceRuntime.textContent = voiceProviderLabel(voiceSettings.preferred_tts || 'auto');
+  if (voiceProvider) {
+    voiceProvider.textContent = voiceSettings.preferred_tts === 'auto'
+      ? `AUTO → ${voiceProviderLabel(resolvedVoiceProvider)}`
+      : voiceSettings.preferred_tts !== resolvedVoiceProvider
+        ? `${voiceProviderLabel(voiceSettings.preferred_tts).toUpperCase()} → ${voiceProviderLabel(resolvedVoiceProvider).toUpperCase()}`
+        : voiceProviderLabel(voiceSettings.preferred_tts || resolvedVoiceProvider).toUpperCase();
+  }
+  if (voiceSelection) voiceSelection.textContent = voice ? voice.name : 'Awaiting voice catalog…';
+  if (heroState) heroState.textContent = stateLabels[state] || 'SOVEREIGN ONLINE';
 }
 function setVolume(v) {
   setOrbVolume(v);
@@ -2324,6 +3136,8 @@ function launchApp(app) {
    MODEL BADGE + PICKER
 ═══════════════════════════════════════ */
 let continuousEnabled = false;
+let modelCatalog = {};
+const MODEL_PROVIDER_ORDER = ['ollama','openai','github','anthropic','deepseek','groq','mistral','gemini','xai','nvidia'];
 
 function updateActiveCoreDisplay() {
   const el = document.getElementById('activeCore');
@@ -2352,6 +3166,180 @@ function updateContinuousUI(enabled) {
   if (lbl) lbl.textContent = enabled ? 'ALWAYS ON' : 'ALWAYS OFF';
 }
 
+function providerLabel(provider) {
+  if (!provider) return 'No provider selected';
+  if (provider === 'ollama') return 'Ollama (Local)';
+  return modelCatalog[provider]?.label || provider.toUpperCase();
+}
+
+function providerIsSelectable(provider, meta = {}) {
+  const models = meta.models || [];
+  if (!models.length) return false;
+  if (provider === currentProvider) return true;
+  return provider === 'ollama' ? true : !!meta.has_key;
+}
+
+function orderedProviderKeys(providers) {
+  const seen = new Set();
+  const ordered = [];
+  MODEL_PROVIDER_ORDER.forEach((key) => {
+    if (providers[key]) {
+      ordered.push(key);
+      seen.add(key);
+    }
+  });
+  Object.keys(providers).forEach((key) => {
+    if (!seen.has(key) && key !== 'elevenlabs') ordered.push(key);
+  });
+  return ordered;
+}
+
+function updateRunningModelStatus() {
+  const providerEl = document.getElementById('runningProviderValue');
+  const modelEl = document.getElementById('runningModelValue');
+  const noteEl = document.getElementById('modelSelectorNote');
+  const providerMeta = modelCatalog[currentProvider] || {};
+  const modelCount = (providerMeta.models || []).length;
+  if (providerEl) {
+    providerEl.textContent = providerLabel(currentProvider);
+    providerEl.title = currentProvider || '';
+  }
+  if (modelEl) {
+    modelEl.textContent = currentModel || 'No model selected';
+    modelEl.title = currentModel || '';
+  }
+  if (noteEl) {
+    noteEl.textContent = currentProvider && currentModel
+      ? `Running now: ${providerLabel(currentProvider)} / ${currentModel}${modelCount ? ` • ${modelCount} models available for this provider` : ''}`
+      : 'No active model is currently selected.';
+  }
+  updateHeroDeck();
+}
+
+function populateModelSelect(provider, preferredModel = currentModel) {
+  const modelSelect = document.getElementById('modelSelect');
+  if (!modelSelect) return '';
+  const meta = modelCatalog[provider] || {};
+  const models = meta.models || [];
+  if (!models.length) {
+    modelSelect.innerHTML = '<option value="">No models available</option>';
+    modelSelect.disabled = true;
+    return '';
+  }
+  modelSelect.disabled = false;
+  modelSelect.innerHTML = models.map((model) => `<option value="${escAttr(model)}">${escHtml(model)}</option>`).join('');
+  const selectedModel = models.includes(preferredModel) ? preferredModel : models[0];
+  modelSelect.value = selectedModel;
+  return selectedModel;
+}
+
+function syncModelSelectorsToCurrent() {
+  const providerSelect = document.getElementById('providerSelect');
+  if (!providerSelect) {
+    updateRunningModelStatus();
+    return;
+  }
+  const providerKeys = Object.keys(modelCatalog);
+  if (!providerKeys.length) {
+    updateRunningModelStatus();
+    return;
+  }
+  const targetProvider = modelCatalog[currentProvider] ? currentProvider : providerSelect.value;
+  if (targetProvider) {
+    providerSelect.value = targetProvider;
+    populateModelSelect(targetProvider, currentProvider === targetProvider ? currentModel : undefined);
+  }
+  updateRunningModelStatus();
+}
+
+function renderProviderSelect() {
+  const providerSelect = document.getElementById('providerSelect');
+  if (!providerSelect) return;
+  const providerKeys = orderedProviderKeys(modelCatalog);
+  if (!providerKeys.length) {
+    providerSelect.innerHTML = '<option value="">No providers available</option>';
+    providerSelect.disabled = true;
+    populateModelSelect('', '');
+    updateRunningModelStatus();
+    return;
+  }
+  providerSelect.disabled = false;
+  providerSelect.innerHTML = providerKeys.map((provider) => {
+    const meta = modelCatalog[provider] || {};
+    const hasModels = (meta.models || []).length > 0;
+    const selectable = providerIsSelectable(provider, meta);
+    let suffix = '';
+    if (!hasModels) suffix = ' - NO MODELS';
+    else if (provider !== 'ollama' && !meta.has_key) suffix = ' - NO KEY';
+    else if (provider === currentProvider) suffix = ' - ACTIVE';
+    return `<option value="${escAttr(provider)}" ${selectable ? '' : 'disabled'}>${escHtml(`${providerLabel(provider)}${suffix}`)}</option>`;
+  }).join('');
+  const fallbackProvider =
+    (modelCatalog[currentProvider] && currentProvider) ||
+    providerKeys.find((provider) => providerIsSelectable(provider, modelCatalog[provider])) ||
+    providerKeys[0];
+  providerSelect.value = fallbackProvider;
+  populateModelSelect(fallbackProvider, currentProvider === fallbackProvider ? currentModel : undefined);
+  updateRunningModelStatus();
+}
+
+async function refreshModelSelectors() {
+  const providerSelect = document.getElementById('providerSelect');
+  const modelSelect = document.getElementById('modelSelect');
+  if (providerSelect) {
+    providerSelect.innerHTML = '<option value="">Loading...</option>';
+    providerSelect.disabled = true;
+  }
+  if (modelSelect) {
+    modelSelect.innerHTML = '<option value="">Loading...</option>';
+    modelSelect.disabled = true;
+  }
+  try {
+    const response = await fetch(API_URL + '/api/models');
+    const data = await response.json();
+    currentProvider = data.current_provider || currentProvider;
+    currentModel = data.current_model || currentModel;
+    modelCatalog = data.providers || {};
+    renderProviderSelect();
+    syncModelSelectorsToCurrent();
+  } catch (e) {
+    if (providerSelect) providerSelect.innerHTML = '<option value="">Unavailable</option>';
+    if (modelSelect) modelSelect.innerHTML = '<option value="">Unavailable</option>';
+    const noteEl = document.getElementById('modelSelectorNote');
+    if (noteEl) noteEl.textContent = `Unable to load model list: ${e.message}`;
+  }
+}
+
+function applyModelSelection(provider, model, options = {}) {
+  if (!provider || !model) return;
+  send({ type:'set_model', provider, model });
+  currentProvider = provider;
+  currentModel = model;
+  updateModelBadge();
+  syncModelSelectorsToCurrent();
+  if (options.closePicker) closePicker();
+  toast(`Switched to ${provider}/${model}`, 'purple');
+}
+
+function handleProviderSelectChange() {
+  const providerSelect = document.getElementById('providerSelect');
+  if (!providerSelect) return;
+  const provider = providerSelect.value;
+  const model = populateModelSelect(provider);
+  if (!model) {
+    toast(`No usable models for ${providerLabel(provider)}`, 'red');
+    return;
+  }
+  applyModelSelection(provider, model);
+}
+
+function handleModelSelectChange() {
+  const providerSelect = document.getElementById('providerSelect');
+  const modelSelect = document.getElementById('modelSelect');
+  if (!providerSelect || !modelSelect || !modelSelect.value) return;
+  applyModelSelection(providerSelect.value, modelSelect.value);
+}
+
 function updateModelBadge() {
   const b = document.getElementById('modelBadge');
   const heroDisplay = document.getElementById('heroModelDisplay');
@@ -2375,6 +3363,7 @@ function updateModelBadge() {
       heroDisplay.title = 'Click to select a model';
     }
   }
+  updateRunningModelStatus();
 }
 async function openPicker() {
   document.getElementById('pickerModal').classList.add('open');
@@ -2414,7 +3403,7 @@ function renderPicker(data) {
   }
 
   // Cloud providers
-  ['openai','github','groq','deepseek','mistral','gemini','nvidia'].forEach(key => {
+  orderedProviderKeys(provs).filter((key) => key !== 'ollama' && key !== 'elevenlabs').forEach(key => {
     const p = provs[key]; if (!p) return;
     const isActive = currentProvider === key;
     const hasKey = p.has_key;
@@ -2453,10 +3442,7 @@ function renderPicker(data) {
 }
 
 function selectModel(provider, model) {
-  send({ type:'set_model', provider, model });
-  currentProvider = provider; currentModel = model;
-  updateModelBadge(); closePicker();
-  toast(`Switched to ${provider}/${model}`, 'purple');
+  applyModelSelection(provider, model, { closePicker: true });
 }
 async function saveKey(provider) {
   const inp = document.getElementById('pk_' + provider);
@@ -2471,8 +3457,22 @@ async function saveKey(provider) {
    SETTINGS (top panel)
 ═══════════════════════════════════════ */
 function selectRadio(el, groupId) {
-  document.getElementById(groupId).querySelectorAll('.r-opt').forEach(r => r.classList.remove('on','on-c'));
+  // Remove 'on' class from all radio buttons in the group
+  document.getElementById(groupId).querySelectorAll('.r-opt').forEach(r => {
+    r.classList.remove('on','on-c');
+    // Update ARIA attributes
+    if (r.role === 'radio') {
+      r.setAttribute('aria-checked', 'false');
+    }
+  });
+  // Add 'on' class to selected radio button
   el.classList.add('on');
+  // Update ARIA attributes for selected radio button
+  if (el.role === 'radio') {
+    el.setAttribute('aria-checked', 'true');
+  }
+  if (groupId === 'ttsRadios') renderVoiceOptions(el.dataset.val || 'auto');
+  if (groupId === 'voiceRadios') updateHeroDeck();
 }
 
 function togglePanel(panelId) {
@@ -2494,19 +3494,30 @@ function applyVoiceSettings(v) {
   };
   applyGroup('sttRadios', v.preferred_stt || v.stt || 'auto');
   applyGroup('ttsRadios', v.preferred_tts || v.tts || 'auto');
-  applyGroup('voiceRadios', String(v.tts_voice_idx ?? 0));
   const rate = v.tts_rate || 175;
   const sl = document.getElementById('ttsRate');
   if (sl) { sl.value = rate; document.getElementById('ttsRateVal').textContent = rate; }
   updateProviderPill('hudSTT', v.preferred_stt || 'auto', false);
   updateProviderPill('hudTTS', v.preferred_tts || 'auto', false);
+  renderVoiceOptions(v.preferred_tts || v.tts || 'auto');
+  updateHeroDeck();
 }
 function saveVoiceSettings() {
   const stt = document.querySelector('#sttRadios .r-opt.on')?.dataset.val || 'auto';
   const tts = document.querySelector('#ttsRadios .r-opt.on')?.dataset.val || 'auto';
-  const voice = parseInt(document.querySelector('#voiceRadios .r-opt.on')?.dataset.val || '0');
+  const selectedVoice = document.querySelector('#voiceRadios .r-opt.on');
+  const voiceProvider = selectedVoice?.dataset.provider || resolveVoiceProvider(tts);
+  const voice = parseInt(selectedVoice?.dataset.index || `${voiceSettings.tts_voice_idx ?? 0}`, 10);
+  const voiceId = selectedVoice?.dataset.voiceId || voiceSettings.tts_voice_id || '';
   const rate  = parseInt(document.getElementById('ttsRate')?.value || '175');
-  send({ type:'set_voice_settings', preferred_stt:stt, preferred_tts:tts, tts_rate:rate, tts_voice_idx:voice });
+  send({
+    type:'set_voice_settings',
+    preferred_stt:stt,
+    preferred_tts:tts,
+    tts_rate:rate,
+    tts_voice_idx:Number.isFinite(voice) ? voice : 0,
+    tts_voice_id:voiceProvider === 'elevenlabs' ? voiceId : (voiceSettings.tts_voice_id || ''),
+  });
   toast('Voice settings applied!', 'green');
 }
 
@@ -2715,23 +3726,31 @@ async function loadVoices() {
   try {
     const r = await fetch(API_URL + '/api/voices');
     const d = await r.json();
-    const voices = d.voices || [];
-    if (!voices.length) return;
-    const container = document.getElementById('voiceRadios');
-    const hint = document.getElementById('voiceLoadHint');
-    if (!container) return;
-    container.innerHTML = voices.map((v) => {
-      const shortName = v.name.replace('Microsoft ','').replace(' Desktop','');
-      return `<div class="r-opt" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${shortName}</div>`;
-    }).join('');
-    // Restore the saved voice selection; fall back to the first voice
-    const savedIdx = String(voiceSettings.tts_voice_idx ?? 0);
-    const match = container.querySelector(`[data-val="${savedIdx}"]`);
-    const first = container.querySelector('.r-opt');
-    if (match) match.classList.add('on');
-    else if (first) first.classList.add('on');
-    if (hint) hint.style.display = 'none';
+    const localVoices = (d.providers?.local?.voices || d.voices || []).map((voice) => ({
+      ...voice,
+      name: String(voice.name || '').replace('Microsoft ', '').replace(' Desktop', ''),
+    }));
+    const elevenVoices = d.providers?.elevenlabs?.voices || [];
+    voiceCatalog = {
+      local: {
+        label: d.providers?.local?.label || 'Windows Local Voices',
+        available: (d.providers?.local?.available ?? localVoices.length > 0),
+        voices: localVoices,
+      },
+      elevenlabs: {
+        label: d.providers?.elevenlabs?.label || 'ElevenLabs',
+        available: !!d.providers?.elevenlabs?.available,
+        voices: elevenVoices,
+      },
+    };
+    renderVoiceOptions(voiceSettings.preferred_tts || 'auto');
+    updateHeroDeck();
   } catch(e) {
+    voiceCatalog = {
+      local: { label:'Windows Local Voices', available:false, voices:[] },
+      elevenlabs: { label:'ElevenLabs', available:false, voices:[] },
+    };
+    updateVoiceProviderSummary(voiceSettings.preferred_tts || 'auto');
     const hint = document.getElementById('voiceLoadHint');
     if (hint) hint.textContent = 'Voices unavailable';
   }
@@ -2798,13 +3817,183 @@ function toast(msg, type) {
 }
 
 /* ═══════════════════════════════════════
-   INIT
+   ACCESSIBILITY FEATURES
 ═══════════════════════════════════════ */
-updateModelBadge();
-buildKeysList();
+function toggleHighContrast(enable) {
+  if (enable) {
+    document.documentElement.classList.add('high-contrast');
+    toast('High contrast mode enabled', 'cyan');
+  } else {
+    document.documentElement.classList.remove('high-contrast');
+    toast('Normal mode restored', 'green');
+  }
+
+  // Save the setting to the backend
+  fetch('/api/accessibility/settings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ high_contrast: enable })
+  }).catch(err => console.log('Failed to save accessibility settings:', err));
+}
+
+function toggleKeyboardNav(enable) {
+  if (enable) {
+    // Add keyboard navigation support
+    document.body.setAttribute('data-keyboard-nav', 'true');
+    // Add comprehensive focus styles
+    let style = document.getElementById('keyboard-nav-styles');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'keyboard-nav-styles';
+      style.textContent = `
+        :focus {
+          outline: 2px solid var(--p2) !important;
+          outline-offset: 2px;
+          z-index: 1000;
+        }
+        .r-opt:focus, .corner-btn:focus, .input-icon-btn:focus, .input-send-btn:focus,
+        .panel-tab-left:focus, .panel-tab-right:focus, .panel-tab-top:focus,
+        .msg-avatar:focus, .msg-bubble:focus, .key-inp:focus, .key-save:focus {
+          outline: 2px solid var(--p2) !important;
+          outline-offset: 2px;
+          z-index: 1000;
+        }
+        /* Skip links for screen readers */
+        .skip-link {
+          position: absolute;
+          top: -40px;
+          left: 6px;
+          background: var(--p);
+          color: white;
+          padding: 8px;
+          text-decoration: none;
+          border-radius: 0 0 4px 4px;
+          z-index: 10000;
+        }
+        .skip-link:focus {
+          top: 0;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    toast('Keyboard navigation enabled', 'cyan');
+  } else {
+    document.body.removeAttribute('data-keyboard-nav');
+    // Remove the styles when disabling
+    const style = document.getElementById('keyboard-nav-styles');
+    if (style) {
+      style.remove();
+    }
+    toast('Keyboard navigation disabled', 'green');
+  }
+
+  // Save the setting to the backend
+  fetch('/api/accessibility/settings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ keyboard_navigation: enable })
+  }).catch(err => console.log('Failed to save accessibility settings:', err));
+}
+
+function saveAccessibilityVoiceSettings() {
+  const pitch = parseInt(document.getElementById('ttsPitch')?.value || '50');
+  const volume = parseInt(document.getElementById('ttsVolume')?.value || '100');
+  const magnification = parseInt(document.getElementById('magnification')?.value || '100');
+
+  // Save the settings to the backend
+  fetch('/api/accessibility/settings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      voice_pitch: pitch,
+      voice_volume: volume,
+      magnification: magnification / 100
+    })
+  })
+  .then(response => {
+    if (response.ok) {
+      toast('Voice customization settings applied!', 'green');
+      // Apply magnification to the page
+      document.body.style.zoom = (magnification / 100);
+    } else {
+      toast('Failed to save voice settings', 'red');
+    }
+  })
+  .catch(err => {
+    console.log('Failed to save voice settings:', err);
+    toast('Failed to save voice settings', 'red');
+  });
+}
+
+// Load accessibility settings from backend
+async function loadAccessibilitySettings() {
+  try {
+    const response = await fetch('/api/accessibility/settings');
+    if (response.ok) {
+      const settings = await response.json();
+
+      // Apply high contrast mode
+      if (settings.high_contrast) {
+        document.documentElement.classList.add('high-contrast');
+        // Update radio buttons to reflect current state
+        document.querySelector('[onclick="toggleHighContrast(true)"]').classList.add('on');
+        document.querySelector('[onclick="toggleHighContrast(false)"]').classList.remove('on');
+      }
+
+      // Apply keyboard navigation
+      if (settings.keyboard_navigation) {
+        document.body.setAttribute('data-keyboard-nav', 'true');
+        // Update radio buttons to reflect current state
+        document.querySelector('[onclick="toggleKeyboardNav(true)"]').classList.add('on');
+        document.querySelector('[onclick="toggleKeyboardNav(false)"]').classList.remove('on');
+      }
+
+      // Apply voice settings if they exist
+      if (settings.voice_rate) {
+        const slider = document.getElementById('ttsRate');
+        if (slider) {
+          slider.value = settings.voice_rate;
+          document.getElementById('ttsRateVal').textContent = settings.voice_rate;
+        }
+      }
+
+      // Apply voice customization settings if they exist
+      if (settings.voice_pitch !== undefined) {
+        const pitchSlider = document.getElementById('ttsPitch');
+        if (pitchSlider) {
+          pitchSlider.value = settings.voice_pitch;
+          document.getElementById('ttsPitchVal').textContent = settings.voice_pitch;
+        }
+      }
+
+      if (settings.voice_volume !== undefined) {
+        const volumeSlider = document.getElementById('ttsVolume');
+        if (volumeSlider) {
+          volumeSlider.value = settings.voice_volume;
+          document.getElementById('ttsVolumeVal').textContent = settings.voice_volume;
+        }
+      }
+
+      if (settings.magnification !== undefined) {
+        const magSlider = document.getElementById('magnification');
+        if (magSlider) {
+          magSlider.value = Math.round(settings.magnification * 100);
+          document.getElementById('magnificationVal').textContent = settings.magnification.toFixed(1);
+        }
+        // Apply magnification to the page
+        document.body.style.zoom = settings.magnification;
+      }
+    }
+  } catch (err) {
+    console.log('Failed to load accessibility settings:', err);
+  }
+}
 </script>
 </body>
 </html>
-
-
-

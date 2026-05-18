@@ -1,0 +1,401 @@
+﻿{
+    // ── Disable automatic npm install ───────────────────────────────────────
+    "npm.autoInstall": false,
+    "typescript.disableAutomaticTypeAcquisition": true,
+
+    // ── Python: Ruff as formatter + linter ──────────────────────────────────
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "explicit",
+            "source.organizeImports.ruff": "explicit"
+        }
+    },
+    "ruff.enable": true,
+    "ruff.lint.enable": true,
+    "ruff.format.args": ["--line-length=120"],
+
+    // ── Pyright / Pylance ────────────────────────────────────────────────────
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.inlayHints.functionReturnTypes": true,
+    "python.analysis.inlayHints.variableTypes": false,
+    "python.analysis.inlayHints.callArgumentNames": "partial",
+    "python.analysis.extraPaths": ["c:\\project\\vision"],
+
+    // ── Python interpreter ────────────────────────────────────────────────────
+    "python.defaultInterpreterPath": "C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
+
+    // ── Flake8 ────────────────────────────────────────────────────────────────
+    "flake8.interpreter": ["C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"],
+    "flake8.args": ["--config=c:\\project\\vision\\.flake8"],
+
+    // ── Pylint ────────────────────────────────────────────────────────────────
+    "pylint.interpreter": ["C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"],
+    "pylint.args": [
+        "--disable=W0611,C0413",
+        "--generated-members=PIL.Image.Resampling.*,PIL.Image.LANCZOS"
+    ],
+
+    // ── Mypy ─────────────────────────────────────────────────────────────────
+    "mypy-type-checker.interpreter": ["C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"],
+    "mypy-type-checker.args": ["--ignore-missing-imports", "--no-strict-optional"],
+
+    // ── isort ─────────────────────────────────────────────────────────────────
+    "isort.interpreter": ["C:\\Users\\CHANN0$\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"],
+    "isort.args": ["--profile", "black", "--line-length", "120"],
+
+    // ── Testing ───────────────────────────────────────────────────────────────
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": ["c:\\project\\vision", "-v", "--tb=short"],
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "chat.mcp.discovery.enabled": {
+        "claude-desktop": true,
+        "windsurf": true,
+        "cursor-global": true,
+        "cursor-workspace": true
+    },
+    "github.copilot.chat.agent.runInWorkspace": true,
+    "github.copilot.chat.agent.workspace": "C:/project/vision",
+
+    // ── GitHub Copilot ────────────────────────────────────────────────────────
+    "github.copilot.enable": {
+        "*": true,
+        "yaml": true,
+        "markdown": true,
+        "plaintext": true
+    },
+    "github.copilot.editor.enableAutoCompletions": true,
+    "github.copilot.chat.followUps": "always",
+    "github.copilot.chat.localeOverride": "en",
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "github.copilot.chat.codeGeneration.instructions": [
+        { "file": ".github/copilot-instructions.md" },
+        { "file": ".github/copilot-conventions.md" }
+    ],
+    "github.copilot.chat.customOAIModels": {
+        "openclaw/default": {
+            "name": "OpenClaw Default",
+            "url": "https://msi.tail886dbb.ts.net/v1",
+            "toolCalling": true,
+            "vision": false,
+            "maxInputTokens": 128000,
+            "maxOutputTokens": 8192
+        }
+    },
+
+    // ── GitLens ───────────────────────────────────────────────────────────────
+    "gitlens.codeLens.enabled": true,
+    "gitlens.currentLine.enabled": true,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.blame.highlight.enabled": true,
+    "gitlens.graph.layout": "editor",
+    "gitlens.ai.model": "vscode",
+
+    // ── Error Lens ────────────────────────────────────────────────────────────
+    "errorLens.enabled": true,
+    "errorLens.enabledDiagnosticLevels": ["error", "warning", "info"],
+    "errorLens.followCursor": "activeLine",
+    "errorLens.delay": 200,
+
+    // ── Todo Tree ─────────────────────────────────────────────────────────────
+    "todo-tree.general.tags": ["TODO", "FIXME", "HACK", "BUG", "NOTE", "PERF", "SECURITY"],
+    "todo-tree.highlights.defaultHighlight": {
+        "foreground": "#ffffff",
+        "background": "#1d4ed8",
+        "icon": "check",
+        "type": "text"
+    },
+    "todo-tree.highlights.customHighlight": {
+        "FIXME": { "background": "#dc2626", "icon": "flame" },
+        "BUG":   { "background": "#dc2626", "icon": "bug" },
+        "SECURITY": { "background": "#7c3aed", "icon": "shield" },
+        "PERF":  { "background": "#d97706", "icon": "zap" }
+    },
+    "todo-tree.tree.showCountsInTree": true,
+
+    // ── Better Comments ───────────────────────────────────────────────────────
+    "better-comments.tags": [
+        { "tag": "!", "color": "#ff4757", "strikethrough": false, "underline": false, "backgroundColor": "transparent", "bold": true, "italic": false },
+        { "tag": "?", "color": "#3b82f6", "strikethrough": false, "underline": false, "backgroundColor": "transparent", "bold": false, "italic": false },
+        { "tag": "//", "color": "#334155", "strikethrough": true, "underline": false, "backgroundColor": "transparent", "bold": false, "italic": false },
+        { "tag": "todo", "color": "#fbbf24", "strikethrough": false, "underline": false, "backgroundColor": "transparent", "bold": false, "italic": false },
+        { "tag": "*", "color": "#22c55e", "strikethrough": false, "underline": false, "backgroundColor": "transparent", "bold": true, "italic": false }
+    ],
+
+    // ── REST Client ───────────────────────────────────────────────────────────
+    "rest-client.environmentVariables": {
+        "$shared": {
+            "vision_base": "http://localhost:8765",
+            "ollama_base": "http://localhost:11434"
+        }
+    },
+    "rest-client.previewOption": "full",
+
+    // ── Docker ────────────────────────────────────────────────────────────────
+    "docker.showStartPage": false,
+
+    // ── Ollama extensions ─────────────────────────────────────────────────────
+    "ollama-copilot.model": "qikfox/ultronv1",
+    "ollama-copilot.autocompleteEnabled": true,
+    "ollama-copilot.chatModel": "qikfox/ultronv1",
+
+    // ── Gemini Code Assist ────────────────────────────────────────────────────
+    "geminicodeassist.outlines.automaticOutlineGeneration": true,
+    "geminicodeassist.project": "",
+
+    // ── Continue.dev ──────────────────────────────────────────────────────────
+    "continue.enableTabAutocomplete": true,
+
+    // ── CodeMetrics ───────────────────────────────────────────────────────────
+    "codemetrics.basics.ComplexityLevelExtreme": 15,
+    "codemetrics.basics.ComplexityLevelHigh": 10,
+    "codemetrics.basics.ComplexityLevelNormal": 5,
+    "codemetrics.basics.ComplexityLevelLow": 1,
+    "codemetrics.basics.EnabledForPython": true,
+
+    // ── Bookmarks ─────────────────────────────────────────────────────────────
+    "bookmarks.saveBookmarksInProject": true,
+    "bookmarks.useWorkaroundForFormatters": true,
+
+    // ── Path Intellisense ─────────────────────────────────────────────────────
+    "path-intellisense.autoSlashAfterDirectory": true,
+    "path-intellisense.extensionOnImport": true,
+    "path-intellisense.showHiddenFiles": true,
+
+    // ── Indent Rainbow ────────────────────────────────────────────────────────
+    "indentRainbow.indicatorStyle": "light",
+    "indentRainbow.lightIndicatorStyleLineWidth": 2,
+
+    // ── Color Highlight ───────────────────────────────────────────────────────
+    "color-highlight.enable": true,
+    "color-highlight.markerType": "underline",
+
+    // ── Spell Checker ─────────────────────────────────────────────────────────
+    "cSpell.enabled": true,
+    "cSpell.language": "en",
+    "cSpell.words": [
+        "CHANN", "pyautogui", "pytesseract", "pyttsx", "pywin", "pynvml",
+        "pyperclip", "pygetwindow", "sounddevice", "uvicorn", "fastapi",
+        "websockets", "elevenlabs", "ollama", "anthropic", "deepseek",
+        "groq", "mistral", "gemini", "openai", "asyncio", "noqa",
+        "LANCZOS", "Resampling", "barge", "VAD", "STT", "TTS",
+        "ULTRON", "VISION", "HIVE", "APEX", "dqikfox",
+        "modelcontextprotocol", "shapefile"
+    ],
+    "cSpell.ignorePaths": [
+        ".brain", ".archon", ".mypy_cache", ".pw_profile",
+        "memory.json", "chat_events.log"
+    ],
+
+    // ── Markdown Lint ─────────────────────────────────────────────────────────
+    "markdownlint.config": {
+        "MD013": false,
+        "MD033": false,
+        "MD041": false
+    },
+
+    // ── YAML ──────────────────────────────────────────────────────────────────
+    "yaml.validate": true,
+    "yaml.hover": true,
+    "yaml.completion": true,
+    "yaml.schemas": {
+        "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.yml"
+    },
+
+    // ── dotenv ────────────────────────────────────────────────────────────────
+    "dotenv.enableAutocloaking": true,
+
+    // ── Output Formatter ──────────────────────────────────────────────────────
+    "output-formatter.enable": true,
+
+    // ── Windows Terminal ──────────────────────────────────────────────────────
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.fontSize": 13,
+    "terminal.integrated.cursorStyle": "line",
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "c:\\project\\vision",
+        "VISION_BASE_URL": "http://localhost:8765"
+    },
+
+    // ── Editor ───────────────────────────────────────────────────────────────
+    "editor.formatOnSave": true,
+    "editor.rulers": [120],
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.renderWhitespace": "boundary",
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": "active",
+    "editor.minimap.enabled": true,
+    "editor.minimap.renderCharacters": false,
+    "editor.stickyScroll.enabled": true,
+    "editor.linkedEditing": true,
+    "editor.suggest.preview": true,
+    "editor.inlineSuggest.enabled": true,
+    "editor.wordWrap": "off",
+
+    // ── Files ────────────────────────────────────────────────────────────────
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        "**/.pytest_cache": true,
+        "**/htmlcov": true,
+        "**/.mypy_cache": true,
+        "**/openJdk-25": true
+    },
+    "files.associations": {
+        "*.env": "dotenv",
+        "*.ps1": "powershell",
+        "Modelfile*": "dockerfile",
+        "*.agent.md": "markdown",
+        "SKILL.md": "markdown"
+    },
+
+    // ── Search ────────────────────────────────────────────────────────────────
+    "search.exclude": {
+        "**/__pycache__": true,
+        "**/.mypy_cache": true,
+        "**/.brain": true,
+        "**/openJdk-25": true,
+        "**/.pw_profile": true
+    },
+
+    // ── Git ───────────────────────────────────────────────────────────────────
+    "git.autofetch": true,
+    "git.enableSmartCommit": true,
+    "git.confirmSync": false,
+    "git.decorations.enabled": true,
+
+    // ── Workbench ─────────────────────────────────────────────────────────────
+    "workbench.iconTheme": "material-icon-theme",
+    "workbench.editor.highlightModifiedTabs": true,
+    "workbench.editor.enablePreviewFromCodeNavigation": true,
+    "workbench.startupEditor": "none",
+    "workbench.colorTheme": "Hacker",
+
+    // ── Theme (VISION dark) ──────────────────────────────────────────────────
+    "workbench.colorCustomizations": {
+        "button.foreground": "#ffffff",
+        "terminal.selectionBackground": "#1d4ed840",
+        "activityBar.background": "#080c18",
+        "terminal.ansiBrightGreen": "#4ade80",
+        "editorLineNumber.foreground": "#334155",
+        "terminal.foreground": "#a8d8ea",
+        "scrollbarSlider.background": "#1d4ed820",
+        "button.background": "#1d4ed8",
+        "statusBarItem.remoteBackground": "#1d4ed8",
+        "tab.inactiveForeground": "#334155",
+        "panelTitle.activeBorder": "#3b82f6",
+        "terminal.ansiGreen": "#22c55e",
+        "statusBar.debuggingBackground": "#0b089b",
+        "button.hoverBackground": "#3b82f6",
+        "sideBarSectionHeader.foreground": "#06b6d4",
+        "sideBarTitle.foreground": "#3b82f6",
+        "scrollbarSlider.hoverBackground": "#1d4ed840",
+        "input.foreground": "#cdd9e5",
+        "editor.background": "#080c18",
+        "editorGroupHeader.tabsBackground": "#060a14",
+        "activityBarBadge.background": "#22c55e",
+        "tab.inactiveBackground": "#060a14",
+        "input.placeholderForeground": "#334155",
+        "list.hoverBackground": "#0d1625",
+        "titleBar.activeBackground": "#0b089b",
+        "activityBarBadge.foreground": "#0a0e1a",
+        "focusBorder": "#3b82f6",
+        "statusBar.foreground": "#22c55e",
+        "panel.border": "#1d4ed840",
+        "panelTitle.inactiveForeground": "#334155",
+        "titleBar.activeForeground": "#3b82f6",
+        "tab.activeForeground": "#3b82f6",
+        "activityBar.foreground": "#3b82f6",
+        "badge.foreground": "#ffffff",
+        "terminal.ansiRed": "#ff4757",
+        "badge.background": "#1d4ed8",
+        "editor.selectionBackground": "#1d4ed840",
+        "editorLineNumber.activeForeground": "#22c55e",
+        "sideBarSectionHeader.background": "#0d1625",
+        "panel.background": "#080c18",
+        "input.background": "#0d1625",
+        "list.activeSelectionBackground": "#1d4ed8",
+        "terminal.background": "#080c18",
+        "activityBar.activeBorder": "#22c55e",
+        "sideBar.background": "#0a0e1a",
+        "editor.foreground": "#cdd9e5",
+        "tab.activeBackground": "#0a0e1a",
+        "terminal.ansiBrightBlue": "#60a5fa",
+        "editor.lineHighlightBackground": "#0d1625",
+        "terminal.ansiYellow": "#fbbf24",
+        "statusBarItem.remoteForeground": "#ffffff",
+        "list.activeSelectionForeground": "#ffffff",
+        "editorCursor.foreground": "#22c55e",
+        "sideBar.foreground": "#94a3b8",
+        "activityBar.inactiveForeground": "#334155",
+        "terminal.ansiCyan": "#06b6d4",
+        "terminal.ansiBrightCyan": "#67e8f9",
+        "tab.activeBorderTop": "#3b82f6",
+        "statusBar.background": "#0b089b",
+        "terminal.ansiBlue": "#3b82f6",
+        "scrollbarSlider.activeBackground": "#3b82f6",
+        "panelTitle.activeForeground": "#3b82f6",
+        "input.border": "#1d4ed860",
+        "minimap.background": "#060a14",
+        "dropdown.foreground": "#94a3b8",
+        "chat.requestBackground": "#0d1625",
+        "peekViewEditor.background": "#080c18",
+        "chat.requestBorder": "#1d4ed830",
+        "breadcrumb.activeSelectionForeground": "#3b82f6",
+        "gitDecoration.deletedResourceForeground": "#ff4757",
+        "peekViewResult.background": "#0a0e1a",
+        "quickInputTitle.background": "#060a14",
+        "breadcrumb.background": "#080c18",
+        "gitDecoration.untrackedResourceForeground": "#06b6d4",
+        "chat.slashCommandForeground": "#22c55e",
+        "quickInput.background": "#0a0e1a",
+        "interactive.inactiveCodeBorder": "#1d4ed820",
+        "notifications.background": "#0d1625",
+        "minimapSlider.hoverBackground": "#1d4ed820",
+        "inlineChat.border": "#1d4ed8",
+        "chat.responseBackground": "#080c18",
+        "peekViewTitleLabel.foreground": "#3b82f6",
+        "minimapSlider.background": "#1d4ed810",
+        "breadcrumb.foreground": "#334155",
+        "inlineChatInput.focusBorder": "#22c55e",
+        "inlineChat.shadow": "#000000aa",
+        "quickInput.foreground": "#cdd9e5",
+        "chat.editedFileForeground": "#fbbf24",
+        "interactive.activeCodeBorder": "#1d4ed880",
+        "inlineChatInput.border": "#3b82f6",
+        "quickInputList.focusBackground": "#1d4ed8",
+        "notifications.border": "#1d4ed840",
+        "inlineChatInput.placeholderForeground": "#334155",
+        "notificationCenterHeader.background": "#060a14",
+        "dropdown.background": "#0d1625",
+        "gitDecoration.modifiedResourceForeground": "#3b82f6",
+        "peekView.border": "#1d4ed8",
+        "chat.slashCommandBackground": "#1d4ed820",
+        "gitDecoration.addedResourceForeground": "#22c55e",
+        "inlineChatInput.background": "#080c18",
+        "breadcrumbPicker.background": "#0a0e1a",
+        "peekViewTitle.background": "#060a14",
+        "dropdown.border": "#1d4ed840",
+        "inlineChat.background": "#0d1625",
+        "statusBar.noFolderBackground": "#0b089b",
+        "titleBar.inactiveBackground": "#0b089b"
+    },
+    "azureFunctions.projectSubpath": "azure-search-openai-demo\\app\\functions\\text_processor",
+    "azureFunctions.deploySubpath": "azure-search-openai-demo\\app\\functions\\text_processor",
+    "azureFunctions.scmDoBuildDuringDeployment": true,
+    "azureFunctions.pythonVenv": ".venv",
+    "azureFunctions.projectLanguage": "Python",
+    "azureFunctions.projectRuntime": "~4",
+    "debug.internalConsoleOptions": "neverOpen",
+    "editor.codeActions.triggerOnFocusChange": true,
+    "chat.mcp.access": "all"
+}

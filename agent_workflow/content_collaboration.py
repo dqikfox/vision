@@ -2,9 +2,11 @@
 # Multi-agent Writer-Reviewer system for automated content creation and refinement
 
 import asyncio
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 from agent_framework import Agent, Message
@@ -19,17 +21,51 @@ load_dotenv(override=False)
 # ── Configuration ───────────────────────────────────────────────────────────
 
 
+logger = logging.getLogger(__name__)
+
+
+def _default_max_iterations() -> int:
+    raw_value = os.getenv("WORKFLOW_MAX_ITERATIONS", "3")
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid WORKFLOW_MAX_ITERATIONS=%r; falling back to 3", raw_value)
+        return 3
+
+    if 1 <= parsed <= 1000:
+        return parsed
+
+    logger.warning("Out-of-range WORKFLOW_MAX_ITERATIONS=%r; falling back to 3", raw_value)
+    return 3
+
+
+def _default_output_dir() -> Path:
+    configured = os.getenv("WORKFLOW_OUTPUT_DIR")
+    if configured:
+        return Path(configured)
+    return Path(__file__).resolve().parent / "outputs"
+
+
 @dataclass
 class WorkflowConfig:
     """Configuration for the Writer-Reviewer workflow."""
 
     project_endpoint: str = field(default_factory=lambda: os.getenv("FOUNDRY_PROJECT_ENDPOINT", ""))
     model_deployment: str = field(default_factory=lambda: os.getenv("FOUNDRY_MODEL_DEPLOYMENT_NAME", "gpt-4o"))
-    max_iterations: int = 3
-    output_dir: Path = field(default_factory=lambda: Path("c:/project/vision/agent_workflow/outputs"))
+    max_iterations: int = field(default_factory=_default_max_iterations)
+    output_dir: Path = field(default_factory=_default_output_dir)
 
-    def __post_init__(self):
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_iterations <= 1000:
+            logger.warning("Out-of-range max_iterations=%r; falling back to 3", self.max_iterations)
+            self.max_iterations = 3
+
+        self.output_dir = Path(self.output_dir)
+        try:
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.error("Failed to create workflow output directory %s: %s", self.output_dir, exc)
+            raise
 
 
 # ── Content Types ────────────────────────────────────────────────────────────
@@ -74,7 +110,7 @@ class CollaborationResult:
     final_content: str
     iterations: int
     feedback_history: list[ReviewFeedback] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 # ── Writer Agent ───────────────────────────────────────────────────────────
@@ -244,6 +280,7 @@ class ContentCollaborationWorkflow:
         print(f"   ✓ Initial draft created (iteration {draft.iteration})")
 
         feedback_history = []
+        feedback: ReviewFeedback | None = None
 
         # Step 2-4: Review and Revise loop
         for iteration in range(self.config.max_iterations):
@@ -273,7 +310,7 @@ class ContentCollaborationWorkflow:
                 "topic": request.topic,
                 "content_type": request.content_type,
                 "timestamp": datetime.now().isoformat(),
-                "approved": feedback.approved if feedback_history else False,
+                "approved": feedback.approved if feedback_history and feedback is not None else False,
             },
         )
 
@@ -287,7 +324,7 @@ class ContentCollaborationWorkflow:
 
         return result
 
-    async def _save_result(self, result: CollaborationResult, request: ContentRequest):
+    async def _save_result(self, result: CollaborationResult, request: ContentRequest) -> None:
         """Save the collaboration result to file."""
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         filename = f"{request.content_type}-{request.topic.replace(' ', '-')[:30]}-{timestamp}.md"
@@ -326,7 +363,8 @@ class ContentCollaborationWorkflow:
 
 """
 
-        filepath.write_text(content, encoding="utf-8")
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, partial(filepath.write_text, content, encoding="utf-8"))
         print(f"   💾 Output saved to: {filepath}")
 
 
@@ -336,7 +374,7 @@ class ContentCollaborationWorkflow:
 class WorkflowHandler:
     """HTTP request handler for the workflow."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config = WorkflowConfig()
         self.workflow = ContentCollaborationWorkflow(self.config)
 
@@ -376,7 +414,7 @@ class WorkflowHandler:
 # ── Main Entry Point ─────────────────────────────────────────────────────────
 
 
-async def main():
+async def main() -> None:
     """Run the content collaboration workflow."""
 
     # Example usage

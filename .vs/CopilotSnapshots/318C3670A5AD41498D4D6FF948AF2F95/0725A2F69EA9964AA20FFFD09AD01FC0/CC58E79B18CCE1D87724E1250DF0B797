@@ -1,0 +1,862 @@
+﻿"""Voice Command Library for Hands-Free Computer Control
+
+Comprehensive library of voice commands for users without hands.
+Every computer task should be achievable through voice alone.
+
+For: Your sister and all users needing hands-free operation.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
+
+
+class CommandCategory(Enum):
+    """Categories of voice commands."""
+    BASIC = "basic"  # Click, type, open
+    NAVIGATION = "navigation"  # Scroll, move, navigate
+    WINDOW = "window"  # Minimize, maximize, close
+    SYSTEM = "system"  # Volume, settings, shutdown
+    WEB = "web"  # Browse, search, navigate web
+    TEXT = "text"  # Type, edit, format
+    MEDIA = "media"  # Play, pause, volume
+    CREATIVE = "creative"  # Draw, design, create
+    COMMUNICATION = "communication"  # Email, chat, call
+    ACCESSIBILITY = "accessibility"  # Screen reader, magnifier
+
+
+@dataclass
+class VoiceCommand:
+    """A voice command that can be executed hands-free."""
+    name: str
+    category: CommandCategory
+    patterns: list[str]  # Multiple ways to say the same thing
+    action: str  # Action to execute
+    description: str
+    examples: list[str]
+    requires_confirmation: bool = False  # Destructive actions need confirmation
+
+    def matches(self, text: str) -> bool:
+        """Check if text matches this command."""
+        text_lower = text.lower().strip()
+        return any(re.search(pattern, text_lower) for pattern in self.patterns)
+
+
+# ==============================================================================
+# COMPREHENSIVE VOICE COMMAND LIBRARY
+# ==============================================================================
+
+VOICE_COMMANDS = [
+
+    # BASIC COMMANDS =========================================================
+    VoiceCommand(
+        name="click",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"click\s+(?:on\s+)?(.+)",
+            r"press\s+(?:on\s+)?(.+)",
+            r"select\s+(.+)",
+            r"tap\s+(?:on\s+)?(.+)",
+        ],
+        action="click_element",
+        description="Click on an element by name or description",
+        examples=[
+            "click on the submit button",
+            "press start",
+            "select the file menu",
+            "tap on save"
+        ]
+    ),
+
+    VoiceCommand(
+        name="double_click",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"double\s+click\s+(?:on\s+)?(.+)",
+            r"open\s+(.+)\s+by\s+double\s+clicking",
+        ],
+        action="double_click_element",
+        description="Double-click on an element",
+        examples=[
+            "double click on my documents",
+            "open the folder by double clicking"
+        ]
+    ),
+
+    VoiceCommand(
+        name="right_click",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"right\s+click\s+(?:on\s+)?(.+)",
+            r"context\s+menu\s+(?:on\s+)?(.+)",
+            r"show\s+(?:more\s+)?options\s+for\s+(.+)",
+        ],
+        action="right_click_element",
+        description="Right-click on an element to show context menu",
+        examples=[
+            "right click on the file",
+            "context menu on desktop",
+            "show options for this folder"
+        ]
+    ),
+
+    VoiceCommand(
+        name="type_text",
+        category=CommandCategory.TEXT,
+        patterns=[
+            r"type\s+(.+)",
+            r"enter\s+(.+)",
+            r"write\s+(.+)",
+            r"input\s+(.+)",
+        ],
+        action="type_text",
+        description="Type text (will be converted to typed text)",
+        examples=[
+            "type hello world",
+            "enter my email address",
+            "write a message",
+            "input the password"
+        ]
+    ),
+
+    # NAVIGATION COMMANDS ====================================================
+    VoiceCommand(
+        name="scroll_down",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"scroll\s+down(?:\s+(\d+))?",
+            r"page\s+down",
+            r"go\s+down",
+        ],
+        action="scroll",
+        description="Scroll down the page",
+        examples=[
+            "scroll down",
+            "scroll down 5",
+            "page down",
+            "go down"
+        ]
+    ),
+
+    VoiceCommand(
+        name="scroll_up",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"scroll\s+up(?:\s+(\d+))?",
+            r"page\s+up",
+            r"go\s+up",
+        ],
+        action="scroll",
+        description="Scroll up the page",
+        examples=[
+            "scroll up",
+            "scroll up 3",
+            "page up",
+            "go up"
+        ]
+    ),
+
+    VoiceCommand(
+        name="go_to_top",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"go\s+to\s+(?:the\s+)?top",
+            r"scroll\s+to\s+(?:the\s+)?top",
+            r"beginning\s+of\s+(?:the\s+)?page",
+        ],
+        action="scroll_to_top",
+        description="Scroll to top of page",
+        examples=[
+            "go to the top",
+            "scroll to top",
+            "beginning of page"
+        ]
+    ),
+
+    VoiceCommand(
+        name="go_to_bottom",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"go\s+to\s+(?:the\s+)?bottom",
+            r"scroll\s+to\s+(?:the\s+)?bottom",
+            r"end\s+of\s+(?:the\s+)?page",
+        ],
+        action="scroll_to_bottom",
+        description="Scroll to bottom of page",
+        examples=[
+            "go to the bottom",
+            "scroll to bottom",
+            "end of page"
+        ]
+    ),
+
+    VoiceCommand(
+        name="go_back",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"go\s+back",
+            r"back\s+(?:button)?",
+            r"previous\s+page",
+        ],
+        action="browser_back",
+        description="Go back to previous page",
+        examples=[
+            "go back",
+            "back",
+            "previous page"
+        ]
+    ),
+
+    VoiceCommand(
+        name="go_forward",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"go\s+forward",
+            r"forward\s+(?:button)?",
+            r"next\s+page",
+        ],
+        action="browser_forward",
+        description="Go forward to next page",
+        examples=[
+            "go forward",
+            "forward",
+            "next page"
+        ]
+    ),
+
+    VoiceCommand(
+        name="refresh",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"refresh(?:\s+(?:the\s+)?page)?",
+            r"reload(?:\s+(?:the\s+)?page)?",
+        ],
+        action="browser_refresh",
+        description="Refresh the current page",
+        examples=[
+            "refresh",
+            "refresh the page",
+            "reload"
+        ]
+    ),
+
+    # WINDOW MANAGEMENT ======================================================
+    VoiceCommand(
+        name="minimize_window",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"minimize(?:\s+(?:the\s+)?window)?",
+            r"minimize\s+(.+)",
+        ],
+        action="minimize_window",
+        description="Minimize the current or specified window",
+        examples=[
+            "minimize",
+            "minimize window",
+            "minimize chrome"
+        ]
+    ),
+
+    VoiceCommand(
+        name="maximize_window",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"maximize(?:\s+(?:the\s+)?window)?",
+            r"make\s+(?:it\s+)?fullscreen",
+            r"maximize\s+(.+)",
+        ],
+        action="maximize_window",
+        description="Maximize the current or specified window",
+        examples=[
+            "maximize",
+            "maximize window",
+            "make it fullscreen"
+        ]
+    ),
+
+    VoiceCommand(
+        name="close_window",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"close(?:\s+(?:the\s+)?window)?",
+            r"close\s+(.+)",
+            r"exit\s+(.+)",
+        ],
+        action="close_window",
+        description="Close the current or specified window",
+        examples=[
+            "close",
+            "close window",
+            "close chrome",
+            "exit notepad"
+        ],
+        requires_confirmation=True
+    ),
+
+    VoiceCommand(
+        name="switch_window",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"switch\s+to\s+(.+)",
+            r"show\s+me\s+(.+)",
+            r"focus\s+on\s+(.+)",
+        ],
+        action="switch_window",
+        description="Switch to a different window",
+        examples=[
+            "switch to chrome",
+            "show me notepad",
+            "focus on word"
+        ]
+    ),
+
+    VoiceCommand(
+        name="new_tab",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"(?:open\s+)?new\s+tab",
+            r"create\s+(?:a\s+)?new\s+tab",
+        ],
+        action="new_tab",
+        description="Open a new tab in browser",
+        examples=[
+            "new tab",
+            "open new tab",
+            "create a new tab"
+        ]
+    ),
+
+    VoiceCommand(
+        name="close_tab",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"close\s+(?:this\s+)?tab",
+            r"close\s+current\s+tab",
+        ],
+        action="close_tab",
+        description="Close the current tab",
+        examples=[
+            "close tab",
+            "close this tab",
+            "close current tab"
+        ]
+    ),
+
+    VoiceCommand(
+        name="next_tab",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"next\s+tab",
+            r"switch\s+to\s+next\s+tab",
+        ],
+        action="next_tab",
+        description="Switch to the next tab",
+        examples=[
+            "next tab",
+            "switch to next tab"
+        ]
+    ),
+
+    VoiceCommand(
+        name="previous_tab",
+        category=CommandCategory.WINDOW,
+        patterns=[
+            r"previous\s+tab",
+            r"last\s+tab",
+            r"switch\s+to\s+previous\s+tab",
+        ],
+        action="previous_tab",
+        description="Switch to the previous tab",
+        examples=[
+            "previous tab",
+            "last tab",
+            "switch to previous tab"
+        ]
+    ),
+
+    # APPLICATION COMMANDS ===================================================
+    VoiceCommand(
+        name="open_application",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"open\s+(.+)",
+            r"launch\s+(.+)",
+            r"start\s+(.+)",
+            r"run\s+(.+)",
+        ],
+        action="open_app",
+        description="Open an application",
+        examples=[
+            "open chrome",
+            "launch notepad",
+            "start word",
+            "run calculator"
+        ]
+    ),
+
+    # WEB BROWSING ===========================================================
+    VoiceCommand(
+        name="search_web",
+        category=CommandCategory.WEB,
+        patterns=[
+            r"search\s+(?:for\s+)?(.+)",
+            r"google\s+(.+)",
+            r"look\s+up\s+(.+)",
+        ],
+        action="web_search",
+        description="Search the web",
+        examples=[
+            "search for python tutorials",
+            "google weather today",
+            "look up accessibility tools"
+        ]
+    ),
+
+    VoiceCommand(
+        name="go_to_url",
+        category=CommandCategory.WEB,
+        patterns=[
+            r"go\s+to\s+(?:website\s+)?(.+)",
+            r"navigate\s+to\s+(.+)",
+            r"open\s+(?:website\s+)?(.+)",
+        ],
+        action="navigate_url",
+        description="Navigate to a URL or website",
+        examples=[
+            "go to github.com",
+            "navigate to youtube",
+            "open website google.com"
+        ]
+    ),
+
+    # SYSTEM COMMANDS ========================================================
+    VoiceCommand(
+        name="volume_up",
+        category=CommandCategory.SYSTEM,
+        patterns=[
+            r"volume\s+up(?:\s+(\d+))?",
+            r"increase\s+volume(?:\s+(\d+))?",
+            r"turn\s+(?:the\s+)?volume\s+up(?:\s+(\d+))?",
+            r"louder(?:\s+(\d+))?",
+        ],
+        action="volume_up",
+        description="Increase system volume",
+        examples=[
+            "volume up",
+            "volume up 10",
+            "turn up the volume",
+            "increase volume",
+            "louder"
+        ]
+    ),
+
+    VoiceCommand(
+        name="volume_down",
+        category=CommandCategory.SYSTEM,
+        patterns=[
+            r"volume\s+down(?:\s+(\d+))?",
+            r"decrease\s+volume(?:\s+(\d+))?",
+            r"quieter(?:\s+(\d+))?",
+        ],
+        action="volume_down",
+        description="Decrease system volume",
+        examples=[
+            "volume down",
+            "volume down 10",
+            "decrease volume",
+            "quieter"
+        ]
+    ),
+
+    VoiceCommand(
+        name="mute",
+        category=CommandCategory.SYSTEM,
+        patterns=[
+            r"mute",
+            r"silence(?:\s+(?:the\s+)?sound)?",
+        ],
+        action="mute",
+        description="Mute system sound",
+        examples=[
+            "mute",
+            "silence",
+            "silence the sound"
+        ]
+    ),
+
+    VoiceCommand(
+        name="unmute",
+        category=CommandCategory.SYSTEM,
+        patterns=[
+            r"unmute",
+            r"turn\s+(?:the\s+)?sound\s+(?:back\s+)?on",
+        ],
+        action="unmute",
+        description="Unmute system sound",
+        examples=[
+            "unmute",
+            "turn the sound on",
+            "turn sound back on"
+        ]
+    ),
+
+    # ACCESSIBILITY COMMANDS =================================================
+    VoiceCommand(
+        name="read_screen",
+        category=CommandCategory.ACCESSIBILITY,
+        patterns=[
+            r"read\s+(?:the\s+)?screen",
+            r"what(?:'s|\s+is)\s+on\s+(?:the\s+)?screen",
+            r"describe\s+(?:the\s+)?screen",
+        ],
+        action="read_screen",
+        description="Read the contents of the screen aloud",
+        examples=[
+            "read the screen",
+            "what's on the screen",
+            "describe the screen"
+        ]
+    ),
+
+    VoiceCommand(
+        name="read_selection",
+        category=CommandCategory.ACCESSIBILITY,
+        patterns=[
+            r"read\s+(?:this|selection|highlighted\s+text)",
+            r"what\s+does\s+(?:this|it)\s+say",
+        ],
+        action="read_selection",
+        description="Read selected text aloud",
+        examples=[
+            "read this",
+            "read selection",
+            "what does this say"
+        ]
+    ),
+
+    VoiceCommand(
+        name="magnify",
+        category=CommandCategory.ACCESSIBILITY,
+        patterns=[
+            r"magnify(?:\s+(?:the\s+)?screen)?",
+            r"zoom\s+in",
+            r"make\s+(?:it\s+)?bigger",
+        ],
+        action="magnify",
+        description="Magnify the screen",
+        examples=[
+            "magnify",
+            "zoom in",
+            "make it bigger"
+        ]
+    ),
+
+    VoiceCommand(
+        name="unmagnify",
+        category=CommandCategory.ACCESSIBILITY,
+        patterns=[
+            r"unmagnify",
+            r"zoom\s+out",
+            r"make\s+(?:it\s+)?smaller",
+            r"normal\s+size",
+        ],
+        action="unmagnify",
+        description="Return to normal screen size",
+        examples=[
+            "unmagnify",
+            "zoom out",
+            "normal size"
+        ]
+    ),
+
+    # UNDO/REDO ==============================================================
+    VoiceCommand(
+        name="undo",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"undo(?:\s+(?:that|last\s+(?:action|command)))?",
+            r"go\s+back\s+one\s+step",
+        ],
+        action="undo",
+        description="Undo the last action",
+        examples=[
+            "undo",
+            "undo that",
+            "undo last action"
+        ]
+    ),
+
+    VoiceCommand(
+        name="redo",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"redo(?:\s+(?:that|last\s+action))?",
+            r"do\s+it\s+again",
+        ],
+        action="redo",
+        description="Redo the last undone action",
+        examples=[
+            "redo",
+            "redo that",
+            "do it again"
+        ]
+    ),
+
+    # CLIPBOARD ==============================================================
+    VoiceCommand(
+        name="copy",
+        category=CommandCategory.TEXT,
+        patterns=[
+            r"copy(?:\s+(?:this|that|it|selection))?",
+            r"copy\s+(?:the\s+)?(?:selected\s+)?text",
+        ],
+        action="copy_selection",
+        description="Copy selected content to clipboard",
+        examples=[
+            "copy",
+            "copy this",
+            "copy that",
+            "copy selection"
+        ]
+    ),
+
+    VoiceCommand(
+        name="cut",
+        category=CommandCategory.TEXT,
+        patterns=[
+            r"cut(?:\s+(?:this|that|it|selection))?",
+            r"cut\s+(?:the\s+)?(?:selected\s+)?text",
+        ],
+        action="cut_selection",
+        description="Cut selected content to clipboard",
+        examples=[
+            "cut",
+            "cut this",
+            "cut selection"
+        ]
+    ),
+
+    VoiceCommand(
+        name="paste",
+        category=CommandCategory.TEXT,
+        patterns=[
+            r"paste(?:\s+(?:it|this|that))?",
+            r"paste\s+(?:the\s+)?clipboard",
+        ],
+        action="paste_clipboard",
+        description="Paste clipboard content",
+        examples=[
+            "paste",
+            "paste it",
+            "paste clipboard"
+        ]
+    ),
+
+    # FILE OPERATIONS ========================================================
+    VoiceCommand(
+        name="save_file",
+        category=CommandCategory.TEXT,
+        patterns=[
+            r"save(?:\s+(?:this|the|current))?\s+file",
+            r"save\s+(?:it|this|that)",
+            r"save\s+(?:my\s+)?work",
+        ],
+        action="save_file",
+        description="Save the current file",
+        examples=[
+            "save file",
+            "save this file",
+            "save it",
+            "save my work"
+        ]
+    ),
+
+    VoiceCommand(
+        name="open_file",
+        category=CommandCategory.NAVIGATION,
+        patterns=[
+            r"open\s+(?:a\s+)?file\s+(.+)",
+            r"open\s+(.+\.(?:txt|doc|pdf|jpg|png))",
+        ],
+        action="open_file",
+        description="Open a file by name",
+        examples=[
+            "open file document.txt",
+            "open report.pdf"
+        ]
+    ),
+
+    # SCREENSHOT =============================================================
+    VoiceCommand(
+        name="screenshot",
+        category=CommandCategory.SYSTEM,
+        patterns=[
+            r"take\s+(?:a\s+)?screenshot",
+            r"capture\s+(?:the\s+)?screen",
+            r"screen\s+capture",
+            r"print\s+screen",
+        ],
+        action="take_screenshot",
+        description="Capture a screenshot",
+        examples=[
+            "take a screenshot",
+            "take screenshot",
+            "capture the screen",
+            "screen capture"
+        ]
+    ),
+
+    # MEDIA CONTROLS =========================================================
+    VoiceCommand(
+        name="media_play",
+        category=CommandCategory.MEDIA,
+        patterns=[
+            r"play(?:\s+(?:music|video|media|my\s+music|my\s+video|audio))?",
+            r"start\s+playing",
+            r"resume\s+playback",
+        ],
+        action="media_play",
+        description="Play or resume media",
+        examples=[
+            "play",
+            "play music",
+            "play my music",
+            "start playing"
+        ]
+    ),
+
+    VoiceCommand(
+        name="media_pause",
+        category=CommandCategory.MEDIA,
+        patterns=[
+            r"pause(?:\s+(?:music|video|media|playback))?",
+            r"stop\s+playing",
+        ],
+        action="media_pause",
+        description="Pause media playback",
+        examples=[
+            "pause",
+            "pause music",
+            "stop playing"
+        ]
+    ),
+
+    VoiceCommand(
+        name="media_next",
+        category=CommandCategory.MEDIA,
+        patterns=[
+            r"next\s+(?:song|track|video)",
+            r"skip\s+(?:song|track|video|this)",
+        ],
+        action="media_next",
+        description="Skip to next media track",
+        examples=[
+            "next song",
+            "next track",
+            "skip this"
+        ]
+    ),
+
+    VoiceCommand(
+        name="media_previous",
+        category=CommandCategory.MEDIA,
+        patterns=[
+            r"previous\s+(?:song|track|video)",
+            r"go\s+back\s+(?:to\s+)?(?:previous|last)\s+(?:song|track)",
+        ],
+        action="media_previous",
+        description="Go to previous media track",
+        examples=[
+            "previous song",
+            "previous track",
+            "go back to previous song"
+        ]
+    ),
+
+    # HELP ===================================================================
+    VoiceCommand(
+        name="help",
+        category=CommandCategory.BASIC,
+        patterns=[
+            r"help(?:\s+me)?",
+            r"what\s+can\s+(?:i|you)\s+do",
+            r"show\s+(?:me\s+)?commands",
+            r"list\s+(?:all\s+)?commands",
+        ],
+        action="show_help",
+        description="Show available voice commands",
+        examples=[
+            "help",
+            "help me",
+            "what can I do",
+            "show commands"
+        ]
+    ),
+]
+
+
+class VoiceCommandParser:
+    """Parse natural language into executable commands."""
+
+    def __init__(self):
+        self.commands = VOICE_COMMANDS
+        logger.info(f"Loaded {len(self.commands)} voice commands")
+
+    def parse(self, text: str) -> dict[str, Any] | None:
+        """Parse voice input into a command.
+
+        Args:
+            text: Voice input text
+
+        Returns:
+            Command dict or None if no match
+        """
+        for cmd in self.commands:
+            if cmd.matches(text):
+                return {
+                    "command": cmd.name,
+                    "action": cmd.action,
+                    "category": cmd.category.value,
+                    "text": text,
+                    "requires_confirmation": cmd.requires_confirmation,
+                    "description": cmd.description
+                }
+
+        # No direct match - might be a natural language request
+        return {
+            "command": "natural_language",
+            "action": "llm_interpret",
+            "text": text,
+            "requires_confirmation": False
+        }
+
+    def get_commands_by_category(self, category: CommandCategory) -> list[VoiceCommand]:
+        """Get all commands in a category."""
+        return [cmd for cmd in self.commands if cmd.category == category]
+
+    def get_all_examples(self) -> dict[str, list[str]]:
+        """Get all command examples by category."""
+        result = {}
+        for category in CommandCategory:
+            commands = self.get_commands_by_category(category)
+            result[category.value] = []
+            for cmd in commands:
+                result[category.value].extend(cmd.examples)
+        return result
+
+
+# Singleton parser
+_parser: VoiceCommandParser | None = None
+
+def get_voice_parser() -> VoiceCommandParser:
+    """Get the singleton voice command parser."""
+    global _parser
+    if _parser is None:
+        _parser = VoiceCommandParser()
+    return _parser

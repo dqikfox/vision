@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ULTRON 3D Avatar Test</title>
+<style>
+body {
+  margin: 0;
+  background: #030611;
+  overflow: hidden;
+  font-family: 'Orbitron', monospace;
+}
+#container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+#info {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  color: #60a5fa;
+  font-size: 14px;
+  background: rgba(8,12,28,0.8);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid rgba(96,165,250,0.3);
+  z-index: 100;
+}
+#loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #60a5fa;
+  font-size: 18px;
+  text-align: center;
+}
+.spinner {
+  border: 4px solid rgba(96,165,250,0.1);
+  border-top: 4px solid #60a5fa;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+
+<div id="container"></div>
+<div id="loading">
+  <div class="spinner"></div>
+  <div>Loading ULTRON Avatar...</div>
+</div>
+<div id="info">
+  <div><strong>ULTRON 3D Avatar</strong></div>
+  <div id="status">Initializing...</div>
+  <div style="margin-top:10px;font-size:12px;">
+    Controls:<br>
+    • Click & drag to rotate<br>
+    • Scroll to zoom<br>
+    • Double-click to reset
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+let scene, camera, renderer, controls;
+let model, mixer, animations;
+let clock = new THREE.Clock();
+
+const STATUS = document.getElementById('status');
+const LOADING = document.getElementById('loading');
+
+function updateStatus(msg) {
+  STATUS.textContent = msg;
+  console.log('[ULTRON]', msg);
+}
+
+function init() {
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x030611);
+  scene.fog = new THREE.Fog(0x030611, 10, 50);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(
+    45,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+  camera.position.set(0, 1.6, 4);
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  // Lights
+  const ambientLight = new THREE.AmbientLight(0x4f46e5, 0.5);
+  scene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0x60a5fa, 1.5);
+  keyLight.position.set(5, 10, 7);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.width = 2048;
+  keyLight.shadow.mapSize.height = 2048;
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x06b6d4, 0.8);
+  fillLight.position.set(-5, 5, -5);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0x3b82f6, 1.0);
+  rimLight.position.set(0, 5, -10);
+  scene.add(rimLight);
+
+  // Point lights for dramatic effect
+  const pointLight1 = new THREE.PointLight(0x60a5fa, 2, 10);
+  pointLight1.position.set(2, 3, 2);
+  scene.add(pointLight1);
+
+  const pointLight2 = new THREE.PointLight(0x06b6d4, 2, 10);
+  pointLight2.position.set(-2, 3, 2);
+  scene.add(pointLight2);
+
+  // Glowing orb (simulated energy core)
+  const orbGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+  const orbMaterial = new THREE.MeshBasicMaterial({
+    color: 0x60a5fa,
+    transparent: true,
+    opacity: 0.8
+  });
+  const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+  orb.position.set(0, 1.5, 0);
+  scene.add(orb);
+
+  // Orb glow
+  const glowGeometry = new THREE.SphereGeometry(0.25, 32, 32);
+  const glowMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0 },
+      color: { value: new THREE.Color(0x60a5fa) }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform vec3 color;
+      varying vec3 vNormal;
+      void main() {
+        float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+        vec3 glow = color * intensity * (0.8 + 0.2 * sin(time * 2.0));
+        gl_FragColor = vec4(glow, intensity * 0.5);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+  glow.position.copy(orb.position);
+  scene.add(glow);
+
+  // Ground plane
+  const groundGeometry = new THREE.PlaneGeometry(20, 20);
+  const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.3 });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Grid
+  const gridHelper = new THREE.GridHelper(20, 20, 0x4f46e5, 0x1a2332);
+  gridHelper.material.opacity = 0.3;
+  gridHelper.material.transparent = true;
+  scene.add(gridHelper);
+
+  // Controls
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 1, 0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 2;
+  controls.maxDistance = 10;
+  controls.maxPolarAngle = Math.PI / 2;
+  controls.update();
+
+  // Reset on double-click
+  renderer.domElement.addEventListener('dblclick', () => {
+    camera.position.set(0, 1.6, 4);
+    controls.target.set(0, 1, 0);
+    controls.update();
+  });
+
+  // Load model
+  loadModel();
+
+  // Handle resize
+  window.addEventListener('resize', onWindowResize);
+
+  // Animate
+  animate();
+}
+
+function loadModel() {
+  updateStatus('Loading 3D model...');
+
+  const loader = new GLTFLoader();
+
+  // Try to load TROOPER.glb from the Avatar directory
+  loader.load(
+    'F:/ultron_agent/Avatar/TOON TROOPER/TROOPER.glb',
+
+    // Success callback
+    (gltf) => {
+      model = gltf.scene;
+
+      // Scale and position
+      model.scale.set(1, 1, 1);
+      model.position.set(0, 0, 0);
+
+      // Enable shadows
+      model.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+
+          // Enhance materials with metallic/cyberpunk look
+          if (node.material) {
+            node.material.metalness = 0.7;
+            node.material.roughness = 0.3;
+            node.material.envMapIntensity = 1.5;
+          }
+        }
+      });
+
+      scene.add(model);
+
+      // Setup animations
+      if (gltf.animations && gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        animations = gltf.animations;
+
+        // Play first animation (usually idle)
+        const idleAction = mixer.clipAction(animations[0]);
+        idleAction.play();
+
+        updateStatus(`Model loaded! ${animations.length} animations available`);
+      } else {
+        updateStatus('Model loaded! (No animations found)');
+      }
+
+      LOADING.style.display = 'none';
+    },
+
+    // Progress callback
+    (xhr) => {
+      const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
+      updateStatus(`Loading model: ${percent}%`);
+    },
+
+    // Error callback
+    (error) => {
+      console.error('Error loading model:', error);
+      updateStatus('Error loading model - using fallback');
+      LOADING.style.display = 'none';
+      createFallbackAvatar();
+    }
+  );
+}
+
+function createFallbackAvatar() {
+  // Create a stylized geometric avatar if model load fails
+  const group = new THREE.Group();
+
+  // Head (hexagonal)
+  const headGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.7, 6);
+  const headMaterial = new THREE.MeshStandardMaterial({
+    color: 0x4f46e5,
+    metalness: 0.8,
+    roughness: 0.2,
+    emissive: 0x3b82f6,
+    emissiveIntensity: 0.3
+  });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 1.5;
+  head.castShadow = true;
+  group.add(head);
+
+  // Eyes (glowing)
+  const eyeGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+  const eyeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x60a5fa,
+    emissive: 0x60a5fa,
+    emissiveIntensity: 2
+  });
+
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.2, 1.6, 0.4);
+  group.add(leftEye);
+
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.2, 1.6, 0.4);
+  group.add(rightEye);
+
+  // Body
+  const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.5, 1, 6);
+  const body = new THREE.Mesh(bodyGeometry, headMaterial);
+  body.position.y = 0.7;
+  body.castShadow = true;
+  group.add(body);
+
+  // Chest core (glowing)
+  const coreGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+  const coreMaterial = new THREE.MeshBasicMaterial({
+    color: 0x06b6d4,
+    emissive: 0x06b6d4,
+    emissiveIntensity: 1.5
+  });
+  const core = new THREE.Mesh(coreGeometry, coreMaterial);
+  core.position.set(0, 0.9, 0.35);
+  group.add(core);
+
+  scene.add(group);
+  model = group;
+
+  // Simple idle animation
+  function animateFallback() {
+    const time = Date.now() * 0.001;
+    group.rotation.y = Math.sin(time * 0.5) * 0.1;
+    head.rotation.y = Math.sin(time * 0.7) * 0.2;
+    core.material.emissiveIntensity = 1.5 + Math.sin(time * 3) * 0.3;
+  }
+
+  group.userData.animate = animateFallback;
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta = clock.getDelta();
+
+  // Update animation mixer
+  if (mixer) {
+    mixer.update(delta);
+  }
+
+  // Update fallback animation
+  if (model && model.userData.animate) {
+    model.userData.animate();
+  }
+
+  // Update shader uniforms
+  scene.traverse((obj) => {
+    if (obj.material && obj.material.uniforms && obj.material.uniforms.time) {
+      obj.material.uniforms.time.value += delta;
+    }
+  });
+
+  // Idle rotation when not being controlled
+  if (controls && !controls.isDragging && model) {
+    model.rotation.y += 0.002;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// Initialize on load
+init();
+updateStatus('ULTRON Avatar Online');
+
+</script>
+
+</body>
+</html>

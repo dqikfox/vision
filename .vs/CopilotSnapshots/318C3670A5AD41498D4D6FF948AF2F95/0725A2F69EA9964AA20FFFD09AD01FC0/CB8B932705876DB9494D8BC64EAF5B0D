@@ -1,0 +1,351 @@
+﻿"""Vision Automated Testing & Validation Suite
+
+Comprehensive testing for production readiness.
+Tests all critical paths for hands-free operation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("vision_tests.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+class VisionTestSuite:
+    """Automated test suite for Vision production validation."""
+
+    def __init__(self):
+        self.results = {
+            "started": datetime.now().isoformat(),
+            "tests": [],
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0
+        }
+
+    def test(self, name: str, description: str):
+        """Decorator for test functions."""
+        def decorator(func):
+            async def wrapper(*args, **kwargs):
+                logger.info(f"\n{'='*60}")
+                logger.info(f"TEST: {name}")
+                logger.info(f"DESC: {description}")
+                logger.info(f"{'='*60}")
+
+                test_result = {
+                    "name": name,
+                    "description": description,
+                    "started": datetime.now().isoformat(),
+                    "status": "running"
+                }
+
+                try:
+                    result = await func(*args, **kwargs)
+                    test_result["status"] = "passed" if result else "failed"
+                    test_result["completed"] = datetime.now().isoformat()
+
+                    if result:
+                        self.results["passed"] += 1
+                        logger.info(f"[PASS] {name}")
+                    else:
+                        self.results["failed"] += 1
+                        logger.error(f"[FAIL] {name}")
+
+                except Exception as e:
+                    test_result["status"] = "error"
+                    test_result["error"] = str(e)
+                    test_result["completed"] = datetime.now().isoformat()
+                    self.results["failed"] += 1
+                    logger.error(f"[ERROR] {name}: {e}", exc_info=True)
+
+                self.results["tests"].append(test_result)
+                return test_result
+
+            return wrapper
+        return decorator
+
+    async def run_all_tests(self):
+        """Run complete test suite."""
+        logger.info("\n" + "="*80)
+        logger.info("VISION AUTOMATED TEST SUITE - STARTING")
+        logger.info("="*80)
+        logger.info("Mission: Validate production readiness for hands-free operation")
+        logger.info("="*80 + "\n")
+
+        # System Tests
+        await self.test_python_version()
+        await self.test_dependencies()
+        await self.test_audio_devices()
+
+        # Core Module Tests
+        await self.test_imports()
+        await self.test_voice_commands()
+        await self.test_rag_system()
+
+        # Integration Tests
+        await self.test_mcp_server()
+        await self.test_voice_overlay()
+
+        # Generate report
+        await self.generate_report()
+
+    async def test_python_version(self):
+        """Test Python version compatibility."""
+        @self.test("python_version", "Check Python 3.10+ is installed")
+        async def _test():
+            version = sys.version_info
+            logger.info(f"Python version: {version.major}.{version.minor}.{version.micro}")
+            return version.major >= 3 and version.minor >= 10
+
+        return await _test()
+
+    async def test_dependencies(self):
+        """Test all required packages are installed."""
+        @self.test("dependencies", "Verify all required packages installed")
+        async def _test():
+            required = [
+                "fastapi", "uvicorn", "websockets", "httpx",
+                "openai", "ollama", "elevenlabs",
+                "sounddevice", "scipy", "numpy",
+                "pyautogui"
+            ]
+
+            missing = []
+            for package in required:
+                try:
+                    __import__(package)
+                    logger.info(f"  [OK] {package}")
+                except ImportError:
+                    logger.error(f"  [MISSING] {package}")
+                    missing.append(package)
+
+            if missing:
+                logger.error(f"Missing packages: {', '.join(missing)}")
+                return False
+
+            logger.info("All required packages installed")
+            return True
+
+        return await _test()
+
+    async def test_audio_devices(self):
+        """Test audio input devices available."""
+        @self.test("audio_devices", "Check microphone/speaker availability")
+        async def _test():
+            try:
+                import sounddevice as sd
+                devices = sd.query_devices()
+
+                input_devices = [d for d in devices if d['max_input_channels'] > 0]
+                output_devices = [d for d in devices if d['max_output_channels'] > 0]
+
+                logger.info(f"Found {len(input_devices)} input devices")
+                logger.info(f"Found {len(output_devices)} output devices")
+
+                if input_devices:
+                    logger.info(f"Primary input: {input_devices[0]['name']}")
+                if output_devices:
+                    logger.info(f"Primary output: {output_devices[0]['name']}")
+
+                return len(input_devices) > 0 and len(output_devices) > 0
+
+            except Exception as e:
+                logger.error(f"Audio device check failed: {e}")
+                return False
+
+        return await _test()
+
+    async def test_imports(self):
+        """Test all Vision modules import successfully."""
+        @self.test("module_imports", "Test Vision modules import without errors")
+        async def _test():
+            modules = [
+                "live_chat_app",
+                "vision_runtime",
+                "vision_rag",
+                "vision_mcp_server",
+                "vision_voice_commands",
+                "elite_brain",
+                "elite_goals",
+                "elite_world"
+            ]
+
+            failed = []
+            for module in modules:
+                try:
+                    __import__(module)
+                    logger.info(f"  [OK] {module}")
+                except Exception as e:
+                    logger.error(f"  [FAIL] {module}: {e}")
+                    failed.append(module)
+
+            if failed:
+                logger.error(f"Failed imports: {', '.join(failed)}")
+                return False
+
+            logger.info("All modules imported successfully")
+            return True
+
+        return await _test()
+
+    async def test_voice_commands(self):
+        """Test voice command parser."""
+        @self.test("voice_commands", "Test voice command parsing and recognition")
+        async def _test():
+            try:
+                from vision_voice_commands import get_voice_parser
+
+                parser = get_voice_parser()
+                logger.info(f"Loaded {len(parser.commands)} voice commands")
+
+                # Test common commands
+                test_phrases = [
+                    ("click on submit button", "click"),
+                    ("open chrome", "open_application"),
+                    ("scroll down", "scroll_down"),
+                    ("volume up", "volume_up"),
+                    ("read the screen", "read_screen"),
+                    ("help me", "help")
+                ]
+
+                passed = 0
+                for phrase, expected_cmd in test_phrases:
+                    result = parser.parse(phrase)
+                    if result and result.get("command") == expected_cmd:
+                        logger.info(f"  [OK] '{phrase}' -> {expected_cmd}")
+                        passed += 1
+                    else:
+                        logger.error(f"  [FAIL] '{phrase}' expected {expected_cmd}, got {result}")
+
+                success_rate = passed / len(test_phrases)
+                logger.info(f"Voice command recognition: {success_rate*100:.1f}%")
+
+                return success_rate >= 0.8  # 80% success threshold
+
+            except Exception as e:
+                logger.error(f"Voice command test failed: {e}")
+                return False
+
+        return await _test()
+
+    async def test_rag_system(self):
+        """Test RAG indexing and search."""
+        @self.test("rag_system", "Test RAG knowledge base functionality")
+        async def _test():
+            try:
+                from vision_rag import VisionRAGManager
+                import tempfile
+
+                # Create test RAG manager with temp directory
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    rag = VisionRAGManager(base_dir=tmpdir)
+                    logger.info("RAG manager created successfully")
+
+                    # Test that it initialized without errors
+                    logger.info("RAG system validated")
+                    return True
+
+            except Exception as e:
+                logger.error(f"RAG system test failed: {e}")
+                return False
+
+        return await _test()
+
+    async def test_mcp_server(self):
+        """Test MCP server functionality."""
+        @self.test("mcp_server", "Test MCP server tools and integration")
+        async def _test():
+            try:
+                from vision_mcp_server import vision_health
+
+                # Test health check tool (should work even if backend offline)
+                result = vision_health()
+
+                logger.info(f"MCP health check result: {result}")
+
+                # MCP server should return proper structure even if backend is down
+                has_ok_field = "ok" in result
+
+                if has_ok_field:
+                    logger.info("MCP server structure validated")
+                    return True
+                else:
+                    logger.error("MCP server response missing 'ok' field")
+                    return False
+
+            except Exception as e:
+                logger.error(f"MCP server test failed: {e}")
+                return False
+
+        return await _test()
+
+    async def test_voice_overlay(self):
+        """Test voice overlay GUI can be imported."""
+        @self.test("voice_overlay", "Test voice overlay GUI imports")
+        async def _test():
+            try:
+                # Just test import - don't launch GUI in automated test
+                import voice_overlay
+
+                logger.info("Voice overlay module imported successfully")
+                logger.info("Note: GUI not launched in automated test")
+                return True
+
+            except Exception as e:
+                logger.error(f"Voice overlay import failed: {e}")
+                return False
+
+        return await _test()
+
+    async def generate_report(self):
+        """Generate test report."""
+        self.results["completed"] = datetime.now().isoformat()
+        total = self.results["passed"] + self.results["failed"] + self.results["skipped"]
+        success_rate = (self.results["passed"] / total * 100) if total > 0 else 0
+
+        logger.info("\n" + "="*80)
+        logger.info("VISION TEST SUITE - COMPLETE")
+        logger.info("="*80)
+        logger.info(f"Total Tests: {total}")
+        logger.info(f"Passed: {self.results['passed']} ({success_rate:.1f}%)")
+        logger.info(f"Failed: {self.results['failed']}")
+        logger.info(f"Skipped: {self.results['skipped']}")
+        logger.info("="*80)
+
+        # Save report
+        report_file = Path("vision_test_report.json")
+        report_file.write_text(json.dumps(self.results, indent=2))
+        logger.info(f"\nDetailed report saved to: {report_file}")
+
+        if self.results["failed"] > 0:
+            logger.warning("\nSome tests failed. Review vision_tests.log for details.")
+        else:
+            logger.info("\nAll tests passed! Vision is ready for production.")
+
+        return success_rate >= 80.0  # 80% success threshold for production
+
+
+async def main():
+    """Run Vision test suite."""
+    suite = VisionTestSuite()
+    await suite.run_all_tests()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

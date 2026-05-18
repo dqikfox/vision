@@ -1,13 +1,9 @@
-# OpenClaw Elite Dev Configuration
-# Place this file at ~/.openclaw/openclaw-elite.json
-# It extends the base OpenClaw config with elite dev features
-
 {
   "version": "1.0.0",
   "elite": {
     "description": "Elite dev configuration for OpenClaw integration",
     "vision": {
-      "backend_url": "http://localhost:8765",
+      "backend_url": "USE_ENV_BACKEND_URL",
       "health_endpoint": "/api/health",
       "command_center": "http://localhost:8765/command-center"
     },

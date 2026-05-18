@@ -13,9 +13,10 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 - `.github/copilot-instructions.md` - always-on repo guidance
 - `.github/agents/` - reusable specialist roles
 - `.github/skills/` - on-demand workflows that teach Copilot how to work here
+- `C:\project\skills` - shared local skills repo for reusable cross-project workflows
 - `README.md` and `HIVE.md` - human-facing documentation for the customization layer
 - Session `plan.md` and SQL todos - short-term working memory during multi-step work
-- `RAG_PLUGIN_WORKSPACE` (env var) - preferred path to the user-owned LM Studio plugin workspace for local RAG/plugin context. If unset, use the documented fallback: `F:\rag-v1` on Windows and `~/rag-v1` elsewhere.
+- `RAG_PLUGIN_WORKSPACE` (env var) - preferred path to the user-owned LM Studio plugin workspace for local RAG/plugin context. If unset, use the documented fallback: `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere.
 
 ## What This Skill Optimizes
 1. Repo awareness
@@ -34,9 +35,10 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 1. Audit the current context surfaces.
    - Read `.github/copilot-instructions.md`
    - Read relevant skill and agent docs
+   - Check whether a reusable skill already exists in `C:\project\skills` before duplicating it inside Vision
    - Read the current `plan.md` if the task spans multiple steps
    - Query SQL todos so active work is visible
-   - If the task involves LM Studio or local retrieval, inspect `RAG_PLUGIN_WORKSPACE` or the documented fallback before proposing changes
+   - If the task involves LM Studio or local retrieval, inspect `RAG_PLUGIN_WORKSPACE` or the documented curated fallback before proposing changes
 
 2. Decide whether the improvement belongs in:
    - always-on instructions
@@ -46,6 +48,7 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 
 3. Implement the smallest coherent customization set.
    - Prefer surgical instruction/skill/agent additions
+   - Prefer Vision-local skills for Vision-specific behavior and `C:\project\skills` for reusable cross-project workflows
    - Update docs that enumerate the available customizations
    - Avoid promising persistent memory behavior that is not actually wired up
 
@@ -60,4 +63,4 @@ Use this skill when the goal is to make **Copilot smarter in this repository**, 
 - Always-on instructions reflect the improved context discipline
 
 ## Maintainer Decision Note
-- This repo is multi-machine aware: prefer `RAG_PLUGIN_WORKSPACE`, but keep the platform fallback guidance (`F:\rag-v1` on Windows, `~/rag-v1` elsewhere) aligned with the actual launcher configuration.
+- This repo is multi-machine aware: prefer `RAG_PLUGIN_WORKSPACE`, but keep the platform fallback guidance (`F:\rag-v1\vision-corpus` on Windows, `~/rag-v1/vision-corpus` elsewhere) aligned with the actual launcher configuration.

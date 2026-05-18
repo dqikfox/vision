@@ -4,8 +4,8 @@ test_agi_modules.py — Test suite for AGI cognitive modules
 Tests for elite_goals.py and elite_world.py
 """
 
-import asyncio
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -136,8 +136,6 @@ class TestGoalManager:
     async def test_get_status(self):
         """Test getting status with fresh manager."""
         # Use fresh manager to avoid singleton state
-        from elite_goals import GoalManager
-
         manager = GoalManager()
         goal = await manager.create_goal("Goal 1", "HIGH", auto_decompose=False)
         await manager.create_goal("Goal 2", "LOW", auto_decompose=False)
@@ -296,21 +294,19 @@ class TestPerformance:
         """Test that goal creation is fast."""
         manager = GoalManager()
 
-        start = asyncio.get_event_loop().time()
+        start = time.perf_counter()
         for i in range(100):
             await manager.create_goal(f"Goal {i}", "MEDIUM", auto_decompose=False)
-        elapsed = asyncio.get_event_loop().time() - start
+        elapsed = time.perf_counter() - start
 
         assert elapsed < 5.0  # Should complete in under 5 seconds
 
     def test_entity_registration_performance(self, entity_registry):
         """Test that entity registration is fast."""
-        import time
-
-        start = time.time()
+        start = time.perf_counter()
         for i in range(1000):
             entity_registry.register(f"Entity {i}", EntityType.CONCEPT)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
 
         assert elapsed < 5.0  # Should complete in under 5 seconds (relaxed for CI)
 

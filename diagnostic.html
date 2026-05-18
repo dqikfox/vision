@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Vision UI Diagnostic</title>
+<style>
+body { background: #030611; color: #00ff00; font-family: 'Courier New', monospace; padding: 20px; }
+h1 { color: #06b6d4; }
+.pass { color: #00ff00; }
+.fail { color: #ff0000; }
+.warn { color: #ffaa00; }
+pre { background: #000; padding: 10px; border: 1px solid #333; overflow-x: auto; }
+button { background: #4f46e5; color: white; padding: 10px 20px; margin: 5px; border: none; cursor: pointer; }
+button:hover { background: #60a5fa; }
+#output { margin-top: 20px; }
+.log-entry { margin: 2px 0; padding: 2px 5px; }
+</style>
+</head>
+<body>
+<h1>🔍 Vision UI Diagnostic Tool</h1>
+<button onclick="runDiagnostic()">Run Full Diagnostic</button>
+<button onclick="testGLB()">Test GLB Fetch</button>
+<button onclick="checkMainUI()">Check Main UI (iframe)</button>
+<button onclick="clearOutput()">Clear</button>
+
+<div id="output"></div>
+
+<script>
+const output = document.getElementById('output');
+
+function log(msg, type = 'info') {
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.textContent = msg;
+    output.appendChild(div);
+    console.log(msg);
+}
+
+function clearOutput() {
+    output.innerHTML = '';
+}
+
+async function testGLB() {
+    log('=== Testing GLB File ===', 'info');
+    try {
+        const resp = await fetch('/assets/ultron-avatar.glb');
+        if (resp.ok) {
+            const blob = await resp.blob();
+            log(`✓ GLB fetch OK: ${resp.status}, ${blob.size} bytes, type: ${resp.headers.get('content-type')}`, 'pass');
+        } else {
+            log(`✗ GLB fetch failed: ${resp.status} ${resp.statusText}`, 'fail');
+        }
+    } catch (err) {
+        log(`✗ GLB fetch error: ${err.message}`, 'fail');
+    }
+}
+
+async function runDiagnostic() {
+    clearOutput();
+    log('=== Starting Diagnostic ===', 'info');
+
+    // Check Three.js
+    log(`THREE loaded: ${typeof THREE !== 'undefined' ? '✓' : '✗'}`, typeof THREE !== 'undefined' ? 'pass' : 'fail');
+    log(`GLTFLoader loaded: ${typeof GLTFLoader !== 'undefined' ? '✓' : '✗'}`, typeof GLTFLoader !== 'undefined' ? 'pass' : 'fail');
+    log(`THREE_LOADED flag: ${window.THREE_LOADED ? '✓' : '✗'}`, window.THREE_LOADED ? 'pass' : 'fail');
+
+    // Check DOM elements in main UI
+    const mainUIUrl = window.location.origin;
+    log(`\n=== Fetching Main UI HTML ===`, 'info');
+
+    try {
+        const resp = await fetch(mainUIUrl);
+        const html = await resp.text();
+
+        log(`Canvas element: ${html.includes('canvas id="heroAvatar"') ? '✓' : '✗'}`, html.includes('canvas id="heroAvatar"') ? 'pass' : 'fail');
+        log(`init3DAvatar function: ${html.includes('function init3DAvatar()') ? '✓' : '✗'}`, html.includes('function init3DAvatar()') ? 'pass' : 'fail');
+        log(`Three.js import: ${html.includes('type="importmap"') ? '✓' : '✗'}`, html.includes('type="importmap"') ? 'pass' : 'fail');
+        log(`ensureBootServices call: ${html.includes('ensureBootServices()') ? '✓' : '✗'}`, html.includes('ensureBootServices()') ? 'pass' : 'fail');
+
+    } catch (err) {
+        log(`✗ Failed to fetch main UI: ${err.message}`, 'fail');
+    }
+
+    // Test GLB
+    await testGLB();
+
+    log('\n=== Diagnostic Complete ===', 'info');
+    log('Now loading main UI in iframe to capture console...', 'warn');
+}
+
+function checkMainUI() {
+    clearOutput();
+    log('=== Loading Main UI in iframe ===', 'info');
+    log('Opening main UI console capture...', 'warn');
+
+    const iframe = document.createElement('iframe');
+    iframe.src = '/';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
+    iframe.style.position = 'absolute';
+
+    iframe.onload = () => {
+        log('✓ Main UI loaded in iframe', 'pass');
+
+        setTimeout(() => {
+            try {
+                const iframeWindow = iframe.contentWindow;
+                log(`\n=== Main UI State ===`, 'info');
+                log(`THREE in iframe: ${typeof iframeWindow.THREE !== 'undefined' ? '✓' : '✗'}`, typeof iframeWindow.THREE !== 'undefined' ? 'pass' : 'fail');
+                log(`avatarScene exists: ${typeof iframeWindow.avatarScene !== 'undefined' ? '✓' : '✗'}`, typeof iframeWindow.avatarScene !== 'undefined' ? 'pass' : 'fail');
+                log(`avatarModel exists: ${typeof iframeWindow.avatarModel !== 'undefined' && iframeWindow.avatarModel !== null ? '✓' : '✗'}`, typeof iframeWindow.avatarModel !== 'undefined' && iframeWindow.avatarModel !== null ? 'pass' : 'fail');
+
+                const canvas = iframeWindow.document.getElementById('heroAvatar');
+                if (canvas) {
+                    log(`✓ Canvas found: ${canvas.width}x${canvas.height}`, 'pass');
+                } else {
+                    log(`✗ Canvas not found in iframe`, 'fail');
+                }
+            } catch (err) {
+                log(`✗ Cannot access iframe (CORS): ${err.message}`, 'fail');
+            }
+        }, 3000);
+    };
+
+    document.body.appendChild(iframe);
+}
+
+// Auto-run on load
+window.addEventListener('DOMContentLoaded', runDiagnostic);
+</script>
+</body>
+</html>

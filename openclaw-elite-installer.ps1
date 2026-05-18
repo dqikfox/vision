@@ -109,7 +109,7 @@ function Install-McpServers {
 
         try {
             Write-Status "Installing $name..." 'Info'
-            $output = npx -y $name --version 2>&1
+            $output = npm install -g $name 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Status "$name installed" 'Success'
             } else {
@@ -266,7 +266,7 @@ function Show-Summary {
 # ── Main Entry Point ────────────────────────────────────────────────────────
 if ($Help) {
     Show-Help
-    exit 0
+    return
 }
 
 Show-Banner

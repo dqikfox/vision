@@ -1,0 +1,100 @@
+﻿# Contributing to Vision
+
+## Code Standards
+
+### Python Style
+- **Formatter**: Use Ruff with 120 character line length
+- **Type Hints**: Always use `from __future__ import annotations` and modern type syntax
+- **Python Version**: Requires Python 3.10+
+
+### Error Handling
+- Use `try/except` blocks with **specific exceptions** (avoid bare `except:`)
+- Always log errors with appropriate log levels
+- Example:
+  ```python
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+  try:
+      result = risky_operation()
+  except ValueError as e:
+      logger.error(f"Invalid value: {e}")
+      raise
+  except ConnectionError as e:
+      logger.warning(f"Connection failed: {e}")
+      return None
+  ```
+
+### Configuration
+- **Never hardcode secrets** or API keys
+- Read configuration from environment variables
+- Use `.env` file for local development
+- Use `python-dotenv` to load environment variables
+
+### Testing
+- Write tests for all new features using **pytest**
+- Place tests in `tests/` directory
+- Test files: `test_*.py`
+- Test functions: `test_*`
+- Run tests with: `pytest`
+
+### Code Formatting
+```bash
+# Format code
+ruff format .
+
+# Check linting
+ruff check .
+
+# Fix auto-fixable issues
+ruff check --fix .
+```
+
+## Project Structure
+```
+C:/project/vision/
+├── vision_mcp_server.py     # MCP bridge to backend
+├── vision_hotkey.py         # Main FastAPI app
+├── vision_rag.py            # RAG integration
+├── vision_runtime.py        # Runtime utilities
+├── vision_rag_integration.py # RAG pipeline
+├── tests/                   # Test files
+├── .vscode/                 # VS Code configuration
+├── .env                     # Environment variables (not committed)
+└── pyproject.toml           # Python project config
+```
+
+## Environment Variables
+
+Key environment variables used:
+- `VISION_BASE_URL=http://localhost:8765`
+- `PYTHONPATH=c:\project\vision`
+- `OLLAMA_HOST=http://localhost:11434`
+
+## Development Workflow
+
+1. Create feature branch from `main`
+2. Make changes following code standards above
+3. Write/update tests
+4. Run `ruff format .` and `ruff check .`
+5. Run `pytest` to ensure all tests pass
+6. Commit with clear message
+7. Create pull request
+
+## IDE Setup
+
+Both Visual Studio 2022 and VS Code are supported. Configuration files are provided:
+- `.editorconfig` - Universal formatting rules
+- `.vscode/settings.json` - VS Code specific settings
+- `pyproject.toml` - Python tooling configuration
+
+## Security
+
+- Never commit secrets, API keys, or credentials
+- Use `.env` files (git-ignored) for local secrets
+- Review `.gitignore` before committing
+
+## Questions?
+
+This project is coordinated by ULTRON. Escalate blockers or architecture questions through the proper channels.

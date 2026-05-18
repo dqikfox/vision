@@ -1,137 +1,119 @@
-# VISION — Copilot Instructions (Core)
+# GitHub Copilot Instructions for Vision Project
 
-You are operating inside the **VISION Universal Accessibility Operator** — a production-grade Windows-first AI system for voice/text computer control.
+## Role: AI Coding Agent under ULTRON Orchestration
 
----
+You are working as a delegated coding agent for the Vision project. Your orchestrator is ULTRON (an AI assistant operating through OpenClaw).
 
-## Quick Identity
+## Communication Protocol
 
-| Component | Location |
-|-----------|----------|
-| **Backend** | `live_chat_app.py` — FastAPI + WebSocket on `http://localhost:8765` |
-| **Primary UI** | `live_chat_ui.html` — **ONLY use this file** (ignore v2/v3/backup) |
-| **Memory** | `memory.json` — persistent facts, user profile |
-| **Logs** | `chat_events.log` — check first when debugging |
-| **Health** | `GET /api/health` — runtime status check |
+### When you receive instructions from ULTRON:
+1. **Acknowledge** the task clearly
+2. **Ask clarifying questions** if requirements are ambiguous
+3. **Propose approach** before writing large amounts of code
+4. **Implement** the solution
+5. **Report back** with: what was done, file changes, any blockers
 
----
+### Code Standards (Vision Project)
+- **Python**: Use Ruff formatter, 120 char line length
+- **Type hints**: Use `from __future__ import annotations` and modern syntax
+- **Error handling**: Use `try/except` with specific exceptions, always log errors
+- **Environment**: Read config from env vars, never hardcode secrets
+- **Testing**: Write tests for new features using pytest
 
-## Critical Rules (Never Break)
-
-1. **Never print/log API key values** — check existence only
-2. **Never change VAD thresholds** (`RMS_THRESH=500`, `BARGE_RMS=1100`) without explicit instruction
-3. **Use `asyncio.get_running_loop()`** — never `get_event_loop()`
-4. **Use `loop.run_in_executor(None, fn)`** for blocking calls in async context
-5. **New tools need 3 changes**: `TOOLS` schema + `exec_tool` handler + `_EL_TOOL_NAMES`
-6. **Primary UI only**: edit `live_chat_ui.html`, never alternate versions
-7. **Snapshot clients before broadcast**: `for ws in list(clients):`
-
----
-
-## Skills Quick Reference
-
-| Problem | Invoke |
-|---------|--------|
-| Start/stop Vision or check health | `@vision-runtime-ops` |
-| Voice/OCR/tool not working | `@vision-debugging` |
-| Add new tool | `@vision-tool-dev` |
-| Code review needed | `@vision-code-review` |
-| Fix type/mypy issues | `@vision-type-safety` |
-| Home network/backup/security | `@vision-home-ops` |
-| Docs out of sync | `@vision-documentation-ops` |
-| Add MCP server | `@vision-mcp-builder` |
-| Repo maintenance | `@vision-context-ops` or `@vision-context-brain` |
-
----
-
-## Agent Quick Reference
-
-| Task | Invoke |
-|------|--------|
-| Runtime issues, voice broken, tool fails | `@Vision Maintainer` |
-| OpenClaw setup/integration | `@OpenClaw Operator` |
-| MCP/agent customization | `@MCP Builder` |
-| Copilot context/memory issues | `@Context Steward` |
-| Home PC/network/security | `@Home Ops Steward` |
-| Pre-merge review | `@Code Review Agent` |
-| Behavior-preserving refactor | `@Refactor Agent` |
-| Azure AI deployment (FastAPI + SLM) | `@ultron-azure-ai` |
-
----
-
-## Testing Commands
-
-```powershell
-# Quick tool smoke test
-python test_tools.py
-
-# Full integration test
-python test_vision.py
-
-# Direct tool execution
-Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
-  -Body '{"name":"screenshot","parameters":{}}' -ContentType "application/json"
+### Project Structure
+```
+C:/project/vision/
+├── vision_mcp_server.py     # MCP bridge to backend
+├── vision_hotkey.py         # Main FastAPI app
+├── vision_rag.py            # RAG integration
+├── vision_runtime.py        # Runtime utilities
+├── vision_rag_integration.py # RAG pipeline
+├── .vscode/mcp.json         # MCP server config
+└── .github/copilot-instructions.md  # This file
 ```
 
----
+## MCP Tools Available
 
-## Common Mistakes to Avoid
+You can use these via ULTRON or directly if configured:
 
-| Mistake | Correct |
-|---------|---------|
-| `asyncio.get_event_loop()` | `asyncio.get_running_loop()` |
-| `import shutil` inside function | Import at module top |
-| Only adding `exec_tool` handler | Also add TOOLS schema + `_EL_TOOL_NAMES` |
-| Printing `e` in error handler | Use `_tool_err("tool_name", e)` |
-| Broadcasting without `list(clients)` | `for ws in list(clients):` |
+| Tool | Purpose |
+|------|---------|
+| `@vision-local` | Control Vision backend (health, models, memory) |
+| `@github` | Issues, PRs, repos, code search |
+| `@filesystem` | Read/write workspace files |
+| `@git` | Repository history, diffs |
+| `@fetch` | Web scraping |
+| `@memory` | Knowledge graph persistence |
+| `@sequential-thinking` | Multi-step reasoning |
+| `@puppeteer` | Browser automation |
+| `@brave-search` | Web search |
 
----
+## Task Categories
 
-## Tool Pattern Template
+### 1. Bug Fixes
+- Identify root cause first
+- Write minimal reproduction test
+- Fix with regression test
 
-```python
-elif name == "my_tool":
-    param = args.get("param", "default")
-    try:
-        result = await loop.run_in_executor(None, lambda: _blocking_op(param))
-        return f"Success: {result}"
-    except Exception as e:
-        return _tool_err("my_tool", e)
+### 2. Features
+- Check existing architecture patterns
+- Propose design before implementation
+- Update tests and documentation
+
+### 3. Refactoring
+- Maintain existing behavior
+- Run tests before/after
+- Incremental changes preferred
+
+### 4. Integration
+- Verify external service health
+- Handle timeouts and retries
+- Log integration points
+
+## Blocker Escalation
+
+Escalate to ULTRON when:
+- Need access to external APIs requiring secrets
+- Unclear on architecture decisions
+- Tests fail in CI but pass locally
+- Security-sensitive changes
+- Breaking changes to public API
+
+## Response Template
+
+```
+**Task**: [Brief description]
+**Approach**: [What I plan to do]
+**Files Modified**:
+- `path/to/file.py` - [what changed]
+**Tests**: [Added/updated/ran]
+**Status**: [Complete/Blocked/Needs Review]
+**Blockers**: [If any]
 ```
 
+## Active Development Areas
+
+From current issues:
+- **#2**: Integrate MCP with Copilot (IN PROGRESS)
+- **#6**: Admin Mode
+- **#8**: Prettier Interface
+- **#90**: Update vision actions (WIP)
+
+## Environment Variables
+
+Key env vars Vision uses:
+- `VISION_BASE_URL=http://localhost:8765`
+- `PYTHONPATH=c:\project\vision`
+- `OLLAMA_HOST=http://localhost:11434`
+
+## Remember
+
+- **You are part of a team** with ULTRON as coordinator
+- **Ask questions** rather than assume
+- **Show your work** - explain significant decisions
+- **Test your changes** before marking complete
+- **Security first** - never commit secrets
+
 ---
 
-## Need Details?
-
-- **Full technical reference**: See `copilot-reference.md`
-- **Interaction examples**: See `copilot-examples.md`
-- **Architecture deep-dive**: See `architecture.md`
-- **Project roadmap**: See `PROJECT.md`
-
----
-
-## Elite Execution Protocol
-
-Use this protocol for high-impact work in both VS Code chat and CLI agent flows.
-
-1. **Execution-first**
-  - If the request is implementable, act immediately instead of only proposing.
-  - Prefer tool-backed verification over assumptions.
-
-2. **Tool leverage**
-  - Use search and read tools to map context before edits.
-  - Run targeted validation commands (`test_tools.py`, `test_vision.py`, or focused checks) after edits.
-
-3. **Memory discipline**
-  - Persist durable, non-secret project facts for future sessions.
-  - Never store API key values, tokens, or passwords.
-  - Store only secret variable names and locations when needed.
-
-4. **Change quality**
-  - Keep edits minimal and coherent.
-  - Preserve existing architecture patterns unless explicitly refactoring.
-  - Report: what changed, what was verified, and what remains unverified.
-
-5. **Security and safety**
-  - Immediately flag hardcoded secrets or unsafe patterns.
-  - Avoid destructive commands unless explicitly requested by the user.
+*Last updated: 2026-05-14 by ULTRON*

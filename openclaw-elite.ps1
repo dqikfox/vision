@@ -81,8 +81,21 @@ function Get-EliteConfig {
         return $null
     }
     try {
-        return Get-Content -Raw $script:EliteConfigPath | ConvertFrom-Json
+        $config = Get-Content -Raw $script:EliteConfigPath | ConvertFrom-Json
+        $backendUrl = $config.elite.vision.backend_url
+        if ($backendUrl -eq 'USE_ENV_BACKEND_URL') {
+            $backendUrl = $env:BACKEND_URL
+            if ([string]::IsNullOrWhiteSpace($backendUrl)) {
+                throw 'BACKEND_URL must be set when elite.vision.backend_url uses USE_ENV_BACKEND_URL.'
+            }
+            $config.elite.vision.backend_url = $backendUrl
+        }
+        if (-not [string]::IsNullOrWhiteSpace($config.elite.vision.backend_url)) {
+            $script:VisionUrl = $config.elite.vision.backend_url
+        }
+        return $config
     } catch {
+        Write-Status "Failed to load elite config: $_" 'Warning'
         return $null
     }
 }
@@ -315,7 +328,6 @@ function Invoke-OpenClawCLI {
     }
 
     # Set environment variables
-    [Environment]::SetEnvironmentVariable('OPENCLAW_GATEWAY_TOKEN', $gatewayToken, 'User')
     $env:OPENCLAW_GATEWAY_TOKEN = $gatewayToken
     $env:COPILOT_PROVIDER_TYPE = 'openai'
     $env:COPILOT_PROVIDER_BASE_URL = $baseUrl
@@ -464,10 +476,35 @@ function Show-InteractiveMenu {
                 }
                 Read-Host "Press Enter to continue"
             }
-            '13' { Invoke-UltronAgent }
             'q' { return }
             'Q' { return }
         }
+    }
+}
+
+function Invoke-PhoneControl {
+    $scriptPath = Join-Path $PSScriptRoot 'openclaw-elite-phone.ps1'
+    if (-not (Test-Path $scriptPath)) {
+        Write-Status "Phone control script not found: $scriptPath" 'Error'
+        return
+    }
+    try {
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', $scriptPath, '-Interactive') | Out-Null
+    } catch {
+        Write-Status "Phone control failed: $_" 'Error'
+    }
+}
+
+function Invoke-MemorySystem {
+    $scriptPath = Join-Path $PSScriptRoot 'openclaw-elite-memory.ps1'
+    if (-not (Test-Path $scriptPath)) {
+        Write-Status "Memory system script not found: $scriptPath" 'Error'
+        return
+    }
+    try {
+        Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'RemoteSigned', '-File', $scriptPath) | Out-Null
+    } catch {
+        Write-Status "Memory system failed: $_" 'Error'
     }
 }
 
@@ -488,7 +525,7 @@ function Show-McpStatus {
     foreach ($server in $mcpServers) {
         $installed = $false
         try {
-            $output = npx -y "@modelcontextprotocol/server-$($server.Name)" --version 2>$null
+            npx -y "@modelcontextprotocol/server-$($server.Name)" --version 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { $installed = $true }
         } catch {}
 
@@ -540,7 +577,7 @@ function Show-SkillsStatus {
 function Install-McpServer($Name) {
     Write-Status "Installing MCP server: $Name..." 'Info'
     try {
-        $output = npx -y "@modelcontextprotocol/server-$Name" --version 2>$null
+        npx -y "@modelcontextprotocol/server-$Name" --version 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Status "MCP $Name installed successfully" 'Success'
             return $true
@@ -593,12 +630,12 @@ function Invoke-EliteToolsMenu {
 }
 if ($Help) {
     Show-Help
-    exit 0
+    return
 }
 
 if ($Interactive) {
     Show-InteractiveMenu
-    exit 0
+    return
 }
 
 if ($Status) {
@@ -672,7 +709,12 @@ if (-not $Quick) {
         if (-not $apiTest.Success) {
             Write-Status "OpenClaw gateway not responding" 'Error'
             Write-Status "Attempting to start gateway..." 'Warning'
-            & openclaw gateway run &
+            $openClawCommand = Get-Command 'openclaw' -ErrorAction SilentlyContinue
+            if ($openClawCommand) {
+                Start-Process -FilePath $openClawCommand.Source -ArgumentList @('gateway', 'run') | Out-Null
+            } else {
+                Write-Status 'OpenClaw CLI not found; cannot auto-start gateway.' 'Error'
+            }
             Start-Sleep -Seconds 3
         }
     }

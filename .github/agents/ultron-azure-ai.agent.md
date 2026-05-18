@@ -67,7 +67,7 @@ cd use_sidecar_extension/fastapiapp
 az webapp up --sku P3MV3
 
 # Configure Gunicorn startup
-az webapp config set --startup-file "gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app"
+az webapp config set --startup-file 'gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app'
 ```
 
 ### Phase 4: Sidecar Configuration
@@ -104,7 +104,7 @@ request_payload = {
     ],
     "stream": True,
     "cache_prompt": False,
-    "n_predict": 2048
+    "max_tokens": 2048
 }
 ```
 
@@ -116,7 +116,7 @@ async with httpx.AsyncClient() as client:
         self.api_url,
         json=request_payload,
         headers={"Content-Type": "application/json"},
-        timeout=30.0
+        timeout=60.0
     ) as response:
         async for line in response.aiter_lines():
             if not line or line == "[DONE]":

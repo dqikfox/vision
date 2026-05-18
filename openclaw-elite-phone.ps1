@@ -15,7 +15,6 @@ param(
 )
 
 $script:Version = "1.0.0"
-$script:AdbPath = "C:\Users\CHANN0$\AppData\Local\Android\Sdk\platform-tools\adb.exe"
 $script:DefaultScreenshotPath = "$env:USERPROFILE\Desktop\phone-screenshot-$(Get-Date -Format 'yyyyMMdd-HHmmss').png"
 
 $Colors = @{
@@ -73,8 +72,30 @@ EXAMPLES:
 "@ | Write-Host
 }
 
+function Resolve-AdbPath {
+    $candidates = @()
+    if ($env:ANDROID_SDK_ROOT) {
+        $candidates += (Join-Path $env:ANDROID_SDK_ROOT 'platform-tools\adb.exe')
+    }
+    if ($env:ANDROID_HOME) {
+        $candidates += (Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe')
+    }
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+    $adbCommand = Get-Command 'adb' -ErrorAction SilentlyContinue
+    if ($adbCommand) {
+        return $adbCommand.Source
+    }
+    return $null
+}
+
+$script:AdbPath = Resolve-AdbPath
+
 function Test-Adb {
-    if (-not (Test-Path $script:AdbPath)) {
+    if (-not $script:AdbPath -or -not (Test-Path $script:AdbPath)) {
         Write-Status "ADB not found at $script:AdbPath" 'Error'
         return $false
     }
@@ -181,7 +202,7 @@ function Invoke-Swipe($X1, $Y1, $X2, $Y2, $Duration = 300, $DeviceId = "") {
 }
 
 function Send-Text($Text, $DeviceId = "") {
-    $escaped = $Text -replace ' ', '%s'
+    $escaped = [uri]::EscapeDataString($Text) -replace '%20', '%s'
     $deviceArg = if ($DeviceId) { "-s", $DeviceId } else { @() }
     Invoke-Adb (@($deviceArg) + @('shell', 'input', 'text', $escaped) | Where-Object { $_ })
     Write-Status "Text sent: $Text" 'Success'

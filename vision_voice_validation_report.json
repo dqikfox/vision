@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-14T04:55:21.914370",
+  "validation_results": {
+    "audio_devices": true,
+    "input_device_count": 14,
+    "default_device": "Microphone Array (Intel® Smart ",
+    "voice_parser": {
+      "total": 15,
+      "passed": 14,
+      "failed": 1,
+      "success_rate": 93.33333333333333
+    },
+    "mic_levels": "moderate",
+    "max_audio_level": 0.004230205900967121
+  },
+  "overall_status": "PASS"
+}

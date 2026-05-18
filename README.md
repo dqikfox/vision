@@ -16,6 +16,11 @@
 </p>
 
 <p align="center">
+  <strong>Designed specifically to assist disabled users</strong> by removing physical barriers between people and computers,
+  enabling full computer control through voice and text for those with mobility or other physical disabilities.
+</p>
+
+<p align="center">
   <img src="docs/images/vision-main-gui.png" alt="VISION main operator GUI" width="100%">
 </p>
 <p align="center"><em>Main operator interface: voice-first interaction, live state feedback, direct actions, and accessibility-oriented control.</em></p>
@@ -30,18 +35,125 @@
 
 ---
 
+## Project Architecture
+
+### Core Components
+
+| Component | Purpose | Tech Stack |
+|-----------|---------|------------|
+| **`vision_mcp_server.py`** | MCP bridge to Vision backend | FastAPI, httpx, MCP SDK |
+| **`vision_hotkey.py`** | Hotkey daemon (Ctrl+Alt+V overlay launcher) | keyboard, win32gui |
+| **`voice_overlay.py`** | Floating Tkinter HUD with real-time status | Tkinter, WebSocket |
+| **`vision_rag.py`** | Local RAG indexing with SQLite FTS5 | sqlite3, pathlib |
+| **`vision_rag_integration.py`** | RAG pipeline integration | - |
+| **`vision_runtime.py`** | Runtime config and state management | dataclasses, JSON |
+| **`vision_admin.py`** | JWT auth and role-based access control | JWT, hashlib, hmac |
+| **`vision_openclaw_bridge.py`** | OpenClaw gateway integration | httpx, MCP |
+| **`live_chat_ui_v3.html`** | Main web operator interface | HTML5, WebSocket, Canvas API |
+| **`vision_command_center.html`** | Command center for diagnostics | HTML5, Fetch API |
+
+### Technology Stack
+
+- **Backend**: FastAPI (WebSocket + REST API), Python 3.14+
+- **Frontend**: HTML/CSS/JavaScript (Orbitron font, custom theming)
+- **Desktop GUI**: Tkinter (floating overlay with VU meter)
+- **Voice Processing**: ElevenLabs API, OpenAI Whisper, Browser Speech API
+- **LLM Integration**: Ollama (local), OpenAI, Anthropic (cloud)
+- **Windows Automation**: pyautogui, pytesseract, win32gui, win32api
+- **Data Storage**: SQLite (FTS5 for RAG), JSON (state files)
+- **Deployment**: PowerShell launchers, Windows services
+
+### Key Features
+
+1. **Voice-First Control**: Full computer operation via voice commands
+2. **Real-Time HUD**: Floating overlay showing system state, VU meters, active models
+3. **Multi-Provider LLM**: Supports Ollama (local), OpenAI, Anthropic
+4. **RAG Integration**: Local knowledge base with SQLite FTS5 indexing
+5. **Command Center**: Web-based diagnostics, monitoring, and control panel
+6. **OpenClaw Integration**: Multi-agent orchestration across platforms
+7. **Accessibility Focus**: Designed for users with mobility disabilities
+8. **WebSocket Real-Time**: Live state updates across all interfaces
+9. **MCP Server**: Standardized protocol for external tool integration
+10. **Admin System**: JWT-based authentication with role-based access
+
+### File Structure
+
+```
+C:/project/vision/
+├── Core Backend
+│   ├── vision_mcp_server.py          # MCP bridge (stdio/FastMCP)
+│   ├── vision_runtime.py             # Config & state management
+│   ├── vision_admin.py               # JWT auth & RBAC
+│   └── vision_openclaw_bridge.py     # OpenClaw integration
+│
+├── Desktop GUI
+│   ├── vision_hotkey.py              # Hotkey daemon (Ctrl+Alt+V)
+│   └── voice_overlay.py              # Tkinter floating HUD
+│
+├── Web Interfaces
+│   ├── live_chat_ui_v3.html          # Main operator UI
+│   ├── vision_command_center.html    # Diagnostics & control
+│   └── rag_ui.html                   # RAG interface
+│
+├── RAG System
+│   ├── vision_rag.py                 # SQLite FTS5 indexing
+│   └── vision_rag_integration.py     # Pipeline integration
+│
+├── Automation
+│   ├── vision_auto_enhancer.py       # Auto-enhancement
+│   └── vision_master_launcher.ps1    # Desktop launcher
+│
+├── Configuration
+│   ├── vision_command_center_config.json  # Non-sensitive config
+│   ├── vision_automation_state.json       # Automation history
+│   ├── .env                               # Environment secrets
+│   └── pyproject.toml                     # Python project config
+│
+├── Development
+│   ├── .github/
+│   │   ├── copilot-instructions.md   # Copilot guidelines
+│   │   ├── agents/                   # Custom agents
+│   │   └── skills/                   # Copilot skills
+│   ├── .vscode/                      # VS Code config
+│   ├── .editorconfig                 # IDE formatting
+│   ├── CONTRIBUTING.md               # Development guide
+│   └── README.md                     # This file
+│
+└── Tests
+    └── tests/                        # pytest test suite
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VISION_BASE_URL` | `http://localhost:8765` | Vision backend URL |
+| `VISION_HOST` | `127.0.0.1` | Bind host (`0.0.0.0` for LAN) |
+| `VISION_ALLOWED_ORIGINS` | - | CORS allowed origins |
+| `VISION_TOOL_TOKEN` | - | API authentication token |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `OPENAI_API_KEY` | - | OpenAI API key |
+| `ANTHROPIC_API_KEY` | - | Anthropic API key |
+| `ELEVENLABS_API_KEY` | - | ElevenLabs TTS key |
+| `PYTHONPATH` | `c:\project\vision` | Python module path |
+| `VISION_MCP_TIMEOUT` | `20` | MCP request timeout (sec) |
+| `VISION_ADMIN_SECRET` | auto-generated | JWT signing secret |
+
+---
+
 ## Why Vision
 
 **Remove the physical barrier between people and computers.**
 
-Vision is designed so anyone — regardless of mobility, disability, or technical ability — can:
+Vision is specifically designed to empower disabled users by providing full computer control through voice and text interfaces. The system enables anyone — regardless of mobility, disability, or technical ability — to:
 - Open applications and websites
 - Click buttons and navigate interfaces
 - Type, dictate, and automate workflows
 - Read what is on screen
 - Monitor system state and operator tooling from one place
+- Control their computer without requiring precise motor control or physical interaction
 
-...by speaking or typing naturally.
+...by speaking or typing naturally, making computing accessible to those who face physical challenges with traditional input methods.
 
 ---
 
@@ -137,9 +249,11 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 - **openclaw-getting-started** — Install and bootstrap OpenClaw (Windows, WSL2, macOS, Linux)
 - **mcp-recovery** — Diagnose and restore MCP server configurations
 
+Vision also uses a shared local skill repo at **`C:\project\skills`** for reusable cross-project workflows. Prefer `.github/skills/` when the task is Vision-specific; prefer `C:\project\skills` when the workflow is general and reusable across multiple local repos.
+
 ### Repo Instructions
 - **Copilot Instructions** — Global guidelines for working in this repo (`.github/copilot-instructions.md`)
-- **Local LM Studio RAG Context** — Copilot can inspect the workspace defined by `RAG_PLUGIN_WORKSPACE` through workspace MCP when LM Studio or local retrieval tasks are relevant. If unset, the repo falls back to `F:\rag-v1` on Windows and `~/rag-v1` elsewhere.
+- **Local LM Studio RAG Context** — Copilot can inspect the workspace defined by `RAG_PLUGIN_WORKSPACE` through workspace MCP when LM Studio or local retrieval tasks are relevant. If unset, the repo falls back to the curated corpus at `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere.
 - **Documentation Index** — Start with `DOCUMENTATION_INDEX.md` for the current doc map
 
 ### External Agent Harnesses
@@ -277,6 +391,9 @@ Click the model badge in the header to switch:
 Set API keys in the model picker UI or via environment variables for the providers you want to use:
 ```
 OPENAI_API_KEY=sk-...
+AZURE_OPENAI_BASE_URL=https://your-resource.services.ai.azure.com/openai/v1
+AZURE_OPENAI_MODEL=gpt-4o
+AZURE_OPENAI_API_KEY=...
 GITHUB_TOKEN=ghp_...
 ANTHROPIC_API_KEY=sk-ant-...
 DEEPSEEK_API_KEY=sk-...
@@ -285,6 +402,11 @@ MISTRAL_API_KEY=...
 GEMINI_API_KEY=...
 XAI_API_KEY=xai-...
 ELEVENLABS_API_KEY=sk_...
+```
+
+Quick Azure-hosted OpenAI-compatible smoke test:
+```
+python scripts\invoke_azure_openai_chat.py --prompt "What is the capital of France?"
 ```
 
 ---
@@ -311,7 +433,7 @@ Vision now includes a local RAG indexing and retrieval pipeline wired into the r
 - Default corpus path on Windows: `F:\\rag-v1\\data`
 - Override with environment variable:
   - `VISION_RAG_SOURCE=F:\\rag-v1\\data`
-  - or set `RAG_PLUGIN_WORKSPACE` (Vision will infer a data path when possible)
+  - or set `RAG_PLUGIN_WORKSPACE` (Vision will infer a data path when possible, and LM Studio context uses a curated corpus when the workspace is too large)
 
 ### New API Endpoints
 
@@ -341,6 +463,32 @@ These are available in normal operator mode, ElevenLabs conversational agent mod
 
 ---
 
+## Deployment
+
+Vision can be deployed in multiple ways depending on your needs:
+
+### Local Windows Deployment (Recommended for Accessibility)
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Containerized Deployment
+
+Vision includes Docker support for easy deployment:
+
+```bash
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Access the application at http://localhost:8765
+```
+
+### Cloud Deployment
+
+Vision can be deployed to cloud platforms like Azure, AWS, or Google Cloud.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed cloud deployment instructions.
+
+---
+
 ## Voice Settings
 
 | Parameter | Default | Description |
@@ -349,6 +497,35 @@ These are available in normal operator mode, ElevenLabs conversational agent mod
 | `BARGE_RMS` | 1100 | Volume to interrupt AI speech |
 | `START_FRAMES` | 3 | Frames of loud audio to start recording (~90ms) |
 | `END_FRAMES` | 20 | Frames of silence to stop recording (~600ms) |
+
+---
+
+## Voice Communication Improvements for Disabled Users
+
+Vision's voice communication system is specifically designed to accommodate users with various disabilities:
+
+### Enhanced Speech Recognition
+- **Multi-layer STT cascade**: ElevenLabs scribe_v1 → Groq whisper-large-v3-turbo → faster-whisper tiny (offline fallback) for maximum accuracy
+- **Adaptive sensitivity**: Configurable VAD thresholds to accommodate different speech patterns and ambient noise conditions
+- **Barge-in capability**: Allows users to interrupt AI speech naturally, important for users who may need more time to process responses
+
+### Improved Text-to-Speech
+- **High-quality voices**: ElevenLabs WebSocket streaming for natural, clear speech output
+- **Customizable voice parameters**: Adjustable rate, volume, and voice selection to suit individual preferences
+- **Reduced latency**: ~300ms TTS latency for responsive feedback
+
+### Accessibility Features
+- **Wake word support**: "Hey Vision", "OK Vision" for hands-free activation
+- **Always Listening mode**: Continuous voice detection for users who cannot manually activate voice input
+- **Visual feedback**: Real-time volume indicators and transcription display for users with hearing impairments
+
+### Potential Improvements
+1. **Custom wake word training**: Allow users to train personalized wake words that are easier for them to pronounce
+2. **Voice profile adaptation**: Learn individual speech patterns and accents for improved recognition
+3. **Enhanced barge-in detection**: Better sensitivity adjustment for users with softer or atypical speech patterns
+4. **Multi-language support**: Expanded language models for non-English speakers with disabilities
+5. **Noise cancellation**: Advanced audio processing to filter out environmental sounds that may interfere with recognition
+6. **Speech enhancement**: Amplification and clarity improvements for users with speech difficulties
 
 ---
 
@@ -525,7 +702,7 @@ print(f"Cache hit: {result.cache_hit}")
 - Use the `/vision-context-ops` skill
 - Invoke the `@Context Steward` agent
 - Update `.github/copilot-instructions.md` when the improvement should be always-on
-- Pull in the path from `RAG_PLUGIN_WORKSPACE` as local context when the task involves LM Studio or RAG, or use the documented platform fallback when the env var is unset
+- Pull in the path from `RAG_PLUGIN_WORKSPACE` as local context when the task involves LM Studio or RAG, or use the documented curated platform fallback when the env var is unset
 
 **For documentation maintenance:**
 - Start with `DOCUMENTATION_INDEX.md`

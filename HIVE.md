@@ -47,7 +47,8 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 
 ### Always-On Guidance
 - **`.github/copilot-instructions.md`**: Repository-scoped instructions loaded in every Copilot chat. Covers working priorities, runtime assumptions, verification patterns, and editing rules.
-- **`RAG_PLUGIN_WORKSPACE` (via workspace MCP)**: External local LM Studio plugin workspace path for LM Studio and RAG-related tasks. If unset, the repo falls back to `F:\rag-v1` on Windows and `~/rag-v1` elsewhere.
+- **`C:\project\skills`**: Shared local skill repo for reusable cross-project workflows. Prefer Vision's `.github/skills/` when behavior is Vision-specific.
+- **`RAG_PLUGIN_WORKSPACE` (via workspace MCP)**: External local LM Studio plugin workspace path for LM Studio and RAG-related tasks. If unset, the repo falls back to `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere.
 - **`vision_mcp_server.py`**: Repo-local MCP bridge that can be consumed by external harnesses with MCP support, including OpenHarness-style stdio MCP clients.
 - **`http://localhost:8765/command-center`**: Separate Command Center UI for health/metrics monitoring, context-brain refresh, workflow launch, and fast access to docs, skills, agents, and MCP surfaces.
 - **`DOCUMENTATION_INDEX.md`**: Top-level map for runtime, customization, and debugging documentation.

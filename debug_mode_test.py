@@ -1,5 +1,6 @@
 import asyncio
 import json
+
 import websockets
 
 WS = "ws://localhost:8765/ws"
@@ -48,7 +49,7 @@ async def test_mode():
                         print("Found assistant transcript but doesn't contain VISION_TEST_OK")
                 elif msg.get("type") == "state":
                     print(f"State: {msg.get('state')}")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("Timeout waiting for message")
                 break
 

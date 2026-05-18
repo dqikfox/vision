@@ -479,7 +479,7 @@
 			"isBackground": true,
 			"dependsOn": "pip install (functions)",
 			"options": {
-				"cwd": "${workspaceFolder}/azure-search-openai-demo\\app\\functions\\text_processor"
+				"cwd": "${workspaceFolder}/azure-search-openai-demo/app/functions/text_processor"
 			}
 		},
 		{
@@ -496,7 +496,7 @@
 			},
 			"problemMatcher": [],
 			"options": {
-				"cwd": "${workspaceFolder}/azure-search-openai-demo\\app\\functions\\text_processor"
+				"cwd": "${workspaceFolder}/azure-search-openai-demo/app/functions/text_processor"
 			}
 		}
 	]

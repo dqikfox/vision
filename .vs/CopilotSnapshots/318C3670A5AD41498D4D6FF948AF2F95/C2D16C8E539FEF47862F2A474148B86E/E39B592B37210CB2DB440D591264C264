@@ -1,0 +1,53 @@
+﻿"""
+Quick fix: Enable continuous listening via WebSocket
+"""
+import asyncio
+import json
+import websockets
+
+async def enable_continuous_listening():
+    uri = "ws://localhost:8765/ws"
+
+    print("Connecting to Vision backend...")
+    async with websockets.connect(uri) as ws:
+        print("✅ Connected!")
+
+        # Enable continuous listening
+        msg = {
+            "type": "set_continuous",
+            "enabled": True
+        }
+
+        print(f"\n📤 Sending: {msg}")
+        await ws.send(json.dumps(msg))
+        print("✅ Continuous listening enabled!")
+
+        # Also set preferred STT to local (for faster_whisper)
+        stt_msg = {
+            "type": "set_voice_settings",
+            "preferred_stt": "local"  # Use local Whisper as primary
+        }
+
+        print(f"📤 Sending: {stt_msg}")
+        await ws.send(json.dumps(stt_msg))
+        print("✅ STT set to local (faster_whisper)!")
+
+        # Wait for confirmation
+        print("\n📡 Waiting for response...")
+        try:
+            response = await asyncio.wait_for(ws.recv(), timeout=2.0)
+            data = json.loads(response)
+            print(f"📨 Response: {data.get('type', 'unknown')}")
+            if data.get('type') == 'state':
+                print(f"   State: {data.get('state')}")
+        except asyncio.TimeoutError:
+            print("   (No immediate response - that's OK)")
+
+        print("\n✅ Settings updated!")
+        print("\nVision should now:")
+        print("  • Listen continuously (no button clicks needed)")
+        print("  • Use local Whisper for STT (faster, private)")
+        print("  • Fall back to ElevenLabs if local fails")
+
+if __name__ == "__main__":
+    asyncio.run(enable_continuous_listening())

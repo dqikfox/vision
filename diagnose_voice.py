@@ -3,8 +3,11 @@
 
 import os
 import sys
+import traceback
 
 from dotenv import load_dotenv
+from elevenlabs import VoiceSettings
+from elevenlabs.client import ElevenLabs
 
 print("=" * 70)
 print("ELEVENLABS VOICE DIAGNOSTIC")
@@ -17,8 +20,7 @@ load_dotenv()
 api_key = os.environ.get("ELEVENLABS_API_KEY", "")
 print(f"ELEVENLABS_API_KEY loaded: {bool(api_key)}")
 if api_key:
-    print(f"Key prefix: {api_key[:20]}...")
-    print(f"Key length: {len(api_key)}")
+    print("API key present")
 else:
     print("ERROR: No API key found!")
     sys.exit(1)
@@ -27,8 +29,6 @@ else:
 print("\n2. ELEVENLABS API CONNECTION")
 print("-" * 40)
 try:
-    from elevenlabs.client import ElevenLabs
-
     client = ElevenLabs(api_key=api_key)
 
     # Test voices endpoint
@@ -51,8 +51,6 @@ except Exception as e:
 print("\n3. TEXT-TO-SPEECH TEST")
 print("-" * 40)
 try:
-    from elevenlabs import VoiceSettings
-
     test_text = "Vision is online. Voice systems operational."
     print(f"Testing TTS with: '{test_text}'")
 
@@ -73,8 +71,6 @@ try:
 
 except Exception as e:
     print(f"✗ TTS failed: {e}")
-    import traceback
-
     traceback.print_exc()
 
 # Step 4: Check ConvAI Agent

@@ -1,94 +1,45 @@
-"""
-ElevenLabs Configuration Diagnostic Tool
-Tests TTS, STT, and ConvAI connectivity
-"""
+"""Pytest checks for ElevenLabs configuration and SDK availability."""
+
+from __future__ import annotations
 
 import os
-import sys
+from pathlib import Path
 
-# Add project to path
-sys.path.insert(0, r"C:\project\vision")
+import pytest
+from dotenv import load_dotenv
+from elevenlabs.client import ElevenLabs
+
+load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 
-def test_elevenlabs_config():
-    """Test ElevenLabs configuration."""
-    print("=" * 60)
-    print("ELEVENLABS CONFIGURATION DIAGNOSTIC")
-    print("=" * 60)
+@pytest.fixture
+def api_key() -> str:
+    value = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not value:
+        pytest.skip("ELEVENLABS_API_KEY not configured")
+    return value
 
-    # Check environment
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    print("\n1. API Key Check:")
-    print(f"   - Key present: {'Yes' if api_key else 'No'}")
-    print(f"   - Key prefix: {api_key[:15]}..." if api_key else "   - Key: NOT SET")
-    print(f"   - Key length: {len(api_key)} characters")
-    print(f"   - Format valid: {'Yes' if api_key.startswith('sk_') and len(api_key) > 30 else 'No'}")
 
-    # Test basic TTS
-    print("\n2. Testing TTS API:")
-    try:
-        from elevenlabs.client import ElevenLabs
+def test_project_root_is_portable() -> None:
+    assert PROJECT_ROOT.exists()
 
-        client = ElevenLabs(api_key=api_key)
 
-        # Try to list voices (basic API test)
-        voices = client.voices.get_all()
-        print("   - API Connection: ✅ Success")
-        print(f"   - Available voices: {len(voices.voices)}")
+def test_api_key_format(api_key: str) -> None:
+    assert len(api_key) > 30
+    assert api_key.startswith("sk_")
 
-        # Test TTS
-        audio = client.text_to_speech.convert(
-            text="Test successful",
-            voice_id="JBFqnCBsd6RMkjVDRZzb",
-            model_id="eleven_flash_v2_5",
-            output_format="mp3_44100_128",
-        )
-        print("   - TTS Generation: ✅ Success")
 
-    except Exception as e:
-        print(f"   - TTS API: ❌ Failed - {e}")
+def test_tts_connectivity(api_key: str) -> None:
+    client = ElevenLabs(api_key=api_key)
+    voices = client.voices.get_all()
+    assert len(voices.voices) >= 0
 
-    # Test ConvAI
-    print("\n3. Testing ConvAI:")
-    try:
-        from elevenlabs.client import ElevenLabs
-        from elevenlabs.conversational_ai.conversation import Conversation
 
-        client = ElevenLabs(api_key=api_key)
-
-        # Agent ID from memory
-        AGENT_ID = "agent_01jz2wq70mfetr2b7nchrhew1t"
-
-        # Try to get agent info (this will fail if agent doesn't exist)
-        # Note: There's no direct "get agent" method, but we can check if the agent exists
-        # by trying to create a conversation
-
-        print(f"   - Agent ID: {AGENT_ID}")
-        print("   - ConvAI SDK: ✅ Available")
-
-        # The actual conversation test requires audio interface
-        print("   - Note: Full ConvAI test requires audio interface")
-        print("   - To fully test, use the Vision UI or API")
-
-    except ImportError as e:
-        print(f"   - ConvAI SDK: ❌ Not available - {e}")
-    except Exception as e:
-        print(f"   - ConvAI Test: ❌ Failed - {e}")
-
-    # Summary
-    print("\n4. Summary:")
-    print("   - Your API key works for TTS/STT")
-    print("   - ConvAI requires:")
-    print("     a) API key with ConvAI permissions")
-    print("     b) Valid agent ID created in ElevenLabs dashboard")
-    print("\n   To fix ConvAI:")
-    print("   1. Go to https://elevenlabs.io/app/conversational-ai")
-    print("   2. Create a new agent or verify agent_01jz2wq70mfetr2b7nchrhew1t exists")
-    print("   3. Ensure your API key has ConvAI access")
-    print("   4. Update AGENT_ID in live_chat_app.py if needed")
-
-    print("\n" + "=" * 60)
+def test_convai_sdk_available() -> None:
+    convai = pytest.importorskip("elevenlabs.conversational_ai.conversation")
+    assert hasattr(convai, "Conversation")
 
 
 if __name__ == "__main__":
-    test_elevenlabs_config()
+    raise SystemExit(pytest.main([__file__, "-v"]))

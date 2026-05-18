@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from math import sqrt
 
@@ -14,7 +15,12 @@ class RetrievalResult:
 
 
 def _tokenize(text: str) -> set[str]:
-    return {token.strip(".,:;!?()[]{}\"'`).-_/").lower() for token in text.split() if token.strip()}
+    tokens: set[str] = set()
+    for token in re.split(r"[\s.,:;!?()\[\]{}\"'`\-_/]+", text):
+        stripped = token.strip()
+        if stripped:
+            tokens.add(stripped.lower())
+    return tokens
 
 
 def _score(query: str, record: MemoryRecord) -> float:

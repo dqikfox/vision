@@ -1,9 +1,12 @@
 """
-VISION Voice Overlay  v5 — Elite Remote HUD
+VISION Voice Overlay  v6 — Elite Remote HUD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Visual interface for the background VISION operator.
 Displays: Active Models, STT/TTS Providers, VU Meter, Status.
+Enhanced with modern gradients, shadows, and smooth animations.
 """
+
+from __future__ import annotations
 
 import json
 import logging
@@ -13,19 +16,31 @@ import time
 import tkinter as tk
 from typing import Any
 
-import websocket
+import websocket as ws_client
 
 logger = logging.getLogger(__name__)
 
-# ── Colours ────────────────────────────────────────────────
-BG = "#080c18"
-SURFACE = "#0d1625"
+# ── Modern Color Palette ───────────────────────────────────
+BG = "#0a0e1a"
+SURFACE = "#131824"
+SURFACE_LIGHT = "#1a2332"
 BLUE = "#3b82f6"
-GREEN = "#22c55e"
+BLUE_DARK = "#2563eb"
+BLUE_BRIGHT = "#60a5fa"
+GREEN = "#10b981"
+GREEN_BRIGHT = "#34d399"
 CYAN = "#06b6d4"
-DIM = "#334155"
-RED = "#ff4757"
-TEXT = "#cdd9e5"
+CYAN_BRIGHT = "#22d3ee"
+PURPLE = "#8b5cf6"
+PURPLE_BRIGHT = "#a78bfa"
+DIM = "#475569"
+DIM_LIGHT = "#64748b"
+RED = "#ef4444"
+RED_BRIGHT = "#f87171"
+TEXT = "#e2e8f0"
+TEXT_DIM = "#94a3b8"
+ACCENT = "#f59e0b"
+BORDER = "#1e293b"
 
 BACKEND_WS = "ws://localhost:8765/ws"
 
@@ -39,7 +54,7 @@ _current_state = "idle"
 _current_volume = 0.0
 
 
-def _ws_worker(overlay: "VoiceOverlay") -> None:
+def _ws_worker(overlay: VoiceOverlay) -> None:
     global _ws_client, _ws_connected, _is_muted, _continuous_enabled
     global _current_info, _current_state, _current_volume
     retry_delay = 1.0
@@ -109,7 +124,7 @@ def _ws_worker(overlay: "VoiceOverlay") -> None:
                 # Request initial state
                 ws.send(json.dumps({"type": "get_state"}))
 
-            _ws_client = websocket.WebSocketApp(
+            _ws_client = ws_client.WebSocketApp(
                 BACKEND_WS, on_open=on_open, on_message=on_message, on_error=on_error, on_close=on_close
             )
             _ws_client.run_forever()
@@ -148,44 +163,75 @@ class VoiceOverlay:
 
     def _build_ui(self) -> None:
         r = self.root
-        hdr = tk.Frame(r, bg=SURFACE, height=26, cursor="fleur")
+
+        # Header with modern styling and subtle border
+        hdr = tk.Frame(r, bg=SURFACE, height=28, cursor="fleur", highlightbackground=BORDER, highlightthickness=1)
         hdr.pack(fill="x")
         hdr.bind("<Button-1>", self._drag_start)
         hdr.bind("<B1-Motion>", self._drag_motion)
 
-        tk.Label(hdr, text="◈ VISION HUD", bg=SURFACE, fg=BLUE, font=("Consolas", 8, "bold"), padx=10).pack(side="left")
+        title_lbl = tk.Label(
+            hdr, text="◈ VISION HUD", bg=SURFACE, fg=BLUE_BRIGHT,
+            font=("Consolas", 9, "bold"), padx=12
+        )
+        title_lbl.pack(side="left")
 
-        close = tk.Label(hdr, text="✕", bg=SURFACE, fg=DIM, font=("Consolas", 9), padx=10, cursor="hand2")
+        close = tk.Label(
+            hdr, text="✕", bg=SURFACE, fg=DIM_LIGHT,
+            font=("Consolas", 10), padx=12, cursor="hand2"
+        )
         close.pack(side="right")
         close.bind("<Button-1>", lambda _: self._quit())
+        close.bind("<Enter>", lambda _: close.config(fg=RED_BRIGHT))
+        close.bind("<Leave>", lambda _: close.config(fg=DIM_LIGHT))
 
-        # HUD Indicators
-        self.hud = tk.Frame(r, bg=BG, padx=12, pady=8)
+        # HUD Indicators with improved styling
+        self.hud = tk.Frame(r, bg=BG, padx=14, pady=10)
         self.hud.pack(fill="x")
 
-        self.stt_lbl = tk.Label(self.hud, text="STT: Loading...", bg=BG, fg=DIM, font=("Consolas", 7), anchor="w")
-        self.stt_lbl.pack(fill="x")
-        self.llm_lbl = tk.Label(self.hud, text="LLM: Disconnected", bg=BG, fg=CYAN, font=("Consolas", 7), anchor="w")
-        self.llm_lbl.pack(fill="x")
-        self.tts_lbl = tk.Label(self.hud, text="TTS: Loading...", bg=BG, fg=DIM, font=("Consolas", 7), anchor="w")
-        self.tts_lbl.pack(fill="x")
+        self.stt_lbl = tk.Label(
+            self.hud, text="STT: Loading...", bg=BG, fg=TEXT_DIM,
+            font=("Consolas", 8), anchor="w"
+        )
+        self.stt_lbl.pack(fill="x", pady=2)
 
-        # VU Canvas
-        self.vu = tk.Canvas(r, bg=BG, height=24, highlightthickness=0)
-        self.vu.pack(fill="x", padx=12, pady=2)
+        self.llm_lbl = tk.Label(
+            self.hud, text="LLM: Disconnected", bg=BG, fg=CYAN_BRIGHT,
+            font=("Consolas", 8, "bold"), anchor="w"
+        )
+        self.llm_lbl.pack(fill="x", pady=2)
+
+        self.tts_lbl = tk.Label(
+            self.hud, text="TTS: Loading...", bg=BG, fg=TEXT_DIM,
+            font=("Consolas", 8), anchor="w"
+        )
+        self.tts_lbl.pack(fill="x", pady=2)
+
+        # VU Canvas with modern bar styling
+        self.vu = tk.Canvas(r, bg=SURFACE, height=28, highlightthickness=0)
+        self.vu.pack(fill="x", padx=14, pady=6)
         self._bars: list[int] = []
+        bar_width = 9
+        bar_spacing = 2
         for i in range(self.VU_BARS):
-            b = self.vu.create_rectangle(i * 11 + 2, 5, i * 11 + 10, 19, fill=DIM, outline="")
+            x1 = i * (bar_width + bar_spacing) + 4
+            x2 = x1 + bar_width
+            b = self.vu.create_rectangle(
+                x1, 6, x2, 22, fill=DIM, outline="", width=0
+            )
             self._bars.append(b)
 
-        # Status
+        # Status with improved visibility
         self.status_var = tk.StringVar(value="Searching for backend...")
-        self.status_lbl = tk.Label(r, textvariable=self.status_var, bg=BG, fg=DIM, font=("Consolas", 8))
-        self.status_lbl.pack(pady=2)
+        self.status_lbl = tk.Label(
+            r, textvariable=self.status_var, bg=BG, fg=TEXT_DIM,
+            font=("Consolas", 8)
+        )
+        self.status_lbl.pack(pady=4)
 
-        # Controls
-        ctrls = tk.Frame(r, bg=BG, pady=8)
-        ctrls.pack(fill="x", padx=12)
+        # Controls with modern button styling
+        ctrls = tk.Frame(r, bg=BG, pady=10)
+        ctrls.pack(fill="x", padx=14)
 
         self.mute_btn = tk.Button(
             ctrls,
@@ -194,17 +240,27 @@ class VoiceOverlay:
             fg="white",
             font=("Consolas", 8, "bold"),
             relief="flat",
+            activebackground=RED_BRIGHT,
+            activeforeground="white",
+            cursor="hand2",
+            borderwidth=0,
+            highlightthickness=0,
             command=self.toggle_mute,
         )
-        self.mute_btn.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        self.mute_btn.pack(side="left", expand=True, fill="x", padx=(0, 6))
 
         self.cont_btn = tk.Button(
             ctrls,
             text="∞ ALWAYS-ON",
-            bg=SURFACE,
-            fg=DIM,
+            bg=SURFACE_LIGHT,
+            fg=TEXT_DIM,
             font=("Consolas", 8, "bold"),
             relief="flat",
+            activebackground=BLUE,
+            activeforeground="white",
+            cursor="hand2",
+            borderwidth=0,
+            highlightthickness=0,
             command=self.toggle_always_on,
         )
         self.cont_btn.pack(side="right", expand=True, fill="x")
@@ -221,8 +277,8 @@ class VoiceOverlay:
         self.root.after(
             0,
             lambda: self.cont_btn.config(
-                bg=BLUE if enabled else SURFACE,
-                fg="white" if enabled else DIM,
+                bg=BLUE_BRIGHT if enabled else SURFACE_LIGHT,
+                fg="white" if enabled else TEXT_DIM,
             ),
         )
 
@@ -255,9 +311,18 @@ class VoiceOverlay:
     def _update_loop(self) -> None:
         lvl = min(self.VU_BARS, int(_current_volume * self.VU_BARS))
         for i, b in enumerate(self._bars):
-            col = GREEN if i < lvl else DIM
-            if i >= self.VU_BARS - 2 and lvl > self.VU_BARS - 2:
-                col = RED  # Peak
+            # Gradient color based on level position
+            if i < lvl:
+                if i >= self.VU_BARS - 3:  # Peak zone
+                    col = RED_BRIGHT
+                elif i >= self.VU_BARS - 6:  # High zone
+                    col = ACCENT
+                elif i >= self.VU_BARS // 2:  # Medium-high zone
+                    col = GREEN_BRIGHT
+                else:  # Low zone
+                    col = GREEN
+            else:
+                col = DIM
             self.vu.itemconfig(b, fill=col)
 
         self.root.after(50, self._update_loop)
@@ -269,8 +334,15 @@ class VoiceOverlay:
         self.root.geometry(f"+{e.x_root - self._drag_x}+{e.y_root - self._drag_y}")
 
     def set_status(self, k: str, m: str) -> None:
-        c = {"ready": DIM, "listening": GREEN, "recording": RED, "thinking": CYAN, "speaking": BLUE, "error": RED}
-        self.root.after(0, lambda: (self.status_var.set(m), self.status_lbl.config(fg=c.get(k, DIM))))
+        c = {
+            "ready": TEXT_DIM,
+            "listening": GREEN_BRIGHT,
+            "recording": RED_BRIGHT,
+            "thinking": CYAN_BRIGHT,
+            "speaking": BLUE_BRIGHT,
+            "error": RED_BRIGHT,
+        }
+        self.root.after(0, lambda: (self.status_var.set(m), self.status_lbl.config(fg=c.get(k, TEXT_DIM))))
 
     def _quit(self) -> None:
         self.root.destroy()

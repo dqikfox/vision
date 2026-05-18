@@ -1,0 +1,65 @@
+{
+  "started": "2026-05-14T04:56:16.522012",
+  "tests": [
+    {
+      "name": "python_version",
+      "description": "Check Python 3.10+ is installed",
+      "started": "2026-05-14T04:56:16.522550",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:16.522586"
+    },
+    {
+      "name": "dependencies",
+      "description": "Verify all required packages installed",
+      "started": "2026-05-14T04:56:16.522731",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:18.611199"
+    },
+    {
+      "name": "audio_devices",
+      "description": "Check microphone/speaker availability",
+      "started": "2026-05-14T04:56:18.611432",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:18.611782"
+    },
+    {
+      "name": "module_imports",
+      "description": "Test Vision modules import without errors",
+      "started": "2026-05-14T04:56:18.612000",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:21.025844"
+    },
+    {
+      "name": "voice_commands",
+      "description": "Test voice command parsing and recognition",
+      "started": "2026-05-14T04:56:21.026392",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:21.032648"
+    },
+    {
+      "name": "rag_system",
+      "description": "Test RAG knowledge base functionality",
+      "started": "2026-05-14T04:56:21.032853",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:21.035382"
+    },
+    {
+      "name": "mcp_server",
+      "description": "Test MCP server tools and integration",
+      "started": "2026-05-14T04:56:21.035644",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:23.790685"
+    },
+    {
+      "name": "voice_overlay",
+      "description": "Test voice overlay GUI imports",
+      "started": "2026-05-14T04:56:23.790951",
+      "status": "passed",
+      "completed": "2026-05-14T04:56:23.807683"
+    }
+  ],
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "completed": "2026-05-14T04:56:23.807744"
+}

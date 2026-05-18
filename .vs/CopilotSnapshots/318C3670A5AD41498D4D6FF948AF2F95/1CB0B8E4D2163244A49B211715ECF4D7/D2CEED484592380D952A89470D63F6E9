@@ -1,0 +1,78 @@
+﻿"""Extract canvas pixels directly from browser"""
+import asyncio
+from playwright.sync_api import sync_playwright
+from PIL import Image
+import io
+import base64
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    context = browser.new_context()
+    page = context.new_page()
+
+    page.goto('http://localhost:8765', wait_until='networkidle')
+    page.wait_for_timeout(3000)
+
+    # Get canvas data URL
+    canvas_data = page.evaluate('''() => {
+        const canvas = document.getElementById('heroAvatar');
+        if (!canvas) return null;
+        return {
+            dataURL: canvas.toDataURL('image/png'),
+            width: canvas.width,
+            height: canvas.height,
+            clientWidth: canvas.clientWidth,
+            clientHeight: canvas.clientHeight
+        };
+    }''')
+
+    if canvas_data and canvas_data['dataURL']:
+        # Extract base64 data
+        data_url = canvas_data['dataURL']
+        base64_data = data_url.split(',')[1]
+        image_data = base64.b64decode(base64_data)
+
+        # Save canvas image
+        canvas_img = Image.open(io.BytesIO(image_data))
+        canvas_img.save('canvas_direct.png')
+
+        print(f"Canvas dimensions: {canvas_data['width']}x{canvas_data['height']}")
+        print(f"Canvas client size: {canvas_data['clientWidth']}x{canvas_data['clientHeight']}")
+        print(f"Canvas image saved to: canvas_direct.png")
+        print(f"Canvas image size: {canvas_img.size}")
+
+        # Analyze the canvas content
+        import numpy as np
+        img_array = np.array(canvas_img)
+
+        if len(img_array.shape) == 3:
+            avg_brightness = np.mean(img_array)
+            max_brightness = np.max(img_array)
+
+            # Count non-transparent, non-black pixels
+            if img_array.shape[2] == 4:  # RGBA
+                alpha = img_array[:, :, 3]
+                rgb = img_array[:, :, :3]
+
+                # Find pixels that are visible (alpha > 0) and not pure black
+                visible = alpha > 10
+                colored = np.sum(rgb, axis=2) > 30
+                content_pixels = np.sum(visible & colored)
+
+                print(f"\nCanvas content analysis:")
+                print(f"  Average brightness: {avg_brightness:.1f}")
+                print(f"  Max brightness: {max_brightness}")
+                print(f"  Content pixels (non-black, visible): {content_pixels:,}")
+                print(f"  Total pixels: {alpha.size:,}")
+                print(f"  Content ratio: {content_pixels/alpha.size:.2%}")
+
+                if content_pixels > 1000:
+                    print("\n✓ Avatar IS being rendered to canvas")
+                else:
+                    print("\n✗ Avatar NOT rendered or mostly transparent")
+            else:
+                print(f"  RGB only, average: {avg_brightness:.1f}, max: {max_brightness}")
+    else:
+        print("Failed to get canvas data")
+
+    browser.close()

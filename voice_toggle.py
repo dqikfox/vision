@@ -24,7 +24,6 @@ import asyncio
 import base64
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import threading
@@ -33,12 +32,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import winsound
+
 import keyboard
 import numpy as np
 import pyperclip
 import sounddevice as sd
 import websockets
-import winsound
 from scipy.io import wavfile
 
 API_KEY     = os.environ.get("ELEVENLABS_API_KEY", "")

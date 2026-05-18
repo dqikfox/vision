@@ -7,10 +7,12 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+from elevenlabs import VoiceSettings
+from elevenlabs.client import ElevenLabs
+
 # Add vision to path
 sys.path.insert(0, str(Path(__file__).parent))
-
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -23,7 +25,7 @@ print("\n[1/6] Environment Check")
 print("-" * 40)
 api_key = os.environ.get("ELEVENLABS_API_KEY")
 if api_key:
-    print(f"✓ ELEVENLABS_API_KEY loaded: {api_key[:15]}...")
+    print("✓ ELEVENLABS_API_KEY loaded")
 else:
     print("✗ ELEVENLABS_API_KEY not found in environment")
     sys.exit(1)
@@ -66,8 +68,6 @@ for case in test_cases:
 print("\n[5/6] ElevenLabs API Connection")
 print("-" * 40)
 try:
-    from elevenlabs.client import ElevenLabs
-
     client = ElevenLabs(api_key=api_key)
 
     # Test voices
@@ -90,9 +90,6 @@ except Exception as e:
 print("\n[6/6] Text-to-Speech Test")
 print("-" * 40)
 try:
-    from elevenlabs import VoiceSettings
-    from elevenlabs.client import ElevenLabs
-
     client = ElevenLabs(api_key=api_key)
 
     test_text = "Vision voice systems operational. ElevenLabs integration active."

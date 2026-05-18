@@ -4,7 +4,7 @@
   "description": "Full phone control via ADB for Android devices",
 
   "phone": {
-    "adbPath": "C:\\Users\\CHANN0$\\AppData\\Local\\Android\\Sdk\\platform-tools\\adb.exe",
+    "adbPath": "$env:ANDROID_SDK_ROOT\\platform-tools\\adb.exe",
     "defaultScreenshotPath": "$env:USERPROFILE\\Desktop",
     "autoConnect": false,
     "wifiAdb": {
@@ -18,8 +18,8 @@
     "vision-adb": {
       "command": "powershell",
       "args": [
-        "-ExecutionPolicy", "Bypass",
-        "-File", "C:/project/vision/openclaw-elite-phone.ps1"
+        "-ExecutionPolicy", "RemoteSigned",
+        "-File", ".\\openclaw-elite-phone.ps1"
       ],
       "description": "Vision ADB phone control integration"
     }
@@ -90,7 +90,7 @@
     },
     "key": {
       "description": "Press a key",
-      "command": "adb shell input keyevent {code}",
+      "command": "adb shell input keyevent {key}",
       "parameters": {
         "key": "HOME, BACK, POWER, VOLUME_UP, VOLUME_DOWN, MENU, ENTER"
       },

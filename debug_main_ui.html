@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head><title>Debug Main UI</title></head>
+<body style="background:#000;color:#0f0;font-family:monospace;padding:20px;">
+<h1>Main UI Debug</h1>
+<div id="output"></div>
+<script>
+setTimeout(() => {
+    const iframe = document.createElement('iframe');
+    iframe.src = '/';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
+
+    iframe.onload = () => {
+        setTimeout(() => {
+            try {
+                const iwin = iframe.contentWindow;
+                const results = {
+                    'THREE loaded': typeof iwin.THREE !== 'undefined',
+                    'GLTFLoader loaded': typeof iwin.GLTFLoader !== 'undefined',
+                    'avatarScene exists': typeof iwin.avatarScene !== 'undefined',
+                    'avatarCamera exists': typeof iwin.avatarCamera !== 'undefined',
+                    'avatarRenderer exists': typeof iwin.avatarRenderer !== 'undefined',
+                    'avatarModel exists': typeof iwin.avatarModel !== 'undefined' && iwin.avatarModel !== null,
+                    'Canvas element': !!iwin.document.getElementById('heroAvatar'),
+                    'Container element': !!iwin.document.getElementById('heroAvatarFrame')
+                };
+
+                let html = '<h2>Results:</h2>';
+                for (let [key, val] of Object.entries(results)) {
+                    const color = val ? '#0f0' : '#f00';
+                    const symbol = val ? 'OK' : 'FAIL';
+                    html += `<div style="color:${color}">${symbol}: ${key}</div>`;
+                }
+
+                const canvas = iwin.document.getElementById('heroAvatar');
+                if (canvas) {
+                    html += `<h3>Canvas Details:</h3>`;
+                    html += `<div>Width: ${canvas.width}</div>`;
+                    html += `<div>Height: ${canvas.height}</div>`;
+                    html += `<div>Style: ${canvas.style.cssText}</div>`;
+                }
+
+                document.getElementById('output').innerHTML = html;
+            } catch (err) {
+                document.getElementById('output').innerHTML = `<div style="color:#f00">Error: ${err.message}</div>`;
+            }
+        }, 5000);
+    };
+
+    document.body.appendChild(iframe);
+}, 1000);
+</script>
+</body>
+</html>

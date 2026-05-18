@@ -90,7 +90,7 @@ LANGSMITH_PROJECT=openharness-self-aware-agent
 ## Run
 
 ```bash
-cd C:/project/vision/LANGGRAPH
+cd LANGGRAPH
 pip install -e . "langgraph-cli[inmem]"
 langgraph dev
 ```

@@ -1,0 +1,61 @@
+﻿Loading http://localhost:8765 ...
+
+=== RUNTIME STATE ===
+{
+  "THREE": true,
+  "GLTFLoader": false,
+  "avatarScene": true,
+  "avatarCamera": true,
+  "avatarRenderer": true,
+  "avatarModel": true,
+  "canvas": {
+    "exists": true,
+    "width": 558,
+    "height": 636,
+    "clientWidth": 558,
+    "clientHeight": 636,
+    "visible": true
+  },
+  "frame": {
+    "exists": true,
+    "clientWidth": 558,
+    "clientHeight": 636
+  }
+}
+
+=== CONSOLE (last 30) ===
+[log] Loading: 78%
+[log] Loading: 79%
+[log] Loading: 81%
+[log] Loading: 82%
+[log] Loading: 83%
+[log] Loading: 85%
+[log] Loading: 86%
+[log] Loading: 93%
+[log] Loading: 95%
+[log] Loading: 97%
+[log] Loading: 98%
+[log] Loading: 99%
+[log] Loading: 100%
+[warning] [.WebGL-0x17dc04557000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[warning] [.WebGL-0x17dc04557000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[log] Model load success callback triggered
+[log] Model original size: 0.508m tall
+[log] Scaling from 0.508m to 0.1875m = scale 0.3692
+[log] Model added to scene, camera positioned
+[log] Ultron materials applied to model
+[log] 3D Ultron avatar loaded successfully
+[warning] [.WebGL-0x17dc04557000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+[log] Renderer active, frame count check...
+[log] Renderer info: {memory: Object, render: Object, programs: Array(3), autoReset: true, reset: }
+[log] === AVATAR RENDER DEBUG (4s) ===
+[log] Scene children: 6
+[log] Model exists: yes
+[log] Renderer: yes
+[log] Model pos: Vector3
+[log] Model visible: true
+
+=== JS ERRORS ===
+No JavaScript errors
+
+Screenshot saved to: ui_runtime_state.png

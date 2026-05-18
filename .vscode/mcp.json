@@ -15,7 +15,7 @@
       "type": "stdio",
       "command": "python",
       "args": ["launch_lmstudio_rag_mcp.py"],
-      "description": "Read the user's LM Studio RAG plugin workspace from RAG_PLUGIN_WORKSPACE or the platform fallback"
+      "description": "Read the user's LM Studio RAG plugin workspace from RAG_PLUGIN_WORKSPACE or the curated platform fallback"
     },
     "fetch": {
       "type": "stdio",
@@ -64,6 +64,11 @@
         "BRAVE_API_KEY": "${env:BRAVE_API_KEY}"
       },
       "description": "Web search via Brave Search API"
+    },
+    "ollama": {
+      "type": "http",
+      "url": "http://localhost:11434",
+      "description": "Local Ollama inference server — exposes all installed models"
     }
   }
 }

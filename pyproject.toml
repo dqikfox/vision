@@ -21,7 +21,10 @@ dependencies = [
     "openai>=2.30",
     "anthropic>=0.25",
     "ollama>=0.1",
+    "azure-ai-projects>=2.1.0",
+    "azure-identity>=1.15.0",
     "elevenlabs>=2.42",
+    "huggingface_hub>=0.24",
     "mcp[cli]>=1.0.0",
     "pyautogui>=0.9",
     "pytesseract>=0.3",
@@ -53,6 +56,10 @@ testpaths = ["."]
 asyncio_mode = "auto"
 addopts = [
     "--strict-markers",
+    "--ignore=LANGGRAPH",
+    "--ignore=azure-search-openai-demo",
+    "--ignore=node_modules",
+    "--ignore=open-harness",
 ]
 markers = [
     "asyncio: async tests",

@@ -1,0 +1,49 @@
+{
+  "folders": [
+    {
+      "name": "Vision",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.envFile": "${workspaceFolder}\\.env",
+    "python.analysis.extraPaths": [
+      "${workspaceFolder}"
+    ],
+    "terminal.integrated.cwd": "${workspaceFolder}"
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-azuretools.vscode-azurefunctions",
+      "ms-python.python",
+      "charliermarsh.ruff",
+      "ms-python.vscode-pylance",
+      "ms-python.pylint",
+      "ms-python.flake8",
+      "ms-python.mypy-type-checker",
+      "ms-python.isort",
+      "ms-python.debugpy",
+      "ms-toolsai.jupyter",
+      "github.copilot-chat",
+      "eamodio.gitlens",
+      "usernamehw.errorlens",
+      "gruntfuggly.todo-tree",
+      "aaron-bond.better-comments",
+      "humao.rest-client",
+      "mikestead.dotenv",
+      "redhat.vscode-yaml",
+      "davidanson.vscode-markdownlint",
+      "alefragnani.bookmarks",
+      "christian-kohler.path-intellisense",
+      "oderwat.indent-rainbow",
+      "naumovs.color-highlight",
+      "streetsidesoftware.code-spell-checker",
+      "kisstkondoros.vscode-codemetrics",
+      "pkief.material-icon-theme",
+      "tyriar.windows-terminal",
+      "ms-vscode.powershell",
+      "warm3snow.vscode-ollama",
+      "technovangelist.ollamamodelfile"
+    ]
+  }
+}

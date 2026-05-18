@@ -136,6 +136,7 @@ Optional Python dependencies documented in `requirements.txt`:
 | `agent-framework-core` | `==1.0.0rc6` | Microsoft Agent Framework core. | Installed after agentserver packages. |
 | `agent-framework-foundry` | `==1.0.0rc6` | Foundry integration. | Requires Azure credentials/config. |
 | `agent-framework-openai` | `==1.0.0rc6` | OpenAI provider integration for Agent Framework. | Requires provider credentials. |
+| `azure-ai-projects` | `>=2.1.0` | AI Foundry project and agent invocation SDK. | Used by direct Foundry agent invocation helpers. |
 | `azure-identity` | `>=1.15.0` | Azure authentication. | Used by Foundry/Azure flows. |
 | Azure Developer CLI (`azd`) | Current | Azure sample provisioning and deployment. | `azure-search-openai-demo\azure.yaml` and `install-azd.ps1` indicate this is expected for the sample. |
 | Azure CLI (`az`) | Current | Azure login and resource operations. | Common prerequisite for Azure/Foundry workflows. |
@@ -163,7 +164,7 @@ Workspace MCP servers are configured in `.vscode\mcp.json`.
 | --- | --- | --- | --- | --- |
 | `github` | HTTP | `https://api.githubcopilot.com/mcp/` | GitHub issues, PRs, repos, and code search. | Requires Copilot/GitHub authentication in the client. |
 | `filesystem` | stdio | `npx -y @modelcontextprotocol/server-filesystem ${workspaceFolder}` | Read/write access to the Vision workspace. | Scoped to the workspace folder. |
-| `lmstudio-rag` | stdio | `python launch_lmstudio_rag_mcp.py` | Reads the LM Studio RAG/plugin workspace. | Uses `RAG_PLUGIN_WORKSPACE`; falls back to `F:\rag-v1` on Windows and `~/rag-v1` elsewhere. |
+| `lmstudio-rag` | stdio | `python launch_lmstudio_rag_mcp.py` | Reads the LM Studio RAG/plugin workspace. | Uses `RAG_PLUGIN_WORKSPACE`; falls back to `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere. Oversized workspaces are redirected to a curated sibling corpus. |
 | `fetch` | stdio | `npx -y @modelcontextprotocol/server-fetch` | Fetches URLs as Markdown or raw HTML. | Requires Node and network access. |
 | `git` | stdio | `npx -y @modelcontextprotocol/server-git ${workspaceFolder}` | Git history, diffs, and repo state. | Requires Git and Node. |
 | `memory` | stdio | `npx -y @modelcontextprotocol/server-memory` | Persistent knowledge graph memory. | Storage location is server-managed. |
@@ -215,7 +216,7 @@ Use `.env.example` as the non-secret template. Do not commit real `.env` values.
 | `COPILOT_PROVIDER_BASE_URL` | Managed by helper script | Copilot CLI provider base URL. | Usually `http://127.0.0.1:18789/v1`. |
 | `COPILOT_PROVIDER_API_KEY` | Managed by helper script | Copilot CLI API key/token. | Set from the OpenClaw gateway token. |
 | `COPILOT_MODEL` | Managed by helper script | Model used by Copilot CLI. | Set to `openclaw/default`. |
-| `RAG_PLUGIN_WORKSPACE` | Optional | LM Studio RAG/plugin workspace path. | Falls back to `F:\rag-v1` on Windows and `~/rag-v1` elsewhere. |
+| `RAG_PLUGIN_WORKSPACE` | Optional | LM Studio RAG/plugin workspace path. | Falls back to `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere; oversized workspaces are mirrored into a curated corpus automatically. |
 
 ## VS Code Tooling
 
@@ -305,4 +306,3 @@ Invoke-WebRequest -UseBasicParsing http://localhost:8765/api/health
 Invoke-WebRequest -UseBasicParsing http://localhost:11434/api/tags
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\copilot-openclaw.ps1 -Verify
 ```
-

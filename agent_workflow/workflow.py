@@ -2,6 +2,12 @@
 # Writer-Reviewer multi-agent system for automated content creation
 
 import asyncio
+from typing import Any
+
+try:
+    from azure.ai.agentserver.agentframework import from_agent_framework
+except ImportError:  # pragma: no cover - optional server dependency
+    from_agent_framework = None
 
 from agent_framework.workflows import WorkflowBuilder
 from content_collaboration import ContentCollaborationWorkflow, ContentRequest, WorkflowConfig, WorkflowHandler
@@ -9,7 +15,7 @@ from content_collaboration import ContentCollaborationWorkflow, ContentRequest, 
 # ── Workflow Builder ─────────────────────────────────────────────────────────
 
 
-def create_content_workflow():
+def create_content_workflow() -> Any:
     """Create the Writer-Reviewer workflow using WorkflowBuilder."""
 
     handler = WorkflowHandler()
@@ -23,7 +29,10 @@ def create_content_workflow():
 
 
 async def run_collaboration(
-    topic: str, content_type: str = "documentation", requirements: list[str] = None, max_iterations: int = 3
+    topic: str,
+    content_type: str = "documentation",
+    requirements: list[str] | None = None,
+    max_iterations: int = 3,
 ) -> str:
     """Run a content collaboration directly."""
 
@@ -44,10 +53,10 @@ async def run_collaboration(
 # ── HTTP Server Entry Point ───────────────────────────────────────────────────
 
 
-async def run_server():
+async def run_server() -> None:
     """Run the workflow as an HTTP server."""
-    from azure.ai.agentserver.agentframework import from_agent_framework
-
+    if from_agent_framework is None:
+        raise RuntimeError("azure.ai.agentserver.agentframework is not installed")
     workflow = create_content_workflow()
     await from_agent_framework(workflow).run_async()
 

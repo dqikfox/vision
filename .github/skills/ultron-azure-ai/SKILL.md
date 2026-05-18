@@ -89,7 +89,7 @@ Invoke Ultron when:
 3. **Deploy App Service**
    ```powershell
    az webapp up --sku P3MV3
-   az webapp config set --startup-file "gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app"
+    az webapp config set --startup-file 'gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app'
    ```
 
 4. **Add Sidecar Extension**
@@ -121,6 +121,10 @@ Invoke Ultron when:
    EXPOSE 8000
    CMD ["python", "model_api.py"]
    ```
+
+    Create `model_api.py` in the container build context as the FastAPI entrypoint that serves the custom SLM.
+    It should expose `POST /chat` for inference and `GET /api/health` for readiness.
+    Keep `model_api.py`, `requirements.txt`, and any model-loading helpers in the same source directory so `COPY . .` includes the runtime entrypoint.
 
 3. **Push to ACR**
    ```powershell
@@ -159,6 +163,7 @@ Invoke Ultron when:
 
 ### Python FastAPI Integration
 ```python
+import os
 import httpx
 import json
 from fastapi import FastAPI
@@ -171,17 +176,22 @@ class ChatRequest(BaseModel):
 
 class SLMService:
     def __init__(self):
-        self.api_url = 'http://localhost:11434/v1/chat/completions'
+        self.api_url = os.environ.get('SLM_API_URL', 'http://localhost:11434/v1/chat/completions')
+        self.model = os.environ.get('SLM_MODEL', 'phi-4')
+        self.max_tokens = int(os.environ.get('SLM_MAX_TOKENS', '2048'))
+        self.temperature = float(os.environ.get('SLM_TEMPERATURE', '0.7'))
 
     async def generate(self, prompt: str):
         request_payload = {
+            "model": self.model,
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
             ],
             "stream": True,
             "cache_prompt": False,
-            "n_predict": 2048
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature
         }
 
         async with httpx.AsyncClient() as client:
@@ -190,7 +200,7 @@ class SLMService:
                 self.api_url,
                 json=request_payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30.0
+                timeout=60.0
             ) as response:
                 async for line in response.aiter_lines():
                     if not line or line == "[DONE]":
@@ -215,9 +225,9 @@ async def chat(request: ChatRequest):
         response_text += token
     return {"response": response_text}
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
-    return {"status": "healthy", "model": "phi-4"}
+    return {"status": "healthy", "model": os.environ.get('SLM_MODEL', 'phi-4')}
 ```
 
 ## Troubleshooting
@@ -241,7 +251,7 @@ async def health():
 4. Review application logs
 
 ### Issue: Timeout Errors
-**Symptoms:** Requests timeout after 30 seconds
+**Symptoms:** Requests timeout after 60 seconds
 
 **Solutions:**
 1. Increase timeout in SLMService (60s recommended)

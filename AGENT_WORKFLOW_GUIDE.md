@@ -87,12 +87,17 @@ vision/
 ```powershell
 cd c:\project\vision\agent_workflow
 
+# Requires Python 3.14+
+
 # Create virtual environment
 python -m venv venv
 .\venv\Scripts\Activate
 
-# Install requirements (in order!)
-pip install -r requirements.txt
+# Install runtime dependencies
+python -m pip install -r requirements.txt
+
+# Optional: install development extras
+python -m pip install -e '.[dev]'
 ```
 
 ### 2. Configure Environment
@@ -191,6 +196,17 @@ outputs/
 | `review` | Analysis, comparisons |
 
 ## 🐛 Debugging
+
+### Check Logs First
+
+Before attaching a debugger, inspect the primary diagnostic log:
+
+```powershell
+Get-Content chat_events.log -Tail 50
+Select-String -Path chat_events.log -Pattern "ERROR|EXCEPTION"
+```
+
+This usually surfaces failures in `content_collaboration.py` or `agent_workflow/workflow.py` faster than stepping into the debugger.
 
 ### With VS Code
 

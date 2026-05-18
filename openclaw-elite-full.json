@@ -43,7 +43,7 @@
     },
     "postgres": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/openclaw"],
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "USE_ENV_POSTGRES_URL"],
       "description": "PostgreSQL database access (if available)"
     },
     "redis": {

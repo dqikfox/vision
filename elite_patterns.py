@@ -7,9 +7,10 @@ Reduces boilerplate, improves consistency, encapsulates best practices.
 import asyncio
 import functools
 import logging
-from typing import TypeVar, Callable, Any, Optional, List, Dict
-from dataclasses import dataclass
+from collections.abc import Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 def async_cached(ttl_seconds: int = 300):
     """Decorator: cache async function results with TTL."""
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        cache: Dict[str, tuple[Any, float]] = {}
+        cache: dict[str, tuple[Any, float]] = {}
 
         @functools.wraps(fn)
         async def wrapper(*args, **kwargs) -> Any:
@@ -70,7 +71,7 @@ def requires_keys(*env_vars: str):
     return decorator
 
 @asynccontextmanager
-async def async_timer(name: str, logger_fn: Optional[Callable] = None):
+async def async_timer(name: str, logger_fn: Callable | None = None):
     """Context manager: measure async code block duration."""
     import time
     start = time.monotonic()
@@ -91,8 +92,8 @@ async def async_timer(name: str, logger_fn: Optional[Callable] = None):
 class ValidationResult:
     """Result of validation check."""
     valid: bool
-    errors: List[str] = None
-    warnings: List[str] = None
+    errors: list[str] = None
+    warnings: list[str] = None
 
     def __post_init__(self):
         self.errors = self.errors or []
@@ -108,8 +109,8 @@ class Validator:
     def __init__(self, value: Any, name: str = "value"):
         self.value = value
         self.name = name
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def not_none(self) -> "Validator":
         if self.value is None:
@@ -161,7 +162,7 @@ class ConfigLoader:
         return val
 
     @staticmethod
-    def from_json_file(path: str) -> Dict[str, Any]:
+    def from_json_file(path: str) -> dict[str, Any]:
         """Load config from JSON file."""
         import json
         from pathlib import Path
@@ -176,8 +177,8 @@ class ConfigLoader:
 
 def setup_structured_logging(name: str, level: str = "INFO") -> logging.Logger:
     """Configure structured logging with JSON output."""
-    import logging.config
     import json
+    import logging.config
 
     class JsonFormatter(logging.Formatter):
         def format(self, record: logging.LogRecord) -> str:
@@ -207,7 +208,7 @@ def setup_structured_logging(name: str, level: str = "INFO") -> logging.Logger:
 class Result:
     """Monadic Result type for safe error handling."""
 
-    def __init__(self, value: Optional[T] = None, error: Optional[str] = None):
+    def __init__(self, value: T | None = None, error: str | None = None):
         self.value = value
         self.error = error
         self.is_ok = error is None

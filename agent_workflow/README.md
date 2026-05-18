@@ -22,7 +22,7 @@ This workflow implements a collaborative content creation process where:
 
 ## Architecture
 
-```
+```text
 User Request
     ↓
 ┌─────────────────┐
@@ -45,14 +45,14 @@ Output       Loop
 
 ```powershell
 # Navigate to workflow directory
-cd c:\project\vision\agent_workflow
+cd agent_workflow
 
 # Create virtual environment
 python -m venv venv
 .\venv\Scripts\Activate
 
-# Install requirements (IMPORTANT: Install in this order!)
-pip install -r requirements.txt
+# Install requirements
+python -m pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment
@@ -116,6 +116,20 @@ curl -X POST http://localhost:8000/create_content \
   }'
 ```
 
+```powershell
+# Start server
+python workflow.py server
+
+# Send request
+Invoke-RestMethod -Uri "http://localhost:8000/create_content" -Method Post `
+    -ContentType "application/json" `
+    -Body '{
+        "messages": [
+            {"role": "user", "text": "Create documentation about Vision Memory System"}
+        ]
+    }'
+```
+
 ## Content Types
 
 | Type | Description | Use Case |
@@ -140,10 +154,10 @@ The Reviewer Agent evaluates content on:
 
 This workflow can enhance the Vision project by:
 
-1. **Auto-generating Documentation** - Create docs from code
-2. **Code Review Assistance** - Review PR descriptions
-3. **Blog Post Creation** - Generate content from features
-4. **Tutorial Generation** - Create guides from workflows
+1. **Auto-generating Documentation** — ✅ Implemented. Generates documentation-style content from prompts and requirements today.
+2. **Code Review Assistance** — 🚧 Planned. The workflow can draft review text, but it does not yet inspect diffs or enforce review policy.
+3. **Blog Post Creation** — ✅ Implemented. Supports blog-oriented requests through the same writer-reviewer loop.
+4. **Tutorial Generation** — 🚧 Planned. Tutorial-specific structure still depends on prompt wording rather than a dedicated execution path.
 
 ### Example: Generate Vision Documentation
 
@@ -172,7 +186,7 @@ async def generate_vision_docs():
 
 ## Project Structure
 
-```
+```text
 agent_workflow/
 ├── content_collaboration.py  # Core workflow implementation
 ├── workflow.py               # Entry points and HTTP server
@@ -195,11 +209,16 @@ agent_workflow/
 ### With AI Toolkit Agent Inspector
 
 1. Start workflow with debugpy:
+
    ```powershell
    python -m debugpy --listen 5678 --wait-for-client workflow.py
    ```
-2. In VS Code, run "AI Toolkit Agent Inspector" configuration
-3. Open Agent Inspector in browser
+
+2. In VS Code, run "AI Toolkit Agent Inspector" configuration.
+3. Open Agent Inspector in the browser at <http://localhost:5678>.
+
+If port 5678 is already in use, change the port in both `python -m debugpy --listen <PORT> --wait-for-client workflow.py`
+and the VS Code "AI Toolkit Agent Inspector" launch configuration so `debugpy`, `workflow.py`, and the inspector all use the same port.
 
 ## Environment Variables
 
@@ -215,6 +234,7 @@ agent_workflow/
 ### Import Errors
 
 Ensure you're using the virtual environment:
+
 ```powershell
 .\venv\Scripts\Activate
 ```
@@ -222,6 +242,7 @@ Ensure you're using the virtual environment:
 ### Authentication Issues
 
 Login to Azure:
+
 ```powershell
 az login
 ```

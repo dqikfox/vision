@@ -1,0 +1,14 @@
+defaultEnvironment: prod
+
+environments:
+  prod:
+    projectEndpoint: https://dqikst-agent-resource.services.ai.azure.com/api/projects/dqikst-agent
+    agentName: vision-agent
+    agentId: asst_slqL52cZItaloNpISKmWzo2q
+    azureContainerRegistry: ""
+
+testCases:
+  - input: "Take a screenshot"
+    expectedOutputContains: "screenshot"
+  - input: "What's on the screen?"
+    expectedOutputContains: "screen"

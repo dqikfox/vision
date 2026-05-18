@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  vision:
+    build: .
+    ports:
+      - "8765:8765"
+    environment:
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - ./memory.json:/app/memory.json
+      - ./chat_events.log:/app/chat_events.log
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  ollama-models:
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    restart: "no"
+    volumes:
+      - ollama-data:/root/.ollama
+    command: >
+      bash -c "
+        sleep 10 &&
+        ollama pull llama3.2:3b &&
+        ollama pull qwen2.5:0.5b
+      "
+
+volumes:
+  ollama-data:
