@@ -1,14 +1,44 @@
 """
 elite_voice.py — Advanced voice pipeline, buffering
 ====================================================
-Streaming optimization, audio quality metrics.
+Streaming optimization, audio quality metrics, adaptive VAD, TTS text cleaning.
 """
 
+import re
 from collections import deque
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 import numpy as np
+
+
+def _clean_text_for_tts(text: str) -> str:
+    """Strip markdown and code formatting so it reads naturally when spoken aloud.
+
+    Removes headers, bold/italic markers, inline code, code fences, URLs, and
+    list markers that would be read literally by TTS engines.
+    """
+    # Code fences — omit the fence markers; spoken content reads fine without them
+    text = re.sub(r"```[a-zA-Z]*\n?", "", text)
+    text = re.sub(r"```", "", text)
+    # Inline code — unwrap backticks
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)
+    # Markdown headers
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Bold / italic (*** ** * ___ __ _)
+    text = re.sub(r"\*{1,3}([^*\n]+)\*{1,3}", r"\1", text)
+    text = re.sub(r"_{1,3}([^_\n]+)_{1,3}", r"\1", text)
+    # Ordered and unordered list markers
+    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
+    # Bare URLs — replace with the word "link"
+    text = re.sub(r"https?://\S+", "link", text)
+    # Horizontal rules
+    text = re.sub(r"^\s*[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
+    # Collapse runs of blank lines and trailing spaces
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
 
 @dataclass
@@ -159,4 +189,38 @@ class VoiceCharacteristicsAnalyzer:
         if total > 0:
             scores = {k: v / total for k, v in scores.items()}
         return scores
+
+
+class AdaptiveVADThreshold:
+    """Dynamic VAD threshold that tracks ambient noise floor in real time.
+
+    Replaces the fixed ``RMS_THRESH`` constant with a value that adapts to the
+    current acoustic environment, reducing false triggers in noisy rooms while
+    remaining sensitive enough to catch soft speech in quiet rooms.
+
+    Threshold = clamp(noise_floor × MULTIPLIER, MIN_THRESH, MAX_THRESH)
+    """
+
+    MULTIPLIER: float = 3.0   # How many × above noise floor counts as speech
+    MIN_THRESH: float = 400.0  # Never drop below this (prevents over-sensitivity)
+    MAX_THRESH: float = 1400.0  # Never exceed this (prevents deafness)
+
+    def __init__(self, initial_noise_floor: float = 150.0) -> None:
+        self._analyzer = VoiceMetricsAnalyzer()
+        self._analyzer.noise_baseline = initial_noise_floor
+
+    def update(self, audio_chunk: np.ndarray) -> AudioMetrics:
+        """Ingest a new audio frame and return quality metrics."""
+        return self._analyzer.analyze(audio_chunk)
+
+    @property
+    def threshold(self) -> float:
+        """Current effective VAD activation threshold (RMS units)."""
+        raw = self._analyzer.noise_baseline * self.MULTIPLIER
+        return max(self.MIN_THRESH, min(self.MAX_THRESH, raw))
+
+    @property
+    def noise_baseline(self) -> float:
+        """Estimated ambient noise floor (RMS units)."""
+        return self._analyzer.noise_baseline
 

@@ -69,6 +69,7 @@ from scipy.io import wavfile  # type: ignore[import-untyped]
 
 from elite_brain import get_brain
 from elite_goals import GoalPriority, get_goal_manager
+from elite_voice import AdaptiveVADThreshold, _clean_text_for_tts
 from elite_world import EntityState, EntityType, get_world_model
 from hive_tools.context_mapper import DEFAULT_OUTPUT as CONTEXT_BRAIN_FILE
 from hive_tools.context_mapper import build_context_brain
@@ -630,6 +631,7 @@ runtime_state: str = "idle"
 _voice_capture_active: bool = False
 _mic_hold_until: float = 0.0
 _pipeline_timing: dict[str, float] = {}  # stage → perf_counter timestamp
+_adaptive_vad_thresh: AdaptiveVADThreshold | None = None  # set by voice_loop(); drives adaptive VAD
 
 
 @contextlib.contextmanager
@@ -718,6 +720,8 @@ tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 tts_voice_id: str = VOICE_ID
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
 _elevenlabs_auth_failed: bool = False
+tts_el_stability: float = 0.5       # ElevenLabs stability (0.0–1.0); higher = more consistent
+tts_el_similarity_boost: float = 0.75  # ElevenLabs similarity boost (0.0–1.0)
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
 AGENT_ID = "agent_0701knwqnqy9e1aa3a3drdh30cva"
@@ -860,6 +864,8 @@ async def _broadcast_voice_settings_update() -> None:
             "tts_rate": tts_rate,
             "tts_voice_idx": tts_voice_idx,
             "tts_voice_id": tts_voice_id,
+            "tts_el_stability": tts_el_stability,
+            "tts_el_similarity_boost": tts_el_similarity_boost,
         }
     )
 
@@ -3397,6 +3403,35 @@ async def api_wake_word(body: dict):
     return JSONResponse({"ok": True, "enabled": wake_word_active})
 
 
+@app.post("/api/voice/quality")
+async def api_voice_quality(body: dict) -> JSONResponse:
+    """Configure ElevenLabs TTS voice quality parameters at runtime.
+
+    Body fields (all optional):
+      stability        float 0.0–1.0  — higher = more consistent/less expressive
+      similarity_boost float 0.0–1.0  — higher = closer to reference voice
+    """
+    global tts_el_stability, tts_el_similarity_boost
+    changed = False
+    if "stability" in body:
+        val = float(body["stability"])
+        tts_el_stability = max(0.0, min(1.0, val))
+        changed = True
+    if "similarity_boost" in body:
+        val = float(body["similarity_boost"])
+        tts_el_similarity_boost = max(0.0, min(1.0, val))
+        changed = True
+    if changed:
+        await _broadcast_voice_settings_update()
+    return JSONResponse(
+        {
+            "ok": True,
+            "stability": tts_el_stability,
+            "similarity_boost": tts_el_similarity_boost,
+        }
+    )
+
+
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
     global muted, mode, speak_task, current_provider, current_model, _ollama_failover_active, _input_busy
@@ -3863,11 +3898,11 @@ class VAD:
         self._buf = []
         self._preroll.clear()
 
-    def feed(self, frame: np.ndarray):
+    def feed(self, frame: np.ndarray, thresh: float = RMS_THRESH):
         frame_copy = frame.copy()
         self._preroll.append(frame_copy)
         rms = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
-        if rms > RMS_THRESH:
+        if rms > thresh:
             self._loud += 1
             self._quiet = 0
         else:
@@ -3906,6 +3941,16 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         return ""
 
     audio = np.concatenate(frames, axis=0)
+
+    # SNR quality gate: skip cloud STT if the captured audio is barely above
+    # the ambient noise floor — this avoids wasting API quota on noise bursts.
+    if _adaptive_vad_thresh is not None:
+        avg_rms = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
+        snr = avg_rms / max(_adaptive_vad_thresh.noise_baseline, 1.0)
+        if snr < 1.3:
+            write_log("stt", f"SNR gate: rms={avg_rms:.0f} noise={_adaptive_vad_thresh.noise_baseline:.0f} snr={snr:.2f}")
+            return ""
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         wavfile.write(f.name, SR, audio)
         path = f.name
@@ -3971,12 +4016,15 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             from faster_whisper import WhisperModel  # type: ignore
 
             if _faster_whisper_model is None:
-                print("[stt] Loading local faster-whisper tiny model…")
-                _faster_whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+                print("[stt] Loading local faster-whisper base.en model…")
+                _faster_whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
             wm = _faster_whisper_model
 
             def _local():
-                segs, _ = wm.transcribe(path, beam_size=1, language="en")
+                # Use beam_size=5 for better accuracy when not in real-time mode;
+                # drop to beam_size=1 (greedy) during continuous listening to cut latency.
+                beam = 1 if continuous_listening else 5
+                segs, _ = wm.transcribe(path, beam_size=beam, language="en")
                 return " ".join(s.text for s in segs).strip()
 
             result = _normalize_stt_text(await loop.run_in_executor(None, _local))
@@ -7722,7 +7770,7 @@ async def speak(text_gen):
                 async for _ in _broadcasting_gen():
                     pass
                 await _finalize_text()
-                full_text = _normalize_assistant_text("".join(collected)).strip()
+                full_text = _clean_text_for_tts(_normalize_assistant_text("".join(collected))).strip()
                 if full_text:
                     await _wait_for_quiet_input()
                     _pt_set("tts_start")
@@ -7763,7 +7811,10 @@ async def speak(text_gen):
                                 json.dumps(
                                     {
                                         "text": " ",
-                                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                                        "voice_settings": {
+                                            "stability": tts_el_stability,
+                                            "similarity_boost": tts_el_similarity_boost,
+                                        },
                                     }
                                 )
                             )
@@ -7787,6 +7838,7 @@ async def speak(text_gen):
                                 nonlocal _spoken_text_len
                                 # Sentence-chunk tokens before sending — stable prosody with auto_mode.
                                 # Buffer until sentence boundary, then flush whole sentence at once.
+                                # Also split on commas/semicolons for natural speech pacing.
                                 buf = ""
                                 eleven_gen_started = True
                                 async for chunk in _eleven_gen:
@@ -7794,19 +7846,28 @@ async def speak(text_gen):
                                         continue
                                     buf += chunk
                                     while True:
-                                        idx = max(buf.rfind("."), buf.rfind("?"), buf.rfind("!"), buf.rfind("\n"))
+                                        idx = max(
+                                            buf.rfind("."),
+                                            buf.rfind("?"),
+                                            buf.rfind("!"),
+                                            buf.rfind("\n"),
+                                            buf.rfind(",") if len(buf) > 40 else -1,
+                                            buf.rfind(";") if len(buf) > 20 else -1,
+                                        )
                                         if idx < 0:
                                             break
-                                        sentence = buf[: idx + 1].strip()
+                                        sentence = _clean_text_for_tts(buf[: idx + 1].strip())
                                         buf = buf[idx + 1 :]
                                         if sentence:
                                             await _wait_for_quiet_input()
                                             await ws.send(json.dumps({"text": sentence + " "}))
                                             _spoken_text_len += len(sentence) + 1  # Track spoken text
                                 if buf.strip():
-                                    await _wait_for_quiet_input()
-                                    await ws.send(json.dumps({"text": buf.strip()}))
-                                    _spoken_text_len += len(buf.strip())  # Track final buffer
+                                    tail = _clean_text_for_tts(buf.strip())
+                                    if tail:
+                                        await _wait_for_quiet_input()
+                                        await ws.send(json.dumps({"text": tail}))
+                                        _spoken_text_len += len(tail)  # Track final buffer
                                 await ws.send(json.dumps({"text": ""}))
                                 eleven_gen_done = True
 
@@ -8000,15 +8061,17 @@ async def _drain(tts_duration_secs: float = 0.0) -> None:
 
 async def voice_loop() -> None:
     global audio_q, speak_task, _input_busy, _tts_silence_until, manual_voice_capture
-    global _voice_capture_active, _mic_hold_until, _active_output_stream
+    global _voice_capture_active, _mic_hold_until, _active_output_stream, _adaptive_vad_thresh
     audio_q = asyncio.Queue()
     loop = asyncio.get_running_loop()
     barge = 0
+    _metrics_frame_counter = 0
 
     def cb(indata, _f, _t, _s):
         loop.call_soon_threadsafe(audio_q.put_nowait, indata.copy())
 
     vad = VAD()
+    _adaptive_vad_thresh = AdaptiveVADThreshold()
     with sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=FRAME, callback=cb):
         start_state = "listening" if (continuous_listening or wake_word_active) else "idle"
         await set_state(start_state)
@@ -8019,6 +8082,23 @@ async def voice_loop() -> None:
                 rms = float(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
                 now = loop.time()
                 await broadcast_volume(rms / 2000.0)
+                # Update adaptive noise model with every frame
+                metrics = _adaptive_vad_thresh.update(frame.flatten().astype(np.float64))
+                # Periodically broadcast audio quality metrics to the UI (~every 3 s)
+                _metrics_frame_counter += 1
+                if _metrics_frame_counter >= 200:
+                    _metrics_frame_counter = 0
+                    asyncio.create_task(
+                        broadcast(
+                            {
+                                "type": "audio_metrics",
+                                "noise_floor": round(_adaptive_vad_thresh.noise_baseline, 1),
+                                "vad_threshold": round(_adaptive_vad_thresh.threshold, 1),
+                                "snr": round(metrics.signal_to_noise, 2),
+                                "clipping": metrics.clipping_detected,
+                            }
+                        )
+                    )
                 if rms > RMS_THRESH:
                     _mic_hold_until = now + 0.25
                 if muted:
@@ -8055,7 +8135,7 @@ async def voice_loop() -> None:
                 # Post-TTS echo suppression: skip VAD during silence window
                 if asyncio.get_running_loop().time() < _tts_silence_until:
                     continue
-                ev, data = vad.feed(frame)
+                ev, data = vad.feed(frame, thresh=_adaptive_vad_thresh.threshold)
                 if ev == "start":
                     _voice_capture_active = True
                     await set_state("recording")
