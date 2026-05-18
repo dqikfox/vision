@@ -37,6 +37,7 @@ Thumbs.db
 # IDE
 .vscode/settings.json
 *.lock
+!uv.lock
 .archon/artifacts/
 **/node_modules/
 
