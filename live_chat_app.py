@@ -33,6 +33,7 @@ from typing import Any
 # intentional ordering, not a mistake.  All E402 below are expected.
 warnings.filterwarnings("ignore")
 
+import winreg
 import winsound
 
 import httpx
@@ -99,6 +100,20 @@ try:
     HAS_ANTHROPIC = True
 except ImportError:
     HAS_ANTHROPIC = False
+
+try:
+    import pyttsx3
+
+    HAS_PYTTSX3 = True
+except ImportError:
+    HAS_PYTTSX3 = False
+
+try:
+    import win32com.client
+
+    HAS_WIN32COM = True
+except ImportError:
+    HAS_WIN32COM = False
 
 # ── Paths & constants ─────────────────────────────────────────────────────────
 
@@ -184,13 +199,9 @@ def _save_key(env_var: str, value: str) -> None:
 def _list_local_tts_voices() -> list[dict[str, Any]]:
     """Return local TTS voices from SAPI, OneCore, and Narrator Natural HD."""
     global _onecore_voices
-    import winreg
-
     voices: list[dict[str, Any]] = []
     onecore_voices: dict[int, str] = {}
     try:
-        import pyttsx3
-
         eng = pyttsx3.init()
         for i, v in enumerate(eng.getProperty("voices") or []):
             voices.append(
@@ -3830,13 +3841,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     # Check if it's a Narrator voice
                     if isinstance(token_key, str) and token_key.startswith("narrator:"):
                         # Narrator natural voice — use SAPI default which respects Narrator settings
-                        import win32com.client
                         tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
                         tts_obj.Speak(text, 0)
                         return
 
                     # OneCore voice
-                    import win32com.client
                     tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
                     cat = win32com.client.Dispatch("SAPI.SpObjectTokenCategory")
                     cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
@@ -3852,8 +3861,6 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     tts_obj.Volume = 100
                     tts_obj.Speak(text, 0)
                     return
-
-                import pyttsx3
 
                 eng = pyttsx3.init()
                 voices = eng.getProperty("voices")
@@ -5266,8 +5273,6 @@ async def speak(text_gen):
             try:
 
                 def _sapi():
-                    import pyttsx3
-
                     eng = pyttsx3.init()
                     voices = eng.getProperty("voices")
                     if voices and tts_voice_idx < len(voices):
@@ -5294,8 +5299,6 @@ async def speak(text_gen):
             try:
 
                 def _speak_sync():
-                    import win32com.client  # pywin32
-
                     tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
                     cat = win32com.client.Dispatch("SAPI.SpObjectTokenCategory")
                     cat.SetId(r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech_OneCore\Voices", False)
@@ -5328,7 +5331,6 @@ async def speak(text_gen):
                 return False
             try:
                 def _speak_narrator():
-                    import win32com.client
                     tts_obj = win32com.client.Dispatch("SAPI.SpVoice")
                     # For Narrator natural voices, we can try setting by voice name string
                     # The voice string is stored in Narrator registry: "Microsoft Ava (Natural HD) - English (United States)"

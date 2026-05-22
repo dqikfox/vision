@@ -41,6 +41,10 @@ Thumbs.db
 vision_launch.log
 vision_error.log
 
+# Persistent session state — contains voice STT history and user preferences,
+# not project code. Each machine maintains its own copy.
+memory.json
+
 # Personal key-test scripts (contain no secrets but are not project code)
 test_keys.py
 retest_failed_keys.py

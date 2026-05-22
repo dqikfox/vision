@@ -145,13 +145,7 @@ class SafeToolExecutor:
                     success=False,
                     error=f"Timeout after {timeout_seconds}s",
                 )
-            except (
-                OSError,
-                ValueError,
-                RuntimeError,
-                TypeError,
-                KeyError,
-            ) as e:
+            except Exception as e:
                 return ToolResult(
                     tool=tool,
                     args=dict(args),
