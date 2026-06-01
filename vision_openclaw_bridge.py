@@ -27,7 +27,13 @@ def _load_token() -> str | None:
     try:
         if _OPENCLAW_CONFIG_PATH.exists():
             data = json.loads(_OPENCLAW_CONFIG_PATH.read_text(encoding="utf-8"))
-            return data.get("token") or data.get("api_key") or data.get("bearer_token")
+            gateway_auth = data.get("gateway", {}).get("auth", {})
+            return (
+                gateway_auth.get("token")
+                or data.get("token")
+                or data.get("api_key")
+                or data.get("bearer_token")
+            )
     except Exception as exc:
         logger.warning("Could not load OpenClaw token: %s", exc)
     return None
@@ -50,7 +56,13 @@ class OpenClawBridge:
     ) -> None:
         self.gateway_url = (gateway_url or os.environ.get("OPENCLAW_GATEWAY_URL") or _DEFAULT_GATEWAY_URL).rstrip("/")
         self.vision_url = (vision_url or os.environ.get("VISION_BASE_URL") or _DEFAULT_VISION_URL).rstrip("/")
-        self._token: str | None = token or os.environ.get("OPENCLAW_TOKEN") or _load_token()
+        self._token: str | None = (
+            token
+            or os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+            or os.environ.get("OPENCLAW_API_KEY")
+            or os.environ.get("OPENCLAW_TOKEN")
+            or _load_token()
+        )
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 

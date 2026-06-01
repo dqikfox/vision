@@ -2,10 +2,10 @@
 
 Open Harness integration for the Vision accessibility operator.
 
-This project gives you a CLI agent and a subagent demo that connect to Vision via MCP and use an Ollama-hosted model through OpenAI-compatible endpoints.
+This project gives you a CLI agent and a subagent demo that connect to Vision via MCP and use a model through Ollama, OpenAI, OpenClaw, or LM Studio.
 
 It now includes:
-- provider switching (`ollama` or `openai`)
+- provider switching (`ollama`, `openai`, `openclaw`, or `lmstudio`)
 - startup preflight against Vision health endpoint
 - stateful session mode with retry handling
 - safer approval prompts for non-read-only tools
@@ -16,7 +16,11 @@ It now includes:
 
 - Node.js 22+
 - Vision backend running at `http://localhost:8765`
-- Ollama running and serving your model
+- One configured model provider:
+  - Ollama running and serving your model
+  - OpenAI API key
+  - OpenClaw gateway running
+  - LM Studio local server running
 
 ## Setup
 
@@ -34,13 +38,17 @@ copy .env.example .env
 
 3. Confirm model configuration in `.env`:
 
-- `MODEL_PROVIDER` (`ollama` or `openai`)
+- `MODEL_PROVIDER` (`ollama`, `openai`, `openclaw`, or `lmstudio`)
 - `MODEL_NAME` (recommended single source of truth)
 - `MODEL_FALLBACKS` (comma-separated backup models)
 - `OLLAMA_HOST` (default `127.0.0.1` for local, `0.0.0.0` for LAN exposure)
 - `OLLAMA_PORT` (default `11434`)
 - `OLLAMA_MODEL` (fallback model name)
 - `OPENAI_API_KEY` (required for `MODEL_PROVIDER=openai`)
+- `OPENCLAW_BASE_URL` and `OPENCLAW_GATEWAY_TOKEN` for OpenClaw. If omitted, the harness reads `%USERPROFILE%\.openclaw\openclaw.json`.
+- `OPENCLAW_MODEL` (default `openclaw/default`)
+- `LMSTUDIO_BASE_URL` (default `http://127.0.0.1:1234/v1`)
+- `LMSTUDIO_MODEL` (default `local-model`; set this to the id returned by LM Studio `/models`)
 - `VISION_BASE_URL` (default `http://localhost:8765`)
 - `VISION_MCP_PYTHON` and `VISION_MCP_SCRIPT` for custom MCP process launch
 - `VISION_MCP_INCLUDE_SCREENSHOT_B64=0` to avoid sending huge base64 image blobs to the model
@@ -50,6 +58,20 @@ copy .env.example .env
 - `POLICY_PATH` to enforce tool/input deny rules
 
 ## Run
+
+Use OpenClaw:
+
+```bash
+MODEL_PROVIDER=openclaw npm run health
+MODEL_PROVIDER=openclaw npm run start:vision-agent -- "Check Vision health"
+```
+
+Use LM Studio:
+
+```bash
+MODEL_PROVIDER=lmstudio LMSTUDIO_MODEL=your-loaded-model npm run health
+MODEL_PROVIDER=lmstudio LMSTUDIO_MODEL=your-loaded-model npm run start:vision-agent
+```
 
 Single task:
 

@@ -4,7 +4,7 @@ import { constants } from "node:fs";
 import { join } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { checkVisionHealth } from "./preflight.js";
-import { loadRuntimeConfig } from "./runtime.js";
+import { loadRuntimeConfig, type RuntimeConfig } from "./runtime.js";
 
 loadDotenv({ path: ".env" });
 
@@ -72,6 +72,82 @@ async function checkOllama(host: string, port: string, model: string): Promise<C
   return ok("Ollama", `Connected to ${base}; model '${model}' is available`);
 }
 
+async function fetchOpenAiCompatibleModels(
+  baseUrl: string,
+  apiKey: string | undefined
+): Promise<{ names: string[]; status?: number; error?: string }> {
+  const headers: Record<string, string> = {};
+  if (apiKey && apiKey.trim().length > 0) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  try {
+    const modelsRes = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { headers });
+    if (!modelsRes.ok) {
+      return { names: [], status: modelsRes.status, error: `Endpoint returned ${modelsRes.status}` };
+    }
+
+    const modelsJson = (await modelsRes.json()) as { data?: Array<{ id?: string; name?: string }> };
+    const names = (modelsJson.data || [])
+      .map((model) => model.id || model.name || "")
+      .filter(Boolean);
+
+    return { names, status: modelsRes.status };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { names: [], error: `Connection failed: ${message}` };
+  }
+}
+
+async function checkOpenAiCompatibleProvider(runtime: RuntimeConfig): Promise<CheckResult[]> {
+  const providerLabel = runtime.provider === "lmstudio" ? "LM Studio" : "OpenClaw";
+  const baseUrl = runtime.providerBaseUrl || "";
+  const apiKey = runtime.providerApiKey;
+  const results: CheckResult[] = [];
+
+  if (!baseUrl) {
+    return [fail(providerLabel, "Provider base URL is not configured")];
+  }
+
+  if (runtime.provider === "openclaw" && (!apiKey || apiKey.trim().length === 0)) {
+    results.push(fail("OpenClaw token", "No OPENCLAW_GATEWAY_TOKEN/OPENCLAW_API_KEY or ~/.openclaw token found"));
+  }
+
+  const { names, status, error } = await fetchOpenAiCompatibleModels(baseUrl, apiKey);
+  if (error) {
+    results.push(fail(providerLabel, `${baseUrl}/models failed: ${error}`));
+    return results;
+  }
+
+  if (names.length === 0) {
+    results.push(fail(providerLabel, `${baseUrl}/models returned ${status ?? "ok"} but no model ids`));
+    return results;
+  }
+
+  const modelFound = names.includes(runtime.model);
+  if (!modelFound) {
+    results.push(
+      fail(
+        `${providerLabel} model`,
+        `Model '${runtime.model}' not found. Available: ${names.slice(0, 10).join(", ")}${names.length > 10 ? ", ..." : ""}`
+      )
+    );
+  } else {
+    results.push(ok(providerLabel, `Connected to ${baseUrl}; model '${runtime.model}' is available`));
+  }
+
+  if (runtime.modelFallbacks.length > 0) {
+    const missing = runtime.modelFallbacks.filter((model) => !names.includes(model));
+    if (missing.length > 0) {
+      results.push(fail("Fallback models", `Missing: ${missing.join(", ")}`));
+    } else {
+      results.push(ok("Fallback models", `${runtime.modelFallbacks.length} fallback model(s) available`));
+    }
+  }
+
+  return results;
+}
+
 function printResults(results: CheckResult[]): boolean {
   console.log("\n🩺 Vision Open Harness Health Check\n");
 
@@ -116,12 +192,14 @@ async function main() {
         results.push(ok("Fallback models", `${runtime.modelFallbacks.length} fallback model(s) available`));
       }
     }
-  } else {
+  } else if (runtime.provider === "openai") {
     if (runtime.openaiApiKey && runtime.openaiApiKey.trim().length > 0) {
       results.push(ok("OpenAI key", "OPENAI_API_KEY is configured"));
     } else {
       results.push(fail("OpenAI key", "OPENAI_API_KEY is missing"));
     }
+  } else {
+    results.push(...(await checkOpenAiCompatibleProvider(runtime)));
   }
 
   try {
