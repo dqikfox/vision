@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { config as loadDotenv } from "dotenv";
 import { checkVisionHealth } from "./preflight.js";
 import { loadRuntimeConfig, type RuntimeConfig } from "./runtime.js";
 
 loadDotenv({ path: ".env" });
+
+const FETCH_TIMEOUT_MS = 10_000;
 
 interface CheckResult {
   name: string;
@@ -23,7 +25,7 @@ function fail(name: string, details: string): CheckResult {
 }
 
 async function checkMcpScript(scriptPath: string): Promise<CheckResult> {
-  const resolved = join(process.cwd(), scriptPath);
+  const resolved = isAbsolute(scriptPath) ? scriptPath : resolve(process.cwd(), scriptPath);
   try {
     await access(resolved, constants.F_OK);
     return ok("MCP script", `Found at ${resolved}`);
@@ -32,11 +34,21 @@ async function checkMcpScript(scriptPath: string): Promise<CheckResult> {
   }
 }
 
+async function fetchWithTimeout(url: string, init?: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchOllamaModels(host: string, port: string): Promise<{ base: string; names: string[]; error?: string }> {
   const base = `http://${host}:${port}`;
 
   try {
-    const tagsRes = await fetch(`${base}/api/tags`);
+    const tagsRes = await fetchWithTimeout(`${base}/api/tags`);
     if (!tagsRes.ok) {
       return { base, names: [], error: `Endpoint ${base}/api/tags returned ${tagsRes.status}` };
     }
@@ -82,7 +94,7 @@ async function fetchOpenAiCompatibleModels(
   }
 
   try {
-    const modelsRes = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, { headers });
+    const modelsRes = await fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}/models`, { headers });
     if (!modelsRes.ok) {
       return { names: [], status: modelsRes.status, error: `Endpoint returned ${modelsRes.status}` };
     }
@@ -203,7 +215,7 @@ async function main() {
   }
 
   try {
-    const ragStatusRes = await fetch(`${runtime.visionBaseUrl.replace(/\/$/, "")}/api/rag/status`);
+    const ragStatusRes = await fetchWithTimeout(`${runtime.visionBaseUrl.replace(/\/$/, "")}/api/rag/status`);
     if (ragStatusRes.ok) {
       const ragStatus = (await ragStatusRes.json()) as { indexed?: boolean; source_root?: string; chunks_indexed?: number };
       if (ragStatus.indexed) {

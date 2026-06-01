@@ -13,6 +13,7 @@ import {
   loadRuntimeConfig,
 } from "./runtime.js";
 import { config } from "dotenv";
+import * as readline from "node:readline/promises";
 
 config({ path: ".env" });
 
@@ -149,24 +150,33 @@ Always report what subagents you used and what they accomplished.`,
   }
 
   // Interactive mode for more tasks
-  console.log("\n💬 Enter your own task (or 'exit'): ");
-  process.stdin.on("data", async (data) => {
-    const input = data.toString().trim();
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  while (true) {
+    const input = (await rl.question("\n💬 Enter your own task (or 'exit'): ")).trim();
     if (input.toLowerCase() === "exit") {
-      process.exit(0);
+      rl.close();
+      return;
     }
 
     console.log(`\n📝 Task: ${input}\n`);
     console.log("🤖 Orchestrator: ");
 
-    for await (const event of session.send(input)) {
-      if (event.type === "text.delta") {
-        process.stdout.write(event.text);
+    try {
+      for await (const event of session.send(input)) {
+        if (event.type === "text.delta") {
+          process.stdout.write(event.text);
+        }
       }
+      console.log("\n" + "=".repeat(50));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`\n❌ Error: ${message}`);
     }
-    console.log("\n" + "=".repeat(50));
-    console.log("\n💬 Enter another task (or 'exit'): ");
-  });
+  }
 }
 
 main().catch(console.error);

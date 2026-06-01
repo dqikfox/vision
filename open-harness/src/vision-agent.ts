@@ -53,27 +53,35 @@ const HIGH_RISK_PATTERNS = [
   /Set-ExecutionPolicy\b/i,
 ];
 
+function safeStringify(input: unknown, fallback = "{}"): string {
+  try {
+    return JSON.stringify(input, null, 2) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function truncateInput(input: unknown): string {
-  const raw = JSON.stringify(input, null, 2) || "{}";
+  const raw = safeStringify(input);
   return raw.length > 360 ? `${raw.slice(0, 360)}...` : raw;
 }
 
 function isHighRisk(toolName: string, input: unknown): boolean {
   if (toolName === "bash" || toolName.includes("execute")) return true;
-  const serialized = JSON.stringify(input) || "";
+  const serialized = safeStringify(input, "");
   return HIGH_RISK_PATTERNS.some((pattern) => pattern.test(serialized));
 }
 
 function createApproveCallback(runtime: Runtime, policy: ToolPolicy): ApproveFn {
   return async ({ toolName, input }) => {
-    if (SAFE_TOOLS.has(toolName)) return true;
-    if (runtime.autoApproveUnsafe) return true;
-
     const decision = policy.evaluate(toolName, input);
     if (!decision.allowed) {
       console.log(`\n⛔ Policy denied ${toolName}: ${decision.reason}`);
       return false;
     }
+
+    if (SAFE_TOOLS.has(toolName)) return true;
+    if (runtime.autoApproveUnsafe) return true;
 
     const risk = decision.risk === "LOW" ? (isHighRisk(toolName, input) ? "HIGH" : "MEDIUM") : decision.risk;
     return new Promise((resolve) => {
@@ -115,7 +123,16 @@ function createSession(
 
 async function main() {
   const runtime = loadRuntimeConfig();
-  const policy = await ToolPolicy.load(runtime.policyPath);
+  let policy: ToolPolicy;
+  try {
+    policy = await ToolPolicy.load(runtime.policyPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`❌ ${message}`);
+    rl.close();
+    process.exitCode = 1;
+    return;
+  }
   const telemetry = new JsonlTelemetry(runtime.telemetryPath, runtime.telemetryEnabled);
 
   console.log("🦎 Vision Open Harness Agent");
@@ -164,9 +181,9 @@ async function main() {
   if (prompt) {
     // Single-shot mode
     console.log(`\n📝 Task: ${prompt}\n`);
-    await runSession(session, prompt, telemetry, runtime, async () => {
+    session = await runSession(session, prompt, telemetry, runtime, async (currentSession) => {
       const next = fallbackModels.shift();
-      if (!next) return false;
+      if (!next) return undefined;
       console.log(`\n🛟 Switching model fallback -> ${next}`);
       runtime.model = next;
       agent = await createVisionAgent({
@@ -176,11 +193,11 @@ async function main() {
         maxSteps: runtime.maxSteps,
         approve: createApproveCallback(runtime, policy),
       });
-      const oldMessages = session.messages;
-      session = createSession(agent, runtime, sessionStore);
-      session.messages = oldMessages;
-      return true;
+      const nextSession = createSession(agent, runtime, sessionStore);
+      nextSession.messages = currentSession.messages;
+      return nextSession;
     });
+    await telemetry.flush();
     rl.close();
   } else {
     // Interactive mode
@@ -189,9 +206,9 @@ async function main() {
       session,
       telemetry,
       runtime,
-      async () => {
+      async (currentSession) => {
         const next = fallbackModels.shift();
-        if (!next) return false;
+        if (!next) return undefined;
         console.log(`\n🛟 Switching model fallback -> ${next}`);
         runtime.model = next;
         agent = await createVisionAgent({
@@ -201,12 +218,12 @@ async function main() {
           maxSteps: runtime.maxSteps,
           approve: createApproveCallback(runtime, policy),
         });
-        const oldMessages = session.messages;
-        session = createSession(agent, runtime, sessionStore);
-        session.messages = oldMessages;
-        return true;
+        const nextSession = createSession(agent, runtime, sessionStore);
+        nextSession.messages = currentSession.messages;
+        return nextSession;
       }
     );
+    await telemetry.flush();
   }
 }
 
@@ -215,12 +232,13 @@ async function runSession(
   prompt: string,
   telemetry: JsonlTelemetry,
   runtime: Runtime,
-  tryFallback: () => Promise<boolean>
-) {
+  tryFallback: (currentSession: Session) => Promise<Session | undefined>
+): Promise<Session> {
   let stepCount = 0;
+  let currentSession = session;
 
-  for await (const event of session.send(prompt)) {
-    await telemetry.logEvent(event, {
+  for await (const event of currentSession.send(prompt)) {
+    telemetry.logEvent(event, {
       sessionId: runtime.sessionId,
       model: runtime.model,
       provider: runtime.provider,
@@ -257,16 +275,23 @@ async function runSession(
       case "error":
         console.error(`\n❌ Error: ${event.error.message}`);
         if (/prompt too long|max context length/i.test(event.error.message)) {
-          session.messages = [];
+          currentSession.messages = [];
+          if (runtime.sessionPersist) {
+            try {
+              await currentSession.save();
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              console.error(`⚠️ Failed to persist reset session: ${message}`);
+            }
+          }
           console.log("🧹 Session context was reset after overflow. You can retry now.");
-          return;
+          return currentSession;
         }
         if (/internal server error|failed after/i.test(event.error.message)) {
-          const switched = await tryFallback();
-          if (switched) {
+          const fallbackSession = await tryFallback(currentSession);
+          if (fallbackSession) {
             console.log("🔁 Retrying prompt with fallback model...");
-            await runSession(session, prompt, telemetry, runtime, tryFallback);
-            return;
+            return runSession(fallbackSession, prompt, telemetry, runtime, tryFallback);
           }
         }
         break;
@@ -274,16 +299,24 @@ async function runSession(
   }
 
   if (runtime.sessionPersist) {
-    await session.save();
+    try {
+      await currentSession.save();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`⚠️ Failed to persist session: ${message}`);
+    }
   }
+
+  return currentSession;
 }
 
 async function interactiveMode(
   session: Session,
   telemetry: JsonlTelemetry,
   runtime: Runtime,
-  tryFallback: () => Promise<boolean>
+  tryFallback: (currentSession: Session) => Promise<Session | undefined>
 ) {
+  let currentSession = session;
   const askQuestion = (): Promise<string> => {
     return new Promise((resolve) => {
       rl.question("\n👤 You: ", (answer) => resolve(answer));
@@ -299,8 +332,14 @@ async function interactiveMode(
     }
 
     console.log("\n🤖 Agent: ");
-    await runSession(session, input, telemetry, runtime, tryFallback);
+    currentSession = await runSession(currentSession, input, telemetry, runtime, tryFallback);
+    await telemetry.flush();
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  rl.close();
+  process.exitCode = 1;
+});

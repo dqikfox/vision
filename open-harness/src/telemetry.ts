@@ -9,16 +9,39 @@ export interface TelemetryContext {
 }
 
 export class JsonlTelemetry {
-  constructor(private readonly filePath: string, private readonly enabled: boolean) {}
+  private readonly fullPath: string;
+  private directoryReady: Promise<void> | null = null;
+  private writeChain: Promise<void> = Promise.resolve();
 
-  private async write(record: Record<string, unknown>) {
-    if (!this.enabled) return;
-    const fullPath = resolve(this.filePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await appendFile(fullPath, `${JSON.stringify(record)}\n`, "utf8");
+  constructor(private readonly filePath: string, private readonly enabled: boolean) {
+    this.fullPath = resolve(this.filePath);
   }
 
-  async logEvent(event: SessionEvent, context: TelemetryContext): Promise<void> {
+  private ensureDirectory(): Promise<void> {
+    if (!this.directoryReady) {
+      this.directoryReady = mkdir(dirname(this.fullPath), { recursive: true }).then(() => undefined);
+    }
+    return this.directoryReady;
+  }
+
+  private queueWrite(record: Record<string, unknown>) {
+    if (!this.enabled) return;
+    this.writeChain = this.writeChain
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`⚠️ Prior telemetry write failed: ${message}`);
+      })
+      .then(async () => {
+        await this.ensureDirectory();
+        await appendFile(this.fullPath, `${JSON.stringify(record)}\n`, "utf8");
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`⚠️ Telemetry write failed: ${message}`);
+      });
+  }
+
+  logEvent(event: SessionEvent, context: TelemetryContext): void {
     const base = {
       ts: new Date().toISOString(),
       sessionId: context.sessionId,
@@ -29,16 +52,16 @@ export class JsonlTelemetry {
 
     switch (event.type) {
       case "tool.start":
-        await this.write({ ...base, toolName: event.toolName, toolCallId: event.toolCallId });
+        this.queueWrite({ ...base, toolName: event.toolName, toolCallId: event.toolCallId });
         return;
       case "tool.done":
-        await this.write({ ...base, toolName: event.toolName, toolCallId: event.toolCallId });
+        this.queueWrite({ ...base, toolName: event.toolName, toolCallId: event.toolCallId });
         return;
       case "retry":
-        await this.write({ ...base, attempt: event.attempt, maxRetries: event.maxRetries, delayMs: event.delayMs });
+        this.queueWrite({ ...base, attempt: event.attempt, maxRetries: event.maxRetries, delayMs: event.delayMs });
         return;
       case "turn.done":
-        await this.write({
+        this.queueWrite({
           ...base,
           turnNumber: event.turnNumber,
           usage: {
@@ -49,10 +72,14 @@ export class JsonlTelemetry {
         });
         return;
       case "error":
-        await this.write({ ...base, message: event.error.message });
+        this.queueWrite({ ...base, message: event.error.message });
         return;
       default:
-        await this.write(base);
+        return;
     }
+  }
+
+  async flush(): Promise<void> {
+    await this.writeChain;
   }
 }

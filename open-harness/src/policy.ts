@@ -1,5 +1,13 @@
 import { readFile } from "node:fs/promises";
 
+function safeStringify(input: unknown): string {
+  try {
+    return JSON.stringify(input) || "";
+  } catch {
+    return "[unserializable input]";
+  }
+}
+
 export interface PolicyFile {
   denyTools?: string[];
   allowTools?: string[];
@@ -32,13 +40,22 @@ export class ToolPolicy {
       const raw = await readFile(filePath, "utf8");
       const parsed = JSON.parse(raw) as PolicyFile;
       return new ToolPolicy(parsed);
-    } catch {
-      return new ToolPolicy();
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: string }).code === "ENOENT"
+      ) {
+        return new ToolPolicy();
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load tool policy from ${filePath}: ${message}`);
     }
   }
 
   evaluate(toolName: string, input: unknown): PolicyDecision {
-    const serialized = JSON.stringify(input) || "";
+    const serialized = safeStringify(input);
 
     if (this.denyTools.has(toolName)) {
       return { allowed: false, reason: "Tool is denied by policy", risk: "HIGH" };
