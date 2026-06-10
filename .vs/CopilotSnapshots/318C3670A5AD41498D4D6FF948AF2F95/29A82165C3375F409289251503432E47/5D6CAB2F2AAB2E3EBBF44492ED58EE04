@@ -6,7 +6,7 @@ async def capture_main_ui():
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        print("Installing playwright...")
+        print("Installing playwright... - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:9")
         import subprocess
         subprocess.run([sys.executable, "-m", "pip", "install", "playwright"], check=True)
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
@@ -22,7 +22,7 @@ async def capture_main_ui():
         page.on('console', lambda msg: console_logs.append(f"[{msg.type}] {msg.text}"))
         page.on('pageerror', lambda err: errors.append(str(err)))
 
-        print("Loading http://localhost:8765...")
+        print("Loading http://localhost:8765... - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:25")
         await page.goto('http://localhost:8765', wait_until='networkidle')
 
         await asyncio.sleep(3)
@@ -31,15 +31,15 @@ async def capture_main_ui():
         try:
             boot_enter = page.locator('#bootEnter')
             if await boot_enter.is_visible(timeout=2000):
-                print("Clicking boot enter...")
+                print("Clicking boot enter... - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:34")
                 await boot_enter.click()
                 await asyncio.sleep(3)
         except:
-            print("No boot screen or already passed")
+            print("No boot screen or already passed - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:38")
 
         # Take screenshot
         await page.screenshot(path='C:/project/vision/main_ui_screenshot.png', full_page=True)
-        print("Screenshot saved: main_ui_screenshot.png")
+        print("Screenshot saved: main_ui_screenshot.png - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:42")
 
         # Check page state
         state = await page.evaluate('''() => {
@@ -57,17 +57,17 @@ async def capture_main_ui():
             };
         }''')
 
-        print("\n=== PAGE STATE ===")
+        print("\n=== PAGE STATE === - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:60")
         for key, val in state.items():
             symbol = "✓" if val else "✗"
-            print(f"{symbol} {key}: {val}")
+            print(f"{symbol} {key}: {val} - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:63")
 
-        print(f"\n=== CONSOLE LOGS ({len(console_logs)}) ===")
+        print(f"\n=== CONSOLE LOGS ({len(console_logs)}) === - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:65")
         for log in console_logs[-20:]:  # Last 20
             print(log)
 
         if errors:
-            print(f"\n=== ERRORS ({len(errors)}) ===")
+            print(f"\n=== ERRORS ({len(errors)}) === - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:70")
             for err in errors:
                 print(err)
 
@@ -79,8 +79,8 @@ if __name__ == '__main__':
     result = asyncio.run(capture_main_ui())
 
     if not result.get('avatarModelExists'):
-        print("\n❌ PROBLEM: avatarModel not loaded")
+        print("\n❌ PROBLEM: avatarModel not loaded - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:82")
     if not result.get('canvasExists'):
-        print("\n❌ PROBLEM: Canvas element missing")
+        print("\n❌ PROBLEM: Canvas element missing - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:84")
     if result.get('canvasWidth') == 0 or result.get('canvasHeight') == 0:
-        print("\n❌ PROBLEM: Canvas has zero dimensions")
+        print("\n❌ PROBLEM: Canvas has zero dimensions - 5D6CAB2F2AAB2E3EBBF44492ED58EE04:86")
