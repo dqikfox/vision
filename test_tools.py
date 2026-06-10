@@ -7,6 +7,14 @@ import websockets
 URI = "ws://localhost:8765/ws"
 
 
+def safe_print(text: str) -> None:
+    """Print text safely on Windows consoles that still use cp1252."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", "replace").decode("ascii"))
+
+
 async def recv_until(ws, types, timeout=60):
     """Collect messages until one of the given types appears."""
     results = []
@@ -62,9 +70,7 @@ async def main():
     async with websockets.connect(URI) as ws:
         # Init
         init = json.loads(await asyncio.wait_for(ws.recv(), 10))
-        print(
-            f"[INIT] provider={init.get('provider')} model={init.get('model')}"
-        )
+        safe_print(f"[INIT] provider={init.get('provider')} model={init.get('model')}")
         await prepare_session(ws)
 
         # ── Test 1: Direct screenshot ──────────────────────────────────────────
@@ -78,12 +84,12 @@ async def main():
         for m in msgs:
             if m.get("type") == "screenshot":
                 screenshot_ok = True
-                print(f"  PASS - screenshot received ({len(m['data'])} b64 chars)")
+                safe_print(f"  PASS - screenshot received ({len(m['data'])} b64 chars)")
             elif m.get("type") == "action" and m.get("action") == "screenshot":
                 screenshot_ok = True
-                print(f"  action: {m['action']} -> {str(m['result'])[:80]}")
+                safe_print(f"  action: {m['action']} -> {str(m['result'])[:80]}")
         if not screenshot_ok:
-            print("  FAIL - no screenshot event received")
+            safe_print("  FAIL - no screenshot event received")
         await drain_ws(ws)
 
         # ── Test 2: run_command ────────────────────────────────────────────────
@@ -99,13 +105,13 @@ async def main():
         )
         run_command_action = await recv_action(ws, "run_command", timeout=20)
         if run_command_action:
-            print(f"  PASS - result: {run_command_action['result'].strip()}")
+            safe_print(f"  PASS - result: {run_command_action['result'].strip()}")
         else:
-            print("  FAIL - no run_command action received")
+            safe_print("  FAIL - no run_command action received")
 
         # ── Test 3: NL → tool call (screenshot) ───────────────────────────────
-        print("\n[TEST 3] Natural language -> screenshot tool call")
-        print("  Sending: 'take a screenshot and tell me what you see'")
+        safe_print("\n[TEST 3] Natural language -> screenshot tool call")
+        safe_print("  Sending: 'take a screenshot and tell me what you see'")
         await prepare_session(ws, mode="operator")
         await ws.send(
             json.dumps(
@@ -124,33 +130,31 @@ async def main():
                 m = json.loads(raw)
                 t = m.get("type", "")
                 if t == "state":
-                    print(f"  state -> {m['state']}")
+                    safe_print(f"  state -> {m['state']}")
                 elif t == "action" and m.get("action") in {"screenshot", "read_screen"}:
                     got_tool = True
-                    print(
-                        f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}"
-                    )
+                    safe_print(f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}")
                 elif t == "screenshot":
                     got_tool = True
-                    print(f"  SCREENSHOT sent to UI ({len(m['data'])} b64 chars)")
+                    safe_print(f"  SCREENSHOT sent to UI ({len(m['data'])} b64 chars)")
                 elif t == "transcript" and m.get("role") == "assistant":
                     got_reply = True
-                    print(f"  AI REPLY: {m['text'][:250]}")
+                    safe_print(f"  AI REPLY: {m['text'][:250]}")
             except TimeoutError:
-                print("  ...still waiting...")
+                safe_print("  ...still waiting...")
         if not got_tool:
-            print("  FAIL - model did not call screenshot")
+            safe_print("  FAIL - model did not call screenshot")
         if not got_reply:
-            print("  FAIL - no AI reply received")
+            safe_print("  FAIL - no AI reply received")
 
         await asyncio.sleep(5.0)
         await ws.close()
 
         # ── Test 4: NL → browser open ─────────────────────────────────────────
-        print("\n[TEST 4] Natural language -> open Firefox/browser")
+        safe_print("\n[TEST 4] Natural language -> open Firefox/browser")
         async with websockets.connect(URI) as ws_browser:
             init_browser = json.loads(await asyncio.wait_for(ws_browser.recv(), 10))
-            print(f"  isolated session provider={init_browser.get('provider')} model={init_browser.get('model')}")
+            safe_print(f"  isolated session provider={init_browser.get('provider')} model={init_browser.get('model')}")
             await prepare_session(ws_browser, mode="operator")
             await ws_browser.send(
                 json.dumps(
@@ -166,28 +170,26 @@ async def main():
                     m = json.loads(raw)
                     t = m.get("type", "")
                     if t == "state":
-                        print(f"  state -> {m['state']}")
+                        safe_print(f"  state -> {m['state']}")
                     elif t == "action" and m.get("action") in {"browser_open", "run_command"}:
                         got_tool = True
-                        print(
-                            f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}"
-                        )
+                        safe_print(f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}")
                     elif t == "transcript" and m.get("role") == "assistant":
                         got_reply = True
-                        print(f"  AI REPLY: {m['text'][:250]}")
+                        safe_print(f"  AI REPLY: {m['text'][:250]}")
                     elif t == "error":
-                        print(f"  ERROR: {m.get('message', '')[:250]}")
+                        safe_print(f"  ERROR: {m.get('message', '')[:250]}")
                 except TimeoutError:
-                    print("  ...waiting...")
+                    safe_print("  ...waiting...")
             if not got_tool:
-                print("  FAIL - model did not call browser tool")
+                safe_print("  FAIL - model did not call browser tool")
             if not got_reply:
-                print("  FAIL - no AI reply received")
+                safe_print("  FAIL - no AI reply received")
 
         await asyncio.sleep(2.0)
 
         # ── Test 5: list_files ─────────────────────────────────────────────────
-        print("\n[TEST 5] list_files (Desktop)")
+        safe_print("\n[TEST 5] list_files (Desktop)")
         async with websockets.connect(URI) as ws_files:
             await asyncio.wait_for(ws_files.recv(), 10)
             await prepare_session(ws_files)
@@ -202,21 +204,21 @@ async def main():
                 try:
                     raw = await asyncio.wait_for(ws_files.recv(), 5)
                 except TimeoutError:
-                    print("  ...waiting for list_files...")
+                    safe_print("  ...waiting for list_files...")
                     continue
                 m = json.loads(raw)
                 if m.get("type") == "action" and m.get("action") == "list_files":
                     list_files_action = m
                 elif m.get("type") == "error":
-                    print(f"  ERROR: {m.get('message', '')[:250]}")
+                    safe_print(f"  ERROR: {m.get('message', '')[:250]}")
             if list_files_action:
                 lines = list_files_action["result"].strip().split("\n")
-                print(f"  PASS - {len(lines)} items on Desktop")
-                print(f"  First 3: {', '.join(lines[:3])}")
+                safe_print(f"  PASS - {len(lines)} items on Desktop")
+                safe_print(f"  First 3: {', '.join(lines[:3])}")
             else:
-                print("  FAIL - no list_files action received")
+                safe_print("  FAIL - no list_files action received")
 
-        print("\n=== All tests complete ===")
+        safe_print("\n=== All tests complete ===")
 
 if __name__ == "__main__":
     asyncio.run(main())
