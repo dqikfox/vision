@@ -1,137 +1,84 @@
-# VISION — Copilot Instructions (Core)
+# GitHub Copilot Instructions for Vision
 
-You are operating inside the **VISION Universal Accessibility Operator** — a production-grade Windows-first AI system for voice/text computer control.
+Vision is a **Windows-first accessibility operator** with voice, desktop control, WebSocket UX, tool execution,
+RAG, a command center, and MCP integration. Keep responses and changes grounded in the actual repo instead of
+generic assistant behavior.
 
----
+## Start Here
 
-## Quick Identity
+When context is missing or the task is broad, read in this order:
 
-| Component | Location |
-|-----------|----------|
-| **Backend** | `live_chat_app.py` — FastAPI + WebSocket on `http://localhost:8765` |
-| **Primary UI** | `live_chat_ui.html` — **ONLY use this file** (ignore v2/v3/backup) |
-| **Memory** | `memory.json` — persistent facts, user profile |
-| **Logs** | `chat_events.log` — check first when debugging |
-| **Health** | `GET /api/health` — runtime status check |
+1. `DOCUMENTATION_INDEX.md`
+2. `README.md`
+3. `setup.md`
+4. `architecture.md`
+5. the nearest authoritative file for the area you are changing
 
----
+## Source of Truth
 
-## Critical Rules (Never Break)
+- **Backend:** `live_chat_app.py`
+- **Primary UI:** `live_chat_ui.html`
+- **Command Center UI:** `vision_command_center.html`
+- **Runtime/config helpers:** `vision_runtime.py`
+- **Local MCP bridge:** `vision_mcp_server.py`
+- **RAG runtime:** `vision_rag.py`, `vision_rag_integration.py`
+- **Workspace MCP config:** `.vscode/mcp.json`
 
-1. **Never print/log API key values** — check existence only
-2. **Never change VAD thresholds** (`RMS_THRESH=500`, `BARGE_RMS=1100`) without explicit instruction
-3. **Use `asyncio.get_running_loop()`** — never `get_event_loop()`
-4. **Use `loop.run_in_executor(None, fn)`** for blocking calls in async context
-5. **New tools need 3 changes**: `TOOLS` schema + `exec_tool` handler + `_EL_TOOL_NAMES`
-6. **Primary UI only**: edit `live_chat_ui.html`, never alternate versions
-7. **Snapshot clients before broadcast**: `for ws in list(clients):`
+Do **not** drift to alternate entry points or duplicate systems when one of the files above already owns the behavior.
 
----
+## How to Work in This Repo
 
-## Skills Quick Reference
+- Inspect relevant files first, then make the smallest coherent change.
+- Prefer existing helpers, endpoints, launchers, and UI surfaces over inventing parallel ones.
+- Keep docs aligned when runtime behavior, startup flow, MCP wiring, skills, agents, or validation commands change.
+- Use existing validation surfaces rather than inventing new ones.
+- For debugging or maintenance, check logs before guessing: `chat_events.log` and `vision_error.log`.
 
-| Problem | Invoke |
-|---------|--------|
-| Start/stop Vision or check health | `@vision-runtime-ops` |
-| Voice/OCR/tool not working | `@vision-debugging` |
-| Add new tool | `@vision-tool-dev` |
-| Code review needed | `@vision-code-review` |
-| Fix type/mypy issues | `@vision-type-safety` |
-| Home network/backup/security | `@vision-home-ops` |
-| Docs out of sync | `@vision-documentation-ops` |
-| Add MCP server | `@vision-mcp-builder` |
-| Repo maintenance | `@vision-context-ops` or `@vision-context-brain` |
+## Runtime Validation Surfaces
 
----
+Use the narrowest existing validation that matches the change:
 
-## Agent Quick Reference
+- `python test_tools.py`
+- `python test_vision.py`
+- `python vision_test_suite.py`
+- `python -m pytest -q`
+- `Invoke-RestMethod -Uri http://localhost:8765/api/health`
+- `Invoke-RestMethod -Uri http://localhost:8765/api/models`
 
-| Task | Invoke |
-|------|--------|
-| Runtime issues, voice broken, tool fails | `@Vision Maintainer` |
-| OpenClaw setup/integration | `@OpenClaw Operator` |
-| MCP/agent customization | `@MCP Builder` |
-| Copilot context/memory issues | `@Context Steward` |
-| Home PC/network/security | `@Home Ops Steward` |
-| Pre-merge review | `@Code Review Agent` |
-| Behavior-preserving refactor | `@Refactor Agent` |
-| Azure AI deployment (FastAPI + SLM) | `@ultron-azure-ai` |
+## Repo-Specific Rules to Preserve
 
----
+1. New operator tools must wire through **all three** surfaces:
+   - `TOOLS`
+   - `_exec_tool_impl()`
+   - `_EL_TOOL_NAMES`
+2. `broadcast()` must iterate over `list(clients)`, not the live set directly.
+3. Do **not** change the calibrated voice thresholds unless the user explicitly asks:
+   - `RMS_THRESH=500`
+   - `START_FRAMES=3`
+   - `END_FRAMES=20`
+   - `BARGE_RMS=1100`
+4. Use `PIL.Image.Resampling.LANCZOS`, not deprecated `PIL.Image.LANCZOS`.
+5. Catch `APITimeoutError` before `APIConnectionError`.
+6. Use `asyncio.get_running_loop()`, not `get_event_loop()`.
+7. Never hardcode secrets; read from env vars or existing config layers.
 
-## Testing Commands
+## Copilot Customization Guidance
 
-```powershell
-# Quick tool smoke test
-python test_tools.py
+- Use Vision-local skills from `.github/skills/` when the workflow is specific to this repo.
+- Check `C:\project\skills` first when a workflow could be reusable across repositories.
+- Use custom agents from `.github/agents/` when the task matches a specialist role.
+- Treat `.vscode/mcp.json` as the source of truth for active workspace MCP servers.
+- If Copilot feels under-informed for a broad task, refresh context from `DOCUMENTATION_INDEX.md` and then use the
+  relevant skill such as `vision-context-ops`, `vision-context-brain`, `vision-runtime-ops`, or `vision-debugging`.
 
-# Full integration test
-python test_vision.py
+## Collaboration Style
 
-# Direct tool execution
-Invoke-RestMethod -Uri http://localhost:8765/api/tool/execute -Method Post `
-  -Body '{"name":"screenshot","parameters":{}}' -ContentType "application/json"
-```
+- Lead with the result, then the key facts.
+- Be specific about files, endpoints, and commands in this repo.
+- Do the work instead of staying at high-level advice when the request is actionable.
+- Ask only when a decision would materially change behavior.
 
----
+## ULTRON Context
 
-## Common Mistakes to Avoid
-
-| Mistake | Correct |
-|---------|---------|
-| `asyncio.get_event_loop()` | `asyncio.get_running_loop()` |
-| `import shutil` inside function | Import at module top |
-| Only adding `exec_tool` handler | Also add TOOLS schema + `_EL_TOOL_NAMES` |
-| Printing `e` in error handler | Use `_tool_err("tool_name", e)` |
-| Broadcasting without `list(clients)` | `for ws in list(clients):` |
-
----
-
-## Tool Pattern Template
-
-```python
-elif name == "my_tool":
-    param = args.get("param", "default")
-    try:
-        result = await loop.run_in_executor(None, lambda: _blocking_op(param))
-        return f"Success: {result}"
-    except Exception as e:
-        return _tool_err("my_tool", e)
-```
-
----
-
-## Need Details?
-
-- **Full technical reference**: See `copilot-reference.md`
-- **Interaction examples**: See `copilot-examples.md`
-- **Architecture deep-dive**: See `architecture.md`
-- **Project roadmap**: See `PROJECT.md`
-
----
-
-## Elite Execution Protocol
-
-Use this protocol for high-impact work in both VS Code chat and CLI agent flows.
-
-1. **Execution-first**
-  - If the request is implementable, act immediately instead of only proposing.
-  - Prefer tool-backed verification over assumptions.
-
-2. **Tool leverage**
-  - Use search and read tools to map context before edits.
-  - Run targeted validation commands (`test_tools.py`, `test_vision.py`, or focused checks) after edits.
-
-3. **Memory discipline**
-  - Persist durable, non-secret project facts for future sessions.
-  - Never store API key values, tokens, or passwords.
-  - Store only secret variable names and locations when needed.
-
-4. **Change quality**
-  - Keep edits minimal and coherent.
-  - Preserve existing architecture patterns unless explicitly refactoring.
-  - Report: what changed, what was verified, and what remains unverified.
-
-5. **Security and safety**
-  - Immediately flag hardcoded secrets or unsafe patterns.
-  - Avoid destructive commands unless explicitly requested by the user.
+You are operating inside Vision under ULTRON orchestration, but repo accuracy takes priority over roleplay.
+Stay grounded in the current codebase, runtime, and customization files.

@@ -56,6 +56,7 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 - **`vision-operator`**: Operate Vision end-to-end across voice, tools, and accessibility workflows
 - **`vision-runtime-ops`**: Start, verify, and smoke-test the local Vision stack
 - **`vision-debugging`**: Root-cause analysis for voice, WebSocket, provider, OCR, tool-call failures
+- **`vision-error-resolution`**: Systematically resolve recurring errors, degraded components, and crash paths
 - **`vision-tool-audit`**: Audit direct tool execution and NL routing behavior
 - **`vision-tool-dev`**: Add new Vision tools with the required schema, handler, and registration wiring
 - **`vision-code-review`**: Review changes for correctness, type safety, async hazards, and Vision-specific patterns
@@ -73,6 +74,8 @@ In addition to the CLI-based Hive Mind, this repo includes a **Copilot Customiza
 - **`vision-multi-monitor`**: Coordinate capture and actions across multiple displays
 - **`vision-adb-control`**: Control Android devices via ADB from Vision workflows
 - **`mcp-recovery`**: Diagnose and restore MCP server configuration
+
+For MCP-backed work, treat **`.vscode/mcp.json`** as the source of truth for active workspace servers. Skills describe how to use or repair those surfaces; they are not the live server registry.
 
 ### Specialized Agents (invoke via Copilot Chat)
 - **Coding Agent**: Autonomous coding agent for end-to-end feature implementation, tool registration, bugfixing, and refactoring. Runs the full plan → implement → lint → test → verify → document cycle independently.

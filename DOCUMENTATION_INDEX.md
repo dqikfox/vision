@@ -9,9 +9,11 @@
 | Goal | Read First | Then |
 |---|---|---|
 | Understand the project | `README.md` | `architecture.md` |
+| Work in Claude Desktop | `CLAUDE.md` | `README.md`, `setup.md`, `architecture.md` |
 | Install and launch locally | `setup.md` | `README.md` quick start |
 | Launch and monitor the repo intelligence stack | `http://localhost:8765/command-center` | `README.md` |
 | Debug runtime or voice issues | `chat_events.log` | `.github/skills/vision-debugging/SKILL.md` |
+| Resolve recurring or structured Vision errors | `vision_errors.jsonl` | `.github/skills/vision-error-resolution/SKILL.md` |
 | Work on Copilot customizations | `.github/copilot-instructions.md` | `HIVE.md` |
 | Extend MCP or tool access | `.vscode/mcp.json` | `vision_mcp_server.py` |
 | Improve docs or repo context | `.github/skills/vision-documentation-ops/SKILL.md` | this file |
@@ -29,10 +31,11 @@
 | `live_chat_app.py` | Source of truth for backend logic | Any real runtime change |
 | `live_chat_ui.html` | Primary browser UI | UI or WebSocket integration work |
 | `vision_command_center.html` | Secondary command-center GUI for launch, monitoring, and repo intelligence control | Operating the broader Vision stack |
-| `vision_command_center_config.json` | Command-center profile, theme, launcher preferences, explicit Ollama host/mode/origins, and Ollama models path | Changing non-sensitive UI/launcher behavior |
+| `vision_command_center_config.json` | Command-center profile, theme, launcher preferences, explicit Ollama host/mode/origins, Ollama models path, and the structured NEXUS ally block | Changing non-sensitive UI/launcher behavior |
 | `vision_automation_state.json` | Persistent automation mission and routine run history | Inspecting or validating command-center automation outcomes |
 | `launch_vision.ps1` | Windows launcher with health checks, doctor-aware startup, configurable Ollama access mode, and managed Ollama model-store startup | Starting or repairing the local stack |
 | `vision_master_launcher.ps1` | Unified launcher that starts the core stack and opens both monitoring UIs | One-click full startup from the desktop |
+| `GET /api/ally` | NEXUS ally status for provider routing, preferred device, sysadmin workspace readiness, and lightweight supervisor state | Inspecting the ally control plane |
 | `chat_events.log` | Main event log | First stop during debugging |
 | `vision_error.log` | Runtime errors and stack traces | Investigating failures |
 
@@ -42,7 +45,10 @@
 
 | File | Purpose | When to Use |
 |---|---|---|
+| `CLAUDE.md` | Claude Desktop operating manual for maintaining, enhancing, upgrading, and debugging Vision | Start here when Claude is the active assistant |
 | `.github/copilot-instructions.md` | Always-on repo guidance for Copilot | Before changing behavior or conventions |
+| `.vscode/copilot-instructions.md` | Workspace-scoped Copilot instruction mirror for VS Code | If Copilot in VS Code feels generic or under-aware |
+| `C:\project\skills` | Shared local skill repo for reusable cross-project workflows | When a general skill may already exist outside Vision |
 | `HIVE.md` | Agent swarm and customization overview | Understanding agent/skill layout |
 | `.github/agents/vision-maintainer.agent.md` | Runtime/debug/code-change specialist | Backend and protocol work |
 | `.github/agents/openclaw-operator.agent.md` | OpenClaw installation and gateway specialist | OpenClaw onboarding and repair |
@@ -58,6 +64,7 @@
 | `.github/skills/vision-type-safety/SKILL.md` | Fix type-annotation and mypy issues | Type-cleanup work |
 | `.github/skills/vision-context-brain/SKILL.md` | Generate and use a machine-readable context brain | Broad-task refresh and compaction recovery |
 | `.github/skills/vision-cognitive-council/SKILL.md` | Gather multiple specialist viewpoints before action | Broad, risky, or ambiguous work |
+| `.github/skills/vision-error-resolution/SKILL.md` | Systematically resolve recurring Vision errors | Structured error triage and repair |
 | `.github/skills/vision-git-ops/SKILL.md` | Git workflow for commits, branches, PRs, and tags | Repo history and release tasks |
 
 ---
@@ -68,6 +75,7 @@
 |---|---|
 | Start or verify the operator | `vision-runtime-ops` |
 | Debug voice, provider, WebSocket, OCR, or tool failures | `vision-debugging` |
+| Resolve recurring or structured Vision errors | `vision-error-resolution` |
 | Audit tool-calling behavior | `vision-tool-audit` |
 | Add new tool support | `vision-tool-dev` |
 | Review a change before merge | `vision-code-review` |
@@ -94,7 +102,7 @@
 | File / Surface | Purpose |
 |---|---|
 | `.vscode/mcp.json` | Workspace MCP server definitions |
-| `vision_mcp_server.py` | Repo-local FastMCP bridge for Vision endpoints and external MCP-capable runtimes such as OpenHarness |
+| `vision_mcp_server.py` | Repo-local FastMCP bridge for Vision endpoints, including `vision_ally_status`, and external MCP-capable runtimes such as OpenHarness |
 | `hive_tools/context_mapper.py` | Machine-readable context brain generator for repo refresh and workflow bootstrap |
 | `.archon/config.yaml` | Repo-local Archon defaults for assistants, docs path, and bundled workflow loading |
 | `.archon/workflows/` | Repo-local Archon workflows for deterministic maintenance and integration runs |
@@ -150,4 +158,3 @@ For runtime verification, also check:
 - `GET http://localhost:8765/api/health`
 - `GET http://localhost:8765/api/models`
 - direct tool execution via `POST /api/tool/execute`
-
