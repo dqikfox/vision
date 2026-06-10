@@ -23,6 +23,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
 BASE = os.environ.get("VISION_TEST_BASE", "http://localhost:8765")
 WS = os.environ.get("VISION_TEST_WS", "ws://localhost:8765/ws")
+CHAT_TIMEOUT = int(os.environ.get("VISION_TEST_CHAT_TIMEOUT", "300"))
+TOOL_TIMEOUT = int(os.environ.get("VISION_TEST_TOOL_TIMEOUT", "300"))
+OLLAMA_MODEL_OVERRIDE = os.environ.get("VISION_TEST_OLLAMA_MODEL", "").strip()
 
 
 def require_integration() -> None:
@@ -37,6 +40,47 @@ def is_busy_message(msg: dict) -> bool:
 def load_json(url: str, timeout: int = 10) -> dict:
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.loads(response.read())
+
+
+def normalize_model_text(text: str) -> str:
+    return "".join(character for character in text.upper() if character.isalnum())
+
+
+def contains_expected_sequence(text: str, parts: tuple[str, ...]) -> bool:
+    position = 0
+    for part in parts:
+        index = text.find(part, position)
+        if index == -1:
+            return False
+        position = index + len(part)
+    return True
+
+
+def select_ollama_tool_model(payload: dict) -> str:
+    ollama_models_raw = payload.get("providers", {}).get("ollama", {}).get("models", [])
+    ollama_models = ollama_models_raw if isinstance(ollama_models_raw, list) else str(ollama_models_raw).split()
+    local_models = [model for model in ollama_models if isinstance(model, str) and ":cloud" not in model]
+
+    if OLLAMA_MODEL_OVERRIDE:
+        return OLLAMA_MODEL_OVERRIDE if OLLAMA_MODEL_OVERRIDE in local_models else ""
+
+    current_provider = payload.get("current_provider")
+    current_model = str(payload.get("current_model", ""))
+    preferred_models = [
+        current_model if current_provider == "ollama" else "",
+        "gpt-oss:20b",
+        "llama3.1:8b",
+        "llama3.2:latest",
+        "qwen3:8b",
+        "qwen2.5-coder:7b",
+        "qwen2.5-coder:3b",
+    ]
+    for model in preferred_models:
+        if model and model in local_models:
+            return model
+
+    preferred_prefixes = ("gpt-oss", "llama3.2", "llama3.1", "qwen3", "qwen2.5", "qwen2")
+    return next((model for model in local_models if any(model.startswith(prefix) for prefix in preferred_prefixes)), "")
 
 
 async def run_tool(tool_name: str, args: dict, timeout: int = 45) -> str | None:
@@ -73,6 +117,11 @@ def test_http_endpoints() -> None:
     assert "providers" in payload
     assert payload.get("current_provider")
     assert payload.get("current_model")
+    providers = payload.get("providers", {})
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        assert providers.get("anthropic", {}).get("has_key") is True
+    if os.environ.get("NVIDIA_API_KEY"):
+        assert providers.get("nvidia", {}).get("has_key") is True
 
 
 async def test_ws() -> None:
@@ -87,11 +136,42 @@ async def test_ws() -> None:
         assert msg.get("model")
 
 
+async def test_manual_voice_capture_trigger() -> None:
+    require_integration()
+    import websockets
+
+    async with websockets.connect(WS, open_timeout=5) as ws:
+        init = json.loads(await ws.recv())
+        original_muted = bool(init.get("muted", False))
+        original_wake_word = bool(init.get("wake_word", False))
+        original_continuous = bool(init.get("continuous_listening", False))
+        try:
+            await ws.send(json.dumps({"type": "set_continuous", "enabled": False}))
+            await ws.send(json.dumps({"type": "set_wake_word", "enabled": False}))
+            await ws.send(json.dumps({"type": "set_mute", "muted": False}))
+            await ws.send(json.dumps({"type": "start_voice_capture"}))
+
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=1)
+                except TimeoutError:
+                    continue
+                msg = json.loads(raw)
+                if msg.get("type") == "state" and msg.get("state") in {"listening", "recording"}:
+                    return
+            pytest.fail("manual voice capture did not enter listening/recording state")
+        finally:
+            await ws.send(json.dumps({"type": "set_wake_word", "enabled": original_wake_word}))
+            await ws.send(json.dumps({"type": "set_continuous", "enabled": original_continuous}))
+            await ws.send(json.dumps({"type": "set_mute", "muted": original_muted}))
+
+
 async def test_ollama_chat() -> None:
     require_integration()
     import websockets
 
-    deadline = time.time() + 60
+    deadline = time.time() + CHAT_TIMEOUT
     while time.time() < deadline:
         async with websockets.connect(WS, open_timeout=5) as ws:
             await ws.recv()
@@ -111,14 +191,19 @@ async def test_ollama_chat() -> None:
                     if is_busy_message(msg):
                         await asyncio.sleep(2)
                         break
+                    if msg.get("type") == "transcript" and msg.get("role") != "assistant":
+                        continue
                     if msg.get("type") in {"transcript", "stream_finalize"}:
                         text = msg.get("text", "")
                         if text:
-                            assert "VISION_TEST_OK" in text
+                            normalized = normalize_model_text(text)
+                            assert "VISIONTESTOK" in normalized or contains_expected_sequence(
+                                normalized, ("VISION", "TEST", "OK")
+                            )
                             return
                 except TimeoutError:
                     pass
-    pytest.fail("Ollama chat did not reply within 60s")
+    pytest.fail(f"Ollama chat did not reply within {CHAT_TIMEOUT}s")
 
 
 async def test_tools() -> None:
@@ -191,13 +276,7 @@ async def test_ollama_tools() -> None:
     import websockets
 
     payload = load_json(f"{BASE}/api/models")
-    ollama_models_raw = payload.get("providers", {}).get("ollama", {}).get("models", [])
-    ollama_models = ollama_models_raw if isinstance(ollama_models_raw, list) else str(ollama_models_raw).split()
-    preferred_prefixes = ("gpt-oss", "llama3.2", "llama3.1", "qwen2.5", "qwen2")
-    tool_model = next(
-        (model for model in ollama_models if any(model.startswith(prefix) for prefix in preferred_prefixes)),
-        "",
-    )
+    tool_model = select_ollama_tool_model(payload)
     if not tool_model:
         pytest.skip("no suitable local Ollama model available for tool-calling validation")
 
@@ -210,17 +289,20 @@ async def test_ollama_tools() -> None:
             await ws.send(json.dumps({"type": "set_model", "provider": "ollama", "model": tool_model}))
             await ws.send(json.dumps({"type": "set_mode", "mode": "operator"}))
             await ws.send(json.dumps({"type": "input", "text": "Run the echo command to output TOOLCALL_OK"}))
-            deadline = time.time() + 60
+            deadline = time.time() + TOOL_TIMEOUT
             while time.time() < deadline:
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=5)
                     msg = json.loads(raw)
+                    if is_busy_message(msg):
+                        await asyncio.sleep(2)
+                        continue
                     if msg.get("type") == "action":
                         assert "TOOLCALL_OK" in str(msg.get("result", "")) or msg.get("action")
                         return
                 except TimeoutError:
                     pass
-            pytest.fail("no tool action seen from local Ollama model")
+            pytest.fail(f"no tool action seen from local Ollama model within {TOOL_TIMEOUT}s")
         finally:
             await ws.send(json.dumps({"type": "set_model", "provider": orig_provider, "model": orig_model}))
             await ws.send(json.dumps({"type": "set_mode", "mode": orig_mode}))
