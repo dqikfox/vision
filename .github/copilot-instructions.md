@@ -1,119 +1,84 @@
-# GitHub Copilot Instructions for Vision Project
+# GitHub Copilot Instructions for Vision
 
-## Role: AI Coding Agent under ULTRON Orchestration
+Vision is a **Windows-first accessibility operator** with voice, desktop control, WebSocket UX, tool execution,
+RAG, a command center, and MCP integration. Keep responses and changes grounded in the actual repo instead of
+generic assistant behavior.
 
-You are working as a delegated coding agent for the Vision project. Your orchestrator is ULTRON (an AI assistant operating through OpenClaw).
+## Start Here
 
-## Communication Protocol
+When context is missing or the task is broad, read in this order:
 
-### When you receive instructions from ULTRON:
-1. **Acknowledge** the task clearly
-2. **Ask clarifying questions** if requirements are ambiguous
-3. **Propose approach** before writing large amounts of code
-4. **Implement** the solution
-5. **Report back** with: what was done, file changes, any blockers
+1. `DOCUMENTATION_INDEX.md`
+2. `README.md`
+3. `setup.md`
+4. `architecture.md`
+5. the nearest authoritative file for the area you are changing
 
-### Code Standards (Vision Project)
-- **Python**: Use Ruff formatter, 120 char line length
-- **Type hints**: Use `from __future__ import annotations` and modern syntax
-- **Error handling**: Use `try/except` with specific exceptions, always log errors
-- **Environment**: Read config from env vars, never hardcode secrets
-- **Testing**: Write tests for new features using pytest
+## Source of Truth
 
-### Project Structure
-```
-C:/project/vision/
-├── vision_mcp_server.py     # MCP bridge to backend
-├── vision_hotkey.py         # Main FastAPI app
-├── vision_rag.py            # RAG integration
-├── vision_runtime.py        # Runtime utilities
-├── vision_rag_integration.py # RAG pipeline
-├── .vscode/mcp.json         # MCP server config
-└── .github/copilot-instructions.md  # This file
-```
+- **Backend:** `live_chat_app.py`
+- **Primary UI:** `live_chat_ui.html`
+- **Command Center UI:** `vision_command_center.html`
+- **Runtime/config helpers:** `vision_runtime.py`
+- **Local MCP bridge:** `vision_mcp_server.py`
+- **RAG runtime:** `vision_rag.py`, `vision_rag_integration.py`
+- **Workspace MCP config:** `.vscode/mcp.json`
 
-## MCP Tools Available
+Do **not** drift to alternate entry points or duplicate systems when one of the files above already owns the behavior.
 
-You can use these via ULTRON or directly if configured:
+## How to Work in This Repo
 
-| Tool | Purpose |
-|------|---------|
-| `@vision-local` | Control Vision backend (health, models, memory) |
-| `@github` | Issues, PRs, repos, code search |
-| `@filesystem` | Read/write workspace files |
-| `@git` | Repository history, diffs |
-| `@fetch` | Web scraping |
-| `@memory` | Knowledge graph persistence |
-| `@sequential-thinking` | Multi-step reasoning |
-| `@puppeteer` | Browser automation |
-| `@brave-search` | Web search |
+- Inspect relevant files first, then make the smallest coherent change.
+- Prefer existing helpers, endpoints, launchers, and UI surfaces over inventing parallel ones.
+- Keep docs aligned when runtime behavior, startup flow, MCP wiring, skills, agents, or validation commands change.
+- Use existing validation surfaces rather than inventing new ones.
+- For debugging or maintenance, check logs before guessing: `chat_events.log` and `vision_error.log`.
 
-## Task Categories
+## Runtime Validation Surfaces
 
-### 1. Bug Fixes
-- Identify root cause first
-- Write minimal reproduction test
-- Fix with regression test
+Use the narrowest existing validation that matches the change:
 
-### 2. Features
-- Check existing architecture patterns
-- Propose design before implementation
-- Update tests and documentation
+- `python test_tools.py`
+- `python test_vision.py`
+- `python vision_test_suite.py`
+- `python -m pytest -q`
+- `Invoke-RestMethod -Uri http://localhost:8765/api/health`
+- `Invoke-RestMethod -Uri http://localhost:8765/api/models`
 
-### 3. Refactoring
-- Maintain existing behavior
-- Run tests before/after
-- Incremental changes preferred
+## Repo-Specific Rules to Preserve
 
-### 4. Integration
-- Verify external service health
-- Handle timeouts and retries
-- Log integration points
+1. New operator tools must wire through **all three** surfaces:
+   - `TOOLS`
+   - `_exec_tool_impl()`
+   - `_EL_TOOL_NAMES`
+2. `broadcast()` must iterate over `list(clients)`, not the live set directly.
+3. Do **not** change the calibrated voice thresholds unless the user explicitly asks:
+   - `RMS_THRESH=500`
+   - `START_FRAMES=3`
+   - `END_FRAMES=20`
+   - `BARGE_RMS=1100`
+4. Use `PIL.Image.Resampling.LANCZOS`, not deprecated `PIL.Image.LANCZOS`.
+5. Catch `APITimeoutError` before `APIConnectionError`.
+6. Use `asyncio.get_running_loop()`, not `get_event_loop()`.
+7. Never hardcode secrets; read from env vars or existing config layers.
 
-## Blocker Escalation
+## Copilot Customization Guidance
 
-Escalate to ULTRON when:
-- Need access to external APIs requiring secrets
-- Unclear on architecture decisions
-- Tests fail in CI but pass locally
-- Security-sensitive changes
-- Breaking changes to public API
+- Use Vision-local skills from `.github/skills/` when the workflow is specific to this repo.
+- Check `C:\project\skills` first when a workflow could be reusable across repositories.
+- Use custom agents from `.github/agents/` when the task matches a specialist role.
+- Treat `.vscode/mcp.json` as the source of truth for active workspace MCP servers.
+- If Copilot feels under-informed for a broad task, refresh context from `DOCUMENTATION_INDEX.md` and then use the
+  relevant skill such as `vision-context-ops`, `vision-context-brain`, `vision-runtime-ops`, or `vision-debugging`.
 
-## Response Template
+## Collaboration Style
 
-```
-**Task**: [Brief description]
-**Approach**: [What I plan to do]
-**Files Modified**:
-- `path/to/file.py` - [what changed]
-**Tests**: [Added/updated/ran]
-**Status**: [Complete/Blocked/Needs Review]
-**Blockers**: [If any]
-```
+- Lead with the result, then the key facts.
+- Be specific about files, endpoints, and commands in this repo.
+- Do the work instead of staying at high-level advice when the request is actionable.
+- Ask only when a decision would materially change behavior.
 
-## Active Development Areas
+## ULTRON Context
 
-From current issues:
-- **#2**: Integrate MCP with Copilot (IN PROGRESS)
-- **#6**: Admin Mode
-- **#8**: Prettier Interface
-- **#90**: Update vision actions (WIP)
-
-## Environment Variables
-
-Key env vars Vision uses:
-- `VISION_BASE_URL=http://localhost:8765`
-- `PYTHONPATH=c:\project\vision`
-- `OLLAMA_HOST=http://localhost:11434`
-
-## Remember
-
-- **You are part of a team** with ULTRON as coordinator
-- **Ask questions** rather than assume
-- **Show your work** - explain significant decisions
-- **Test your changes** before marking complete
-- **Security first** - never commit secrets
-
----
-
-*Last updated: 2026-05-14 by ULTRON*
+You are operating inside Vision under ULTRON orchestration, but repo accuracy takes priority over roleplay.
+Stay grounded in the current codebase, runtime, and customization files.

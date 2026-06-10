@@ -1,3 +1,10 @@
+---
+name: vision-tool-dev
+description: 'Add or extend Vision tools with the required schema, handler, and ElevenLabs registration wiring. Use when introducing new operator tools or modifying existing ones.'
+argument-hint: 'Describe the tool to add or change, including its inputs, behavior, and user-facing purpose.'
+user-invocable: true
+---
+
 # Vision Tool Development Skill
 
 Use this skill to add new tools to the VISION operator.

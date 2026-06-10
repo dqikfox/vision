@@ -49,6 +49,7 @@
 | **`vision_runtime.py`** | Runtime config and state management | dataclasses, JSON |
 | **`vision_admin.py`** | JWT auth and role-based access control | JWT, hashlib, hmac |
 | **`vision_openclaw_bridge.py`** | OpenClaw gateway integration | httpx, MCP |
+| **`GET /api/ally`** | NEXUS ally status, provider routing, preferred device, and sysadmin workspace state | FastAPI, JSON |
 | **`live_chat_ui_v3.html`** | Main web operator interface | HTML5, WebSocket, Canvas API |
 | **`vision_command_center.html`** | Command center for diagnostics | HTML5, Fetch API |
 
@@ -75,6 +76,20 @@
 8. **WebSocket Real-Time**: Live state updates across all interfaces
 9. **MCP Server**: Standardized protocol for external tool integration
 10. **Admin System**: JWT-based authentication with role-based access
+
+### NEXUS Ally Layer
+
+Vision now includes a structured **NEXUS** ally layer on top of the core operator runtime.
+
+- **Preferred reasoning provider**: Anthropic / Claude
+- **Preferred local inference surface**: LM Studio (`http://localhost:1234/v1`)
+- **Preferred heavyweight device**: `SHADOW-EOKGST4R`
+- **Preferred-device behavior**: when the device is marked connected and LM Studio is reporting models, Vision favors that route for heavyweight local-model work
+- **Sysadmin workspace hooks**: `C:\SysAdmin`, `C:\SysAdmin\scripts`, and `C:\SysAdmin\network-inventory.db`
+- **Lightweight ally supervisor**: an always-on loop refreshes ally dependency status and surfaces degraded dependency notes/timestamps via `GET /api/ally`
+- **Safety boundary**: the ally layer is built for high autonomy, but privileged identity, security, financial, destructive, and external-account actions still stay behind approval/audit controls
+
+The command center profile stores this state under the `ally` block in `vision_command_center_config.json`.
 
 ### File Structure
 
@@ -217,6 +232,9 @@ The operator can now route commands to OpenClaw agents, access gateway tools, an
 
 Vision is now managed by GitHub Copilot customizations. Use these to run, debug, or extend the system:
 
+If you are using **Claude Desktop** against this repository, load `CLAUDE.md` first. It provides a repo-specific
+operating manual for maintenance, debugging, upgrades, MCP/RAG work, documentation, and validation.
+
 ### Agents
 - **Vision Maintainer** — Main agent for runtime, debugging, and code changes (`.github/agents/vision-maintainer.agent.md`)
 - **OpenClaw Operator** — Specialized agent for OpenClaw workflows (installed in this repo)
@@ -230,6 +248,7 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 - **vision-operator** — Operate Vision end-to-end across voice, tools, and accessibility workflows
 - **vision-runtime-ops** — Start the app, verify endpoints, check provider readiness
 - **vision-debugging** — Debug voice, WebSocket, provider, OCR, and tool-call issues
+- **vision-error-resolution** — Run the full analyze-identify-fix-review-apply cycle for recurring errors and degraded components
 - **vision-tool-audit** — Audit direct tool execution and natural-language tool routing
 - **vision-tool-dev** — Add new Vision tools with the required schema/handler/registration wiring
 - **vision-code-review** — Review changes for correctness, security, type safety, and async/runtime hazards
@@ -251,8 +270,10 @@ Vision is now managed by GitHub Copilot customizations. Use these to run, debug,
 
 Vision also uses a shared local skill repo at **`C:\project\skills`** for reusable cross-project workflows. Prefer `.github/skills/` when the task is Vision-specific; prefer `C:\project\skills` when the workflow is general and reusable across multiple local repos.
 
+For MCP-backed work, treat **`.vscode/mcp.json`** as the source of truth for active workspace servers. Skills describe usage patterns and troubleshooting flow; they are not the live MCP registry.
+
 ### Repo Instructions
-- **Copilot Instructions** — Global guidelines for working in this repo (`.github/copilot-instructions.md`)
+- **Copilot Instructions** — Global guidelines for working in this repo (`.github/copilot-instructions.md`), mirrored in `.vscode/copilot-instructions.md` for workspace pickup in VS Code
 - **Local LM Studio RAG Context** — Copilot can inspect the workspace defined by `RAG_PLUGIN_WORKSPACE` through workspace MCP when LM Studio or local retrieval tasks are relevant. If unset, the repo falls back to the curated corpus at `F:\rag-v1\vision-corpus` on Windows and `~/rag-v1/vision-corpus` elsewhere.
 - **Documentation Index** — Start with `DOCUMENTATION_INDEX.md` for the current doc map
 
@@ -273,6 +294,14 @@ mcpServers: {
 ```
 
 With a single MCP server, the exposed tool names stay as defined (`vision_health`, `vision_models`, `vision_execute_tool`, etc.). With multiple MCP servers, some harnesses namespace tools by server name, so check that runtime's MCP naming rules.
+
+The MCP bridge also exposes **`vision_ally_status`**, which wraps `GET /api/ally` so external runtimes can inspect:
+
+- NEXUS routing and autonomy mode
+- Claude / LM Studio / Ollama provider availability
+- preferred-device readiness for `SHADOW-EOKGST4R`
+- configured sysadmin workspace health
+- ally supervisor state, refresh timestamps, and degraded dependency notes
 
 For deterministic multi-step repo automation, this repo also ships **Archon workflows** in `.archon/workflows/`:
 - `vision-repo-maintenance.yaml` — autonomous repo maintenance with a safe compile-time validation step
@@ -299,11 +328,13 @@ python hive_tools\context_mapper.py --output .archon\artifacts\project_context.j
 When Vision is running, the browser-accessible command center gives you a GUI for the same stack:
 - a layered view of the **Core Operator Layer** vs the **Cognitive Layer**
 - runtime health and metrics
+- a dedicated **NEXUS Ally Status** panel for provider routing, preferred-device state, and sysadmin workspace visibility
 - Vision Doctor readiness checks
 - saved maintenance and smoke-test routines
 - multi-step automation missions with persistent execution history
 - theme/profile settings for launcher and command-center behavior
 - configurable Ollama exposure mode and CORS origins for local-only or LAN use
+- ally profile settings for Claude preference, LM Studio endpoint, preferred device, and sysadmin workspace paths
 - context brain refresh and artifact access
 - Archon workflow launch/copy commands
 - docs, skills, agents, MCP surfaces, and core file openers
@@ -584,6 +615,7 @@ C:\project\vision\
 │   └── skills/
 │       ├── vision-runtime-ops/       ← Run/verify the operator
 │       ├── vision-debugging/         ← Debug failures
+│       ├── vision-error-resolution/  ← Resolve recurring runtime errors
 │       ├── vision-tool-audit/        ← Audit tool-calling
 │       ├── vision-context-ops/       ← Improve Copilot context discipline
 │       ├── vision-home-ops/          ← Home PC/network/security workflows

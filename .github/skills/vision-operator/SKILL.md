@@ -1,3 +1,10 @@
+---
+name: vision-operator
+description: 'Operate Vision end-to-end across voice, tools, browser, and accessibility workflows. Use when the task is to run or use the operator, not change repo customization.'
+argument-hint: 'Describe the operator task: voice workflow, screen interaction, browser task, tool execution, or end-to-end usage.'
+user-invocable: true
+---
+
 # Vision Operator Skill
 
 Use this skill to operate VISION — the universal AI computer-control system.
