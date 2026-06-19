@@ -1,0 +1,50 @@
+# .understandignore - patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions - uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+
+# --- From .gitignore (uncomment to exclude) ---
+
+# .env
+# *.env
+# *.pyc
+# *.pyo
+# *.pyd
+# .Python
+# *.egg-info/
+# .coverage
+# htmlcov/
+# *.txt.bak
+# overlay_err.txt
+# startup_err.txt
+# startup_out.txt
+# memory.json
+# .brain/
+# Thumbs.db
+# .DS_Store
+# .vscode/settings.json
+# !uv.lock
+# .archon/artifacts/
+# **/node_modules/
+# .pw_profile/
+# vision_launch.log
+# vision_error.log
+# test_keys.py
+# retest_failed_keys.py
+# openJdk-25/
+
+# --- Detected directories (uncomment to exclude) ---
+
+# tests/
+# docs/
+# scripts/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# *.test.*
+# *.spec.*
+# *.snap

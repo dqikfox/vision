@@ -1266,6 +1266,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   color:#22d3ee!important;
   filter:drop-shadow(0 0 6px #22d3ee);
 }
+
+/* ═══════ SCREEN-READER ONLY ═══════ */
+.sr-only{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+}
+
+/* ═══════ HUD UTILITY CLASSES ═══════ */
+.hud-divider{width:1px;height:14px;background:rgba(29,78,216,.12)}
+.hud-item-col{flex-direction:column;align-items:flex-start;gap:2px}
+.hud-provider-row{display:flex;align-items:center;gap:5px}
+.hud-provider-lbl{font-size:9px;color:var(--dim);letter-spacing:.1em}
+.hud-cascade{
+  font-size:8px;color:var(--dim);letter-spacing:.05em;
+  opacity:0;transition:opacity .3s;
+  max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ═══════ COMP STATUS UTILITY CLASSES ═══════ */
+.comp-divider{width:1px;height:10px;background:rgba(29,78,216,.1)}
 </style>
 </head>
 <body>
@@ -1274,6 +1294,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <a href="#panelLeft" class="skip-link">Skip to chat history</a>
   <a href="#panelRight" class="skip-link">Skip to actions panel</a>
   <a href="#panelTop" class="skip-link">Skip to settings</a>
+
+<!-- ═══ ARIA LIVE REGIONS ═══ -->
+<div id="ariaState" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+<div id="ariaAlert" aria-live="assertive" aria-atomic="true" class="sr-only"></div>
 
 <!-- ═══ BOOT ═══ -->
 <div id="boot">
@@ -1299,18 +1323,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- ═══ HUD ═══ -->
 <div id="hud">
   <div class="hud-item"><div class="hud-dot" id="wsHudDot"></div><span id="wsHudLbl">OFFLINE</span></div>
-  <div style="width:1px;height:14px;background:rgba(29,78,216,.12)"></div>
+  <div class="hud-divider"></div>
   <div class="hud-item">CORE <span id="activeCore">LOADING...</span></div>
-  <div class="hud-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-    <div style="display:flex;align-items:center;gap:5px">
-      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">STT</span>
+  <div class="hud-item hud-item-col">
+    <div class="hud-provider-row">
+      <span class="hud-provider-lbl">STT</span>
       <span id="hudSTT" class="provider-pill">AUTO</span>
     </div>
-    <div id="sttCascade" style="font-size:8px;color:var(--dim);letter-spacing:.05em;opacity:0;transition:opacity .3s;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+    <div id="sttCascade" class="hud-cascade"></div>
   </div>
-  <div class="hud-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-    <div style="display:flex;align-items:center;gap:5px">
-      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">TTS</span>
+  <div class="hud-item hud-item-col">
+    <div class="hud-provider-row">
+      <span class="hud-provider-lbl">TTS</span>
       <span id="hudTTS" class="provider-pill">AUTO</span>
     </div>
   </div>
@@ -1319,13 +1343,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- ═══ COMPONENT STATUS ═══ -->
 <div id="compStatus">
   <div class="comp-item"><div class="comp-led" id="led-ollama"></div>OLLAMA</div>
-  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-divider"></div>
   <div class="comp-item"><div class="comp-led" id="led-elevenlabs"></div>ELEVEN</div>
-  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-divider"></div>
   <div class="comp-item"><div class="comp-led" id="led-browser"></div>BROWSER</div>
-  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-divider"></div>
   <div class="comp-item"><div class="comp-led" id="led-gpu"></div>GPU</div>
-  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-divider"></div>
   <div class="comp-item"><div class="comp-led" id="led-ocr"></div>OCR</div>
 </div>
 
@@ -2193,10 +2217,25 @@ const WS_URL = window.location.host
   : 'ws://localhost:8765/ws';
 
 let ws, wsRetry = 0, wsTimer;
+const WS_BASE_DELAY = 1000, WS_MAX_DELAY = 30000;
 let state = 'idle', muted = false, currentMode = 'chat';
 let wakeWordEnabled = false;
 let currentProvider = '', currentModel = '';
 let voiceSettings = { preferred_stt:'auto', preferred_tts:'auto', tts_rate:175, tts_voice_idx:0, tts_voice_id:'' };
+
+// Adaptive noise floor: rolling RMS baseline for per-session VAD calibration
+const _rmsWindow = new Float32Array(60); // ~3s at 20fps
+let _rmsIdx = 0, _rmsSum = 0, _noiseFloor = 0.04;
+function _updateNoiseFloor(level) {
+  _rmsSum -= _rmsWindow[_rmsIdx];
+  _rmsWindow[_rmsIdx] = level;
+  _rmsSum += level;
+  _rmsIdx = (_rmsIdx + 1) % _rmsWindow.length;
+  const avg = _rmsSum / _rmsWindow.length;
+  // Floor rises slowly, drops quickly (tracks ambient noise without eating speech)
+  _noiseFloor = state === 'idle' ? avg * 1.15 : Math.max(_noiseFloor * 0.995, avg * 0.6);
+}
+function getAdaptiveThreshold() { return _noiseFloor; }
 let voiceCatalog = {
   local: { label:'Windows Local Voices', available:false, voices:[] },
   elevenlabs: { label:'ElevenLabs', available:false, voices:[] },
@@ -2559,7 +2598,9 @@ function connect() {
   ws.onclose = () => {
     document.getElementById('wsHudDot').classList.remove('on');
     document.getElementById('wsHudLbl').textContent = 'OFFLINE';
-    wsTimer = setTimeout(() => connect(), Math.min(3000*(wsRetry+1), 15000));
+    const jitter = 0.5 + Math.random() * 0.5;
+    const delay = Math.min(WS_BASE_DELAY * Math.pow(2, wsRetry) * jitter, WS_MAX_DELAY);
+    wsTimer = setTimeout(() => connect(), delay);
     wsRetry++;
   };
   ws.onerror = () => {};
@@ -2665,6 +2706,7 @@ function handleMsg(msg) {
       break;
     case 'volume':
       setVolume(msg.level || 0);
+      _updateNoiseFloor(msg.level || 0);
       break;
     case 'stt_active': {
       const prov = msg.provider || 'auto';
@@ -2805,6 +2847,9 @@ function setState(s) {
   const lbl = document.getElementById('stateLabel');
   lbl.textContent = stateLabels[s] || s.toUpperCase();
   lbl.style.color = stateColors[s] || 'var(--p2)';
+  // Announce state change to screen readers
+  const ariaState = document.getElementById('ariaState');
+  if (ariaState) ariaState.textContent = stateLabels[s] || s.toUpperCase();
   if (s === 'thinking') showTyping(); else removeTyping();
   // Transcript bar: keep visible during thinking (shows what was heard), hide on speaking/listening
   if (s === 'listening' || s === 'speaking') hideTranscriptBar();
@@ -3800,6 +3845,9 @@ let toastTimer;
 function toast(msg, type) {
   const el = document.getElementById('toast');
   el.textContent = msg;
+  // Announce toast to screen readers
+  const ariaAlert = document.getElementById('ariaAlert');
+  if (ariaAlert) ariaAlert.textContent = msg;
   el.style.background = type==='green' ? 'rgba(16,185,129,.12)' :
                         type==='cyan'  ? 'rgba(6,182,212,.12)' :
                         type==='purple'? 'rgba(29,78,216,.12)' :

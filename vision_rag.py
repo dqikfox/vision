@@ -206,8 +206,30 @@ class VisionRAGManager:
             USING fts5(chunk_id UNINDEXED, rel_path, content, tokenize='unicode61');
 
             CREATE INDEX IF NOT EXISTS idx_chunks_rel_path ON chunks(rel_path);
+
+            CREATE TABLE IF NOT EXISTS file_mtimes (
+              rel_path TEXT PRIMARY KEY,
+              mtime REAL NOT NULL,
+              file_hash TEXT NOT NULL
+            );
             """
         )
+
+    def _file_hash(self, path: Path) -> str:
+        """Fast content fingerprint — first 8 KB + file size."""
+        stat = path.stat()
+        header = path.read_bytes()[:8192]
+        return hashlib.sha1(header + str(stat.st_size).encode()).hexdigest()
+
+    def _remove_file_chunks(self, conn: sqlite3.Connection, rel_path: str) -> None:
+        ids = [row[0] for row in conn.execute(
+            "SELECT chunk_id FROM chunks WHERE rel_path = ?", (rel_path,)
+        ).fetchall()]
+        if ids:
+            placeholders = ",".join("?" * len(ids))
+            conn.execute(f"DELETE FROM chunks WHERE chunk_id IN ({placeholders})", ids)
+            conn.execute(f"DELETE FROM chunks_fts WHERE chunk_id IN ({placeholders})", ids)
+        conn.execute("DELETE FROM file_mtimes WHERE rel_path = ?", (rel_path,))
 
     def _clear_index(self, conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM chunks;")
@@ -347,6 +369,125 @@ class VisionRAGManager:
             "files_indexed": len(files),
             "chunks_indexed": total_chunks,
             "average_chunk_chars": avg_chars,
+            "build_elapsed_ms": elapsed_ms,
+            "updated_at": finished.isoformat(),
+            "db_path": str(self.db_path),
+        }
+
+    def build_index_incremental(
+        self,
+        *,
+        max_files: int = 0,
+        chunk_size: int = 1400,
+        overlap: int = 220,
+    ) -> dict[str, Any]:
+        """Rebuild only new or modified files since the last index run.
+
+        Falls back to a full rebuild when no prior index exists.
+        """
+        started = datetime.utcnow()
+        files = self._iter_source_files(max_files=max_files)
+
+        with self._connect() as conn:
+            self._ensure_schema(conn)
+            schema_ver = conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()
+            if not schema_ver:
+                conn.close()
+                return self.build_index(max_files=max_files, chunk_size=chunk_size, overlap=overlap)
+
+            known_paths: set[str] = {
+                row[0] for row in conn.execute("SELECT rel_path FROM file_mtimes").fetchall()
+            }
+            current_paths: set[str] = set()
+            added = updated = skipped = removed = 0
+            now = datetime.utcnow().isoformat()
+
+            for path in files:
+                rel_path = str(path.relative_to(self.source_root)).replace("\\", "/")
+                current_paths.add(rel_path)
+                try:
+                    mtime = path.stat().st_mtime
+                    fhash = self._file_hash(path)
+                except OSError:
+                    continue
+
+                row = conn.execute(
+                    "SELECT mtime, file_hash FROM file_mtimes WHERE rel_path = ?",
+                    (rel_path,),
+                ).fetchone()
+
+                if row and row[0] == mtime and row[1] == fhash:
+                    skipped += 1
+                    continue
+
+                if row:
+                    self._remove_file_chunks(conn, rel_path)
+                    updated += 1
+                else:
+                    added += 1
+
+                try:
+                    text, source_type = self._extract_text(path)
+                except Exception:
+                    continue
+
+                if not text.strip():
+                    continue
+
+                chunks = _chunk_text(text, chunk_size=chunk_size, overlap=overlap)
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = hashlib.sha1(
+                        f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")
+                    ).hexdigest()
+                    char_count = len(chunk)
+                    token_count = _token_count(chunk)
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO chunks
+                          (chunk_id, rel_path, abs_path, source_type, content,
+                           char_count, token_count, created_at)
+                        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (chunk_id, rel_path, str(path), source_type, chunk,
+                         char_count, token_count, now),
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO chunks_fts(chunk_id, rel_path, content) VALUES(?, ?, ?)",
+                        (chunk_id, rel_path, chunk),
+                    )
+
+                conn.execute(
+                    "INSERT OR REPLACE INTO file_mtimes(rel_path, mtime, file_hash) VALUES(?, ?, ?)",
+                    (rel_path, mtime, fhash),
+                )
+
+            for stale in known_paths - current_paths:
+                self._remove_file_chunks(conn, stale)
+                removed += 1
+
+            total_chunks = int(conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
+            finished = datetime.utcnow()
+            elapsed_ms = int((finished - started).total_seconds() * 1000)
+            for key, value in {
+                "updated_at": finished.isoformat(),
+                "build_elapsed_ms": str(elapsed_ms),
+                "chunks_indexed": str(total_chunks),
+            }.items():
+                conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value))
+            conn.commit()
+
+        return {
+            "ok": True,
+            "mode": "incremental",
+            "source_root": str(self.source_root),
+            "files_scanned": len(files),
+            "files_added": added,
+            "files_updated": updated,
+            "files_skipped": skipped,
+            "files_removed": removed,
+            "chunks_total": total_chunks,
             "build_elapsed_ms": elapsed_ms,
             "updated_at": finished.isoformat(),
             "db_path": str(self.db_path),
