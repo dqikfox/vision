@@ -1725,6 +1725,9 @@ def _choose_fallback_provider(exclude: set[str] | None = None) -> str | None:
 async def _activate_provider(provider: str) -> None:
     """Switch the active provider/model and notify clients."""
     global current_provider, current_model, _ollama_failover_active
+    if provider not in PROVIDERS:
+        write_log("provider_error", f"_activate_provider: unknown provider {provider!r}")
+        return
     if provider == current_provider and current_model in PROVIDERS.get(provider, {}).get("models", []):
         return
     async with _global_state_lock:
@@ -1803,8 +1806,6 @@ async def fetch_ollama_models() -> list[str]:
         return await loop.run_in_executor(None, _list_via_cli)
     except Exception as e:
         print(f"[ollama] cli list failed: {e}")
-        return []
-    except Exception:
         return []
 
 

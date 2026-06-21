@@ -1856,7 +1856,13 @@ function connect() {
     wsRetry++;
   };
   ws.onerror = () => {};
-  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onmessage = e => {
+    try {
+      handleMsg(JSON.parse(e.data));
+    } catch (err) {
+      console.error('[vision] WebSocket parse error:', err, e.data?.slice?.(0, 120));
+    }
+  };
 }
 
 function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
