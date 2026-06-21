@@ -5188,7 +5188,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Shell ──────────────────────────────────────────────────────────────────
     elif name == "run_command":
         cmd = args.get("command", "")
-        timeout = int(args.get("timeout", 30))
+        try:
+            timeout = int(args.get("timeout", 30))
+        except (ValueError, TypeError):
+            return "run_command error: timeout must be an integer"
         try:
             # Use create_subprocess_exec with a parsed argument list to prevent
             # shell injection — never pass raw user input to create_subprocess_shell.
@@ -5371,7 +5374,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── New general-purpose tools ──────────────────────────────────────────────
     elif name == "wait":
-        secs = max(0.1, min(float(args.get("seconds", 1.0)), 30.0))
+        try:
+            secs = max(0.1, min(float(args.get("seconds", 1.0)), 30.0))
+        except (ValueError, TypeError):
+            return "wait error: seconds must be a number"
         await asyncio.sleep(secs)
         return f"Waited {secs}s"
 
@@ -5413,13 +5419,19 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return json.dumps(status, ensure_ascii=False)
 
     elif name == "kb_index":
-        max_files = int(args.get("max_files", 0) or 0)
+        try:
+            max_files = int(args.get("max_files", 0) or 0)
+        except (ValueError, TypeError):
+            return "kb_index error: max_files must be an integer"
         result = await loop.run_in_executor(None, lambda: _rag_manager.build_index(max_files=max_files))
         return json.dumps(result, ensure_ascii=False)
 
     elif name == "kb_search":
         query = str(args.get("query", "")).strip()
-        limit = int(args.get("limit", 8) or 8)
+        try:
+            limit = int(args.get("limit", 8) or 8)
+        except (ValueError, TypeError):
+            return "kb_search error: limit must be an integer"
         if not query:
             return "kb_search error: query is required"
         result = await loop.run_in_executor(
@@ -5445,7 +5457,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return "\n".join(lines)
 
     elif name == "kb_export_training_data":
-        max_examples = max(0, min(int(args.get("max_examples", 0) or 0), 10_000))
+        try:
+            max_examples = max(0, min(int(args.get("max_examples", 0) or 0), 10_000))
+        except (ValueError, TypeError):
+            return "kb_export_training_data error: max_examples must be an integer"
         result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
         return json.dumps(result, ensure_ascii=False)
 
@@ -5532,7 +5547,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_wait":
         selector = args.get("selector", "")
-        timeout = int(args.get("timeout", 5000))
+        try:
+            timeout = int(args.get("timeout", 5000))
+        except (ValueError, TypeError):
+            return "browser_wait error: timeout must be an integer"
         page = await get_browser_page()
         if page is None:
             return "Browser unavailable"
@@ -5665,7 +5683,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         as_markdown = args.get("as_markdown", True)
         if not url.startswith(("http://", "https://")):
             return "fetch_url error: URL must start with http:// or https://"
-        timeout_secs = max(5, min(int(args.get("timeout_secs", 20)), 60))
+        try:
+            timeout_secs = max(5, min(int(args.get("timeout_secs", 20)), 60))
+        except (ValueError, TypeError):
+            return "fetch_url error: timeout_secs must be an integer"
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(connect=5.0, read=float(timeout_secs), write=10.0, pool=5.0),
@@ -5756,8 +5777,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # (screenshot_region duplicate removed - handled earlier with OCR support)
 
     elif name == "ocr_region":
-        x, y = max(0, min(int(args.get("x", 0)), 65535)), max(0, min(int(args.get("y", 0)), 65535))
-        w, h = max(1, min(int(args.get("width", 400)), 4096)), max(1, min(int(args.get("height", 300)), 4096))
+        try:
+            x, y = max(0, min(int(args.get("x", 0)), 65535)), max(0, min(int(args.get("y", 0)), 65535))
+            w, h = max(1, min(int(args.get("width", 400)), 4096)), max(1, min(int(args.get("height", 300)), 4096))
+        except (ValueError, TypeError):
+            return "ocr_region error: x, y, width, height must be integers"
 
         def _ocr_region():
             img = pyautogui.screenshot(region=(x, y, w, h))

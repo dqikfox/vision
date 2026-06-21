@@ -2414,7 +2414,7 @@ function renderPicker(data) {
     html += `<div class="prov-section">
       <div class="prov-head">
         <div class="led ${isActive?'g':hasKey?'c':''}"></div>
-        <div class="prov-title ${isActive?'active':''}">${p.label||key}</div>
+        <div class="prov-title ${isActive?'active':''}">${escHtml(p.label||key)}</div>
         ${isActive?'<span class="key-badge ok">ACTIVE</span>':''}
         <span class="key-badge ${hasKey?'ok':'no'}" style="margin-left:auto">${hasKey?'✓ KEY':'✗ NO KEY'}</span>
       </div>
