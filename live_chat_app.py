@@ -2611,9 +2611,10 @@ async def api_add_fact(payload: dict[str, Any]) -> JSONResponse:
 @app.delete("/api/memory/fact")
 async def api_del_fact(payload: dict[str, Any]) -> JSONResponse:
     fact = payload.get("fact", "")
-    if fact in memory.data["facts"]:
-        memory.data["facts"].remove(fact)
-        memory.save()
+    with memory._save_lock:
+        if fact in memory.data["facts"]:
+            memory.data["facts"].remove(fact)
+            memory.save()
     return JSONResponse({"facts": memory.data["facts"]})
 
 
@@ -3155,8 +3156,10 @@ async def ws_ep(websocket: WebSocket) -> None:
                             memory.data["facts"].pop(idx)
                             memory.save()
                 elif fact and fact in memory.data["facts"]:
-                    memory.data["facts"].remove(fact)
-                    memory.save()
+                    with memory._save_lock:
+                        if fact in memory.data["facts"]:
+                            memory.data["facts"].remove(fact)
+                            memory.save()
                 await broadcast({"type": "memory_updated", "memory": memory.get_all()})
             elif t == "get_state":
                 await websocket.send_text(
@@ -5400,15 +5403,17 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         fact = args.get("fact", "").strip()
         if not fact:
             return "No fact provided"
-        before = len(memory.data["facts"])
-        memory.data["facts"] = [f for f in memory.data["facts"] if fact.lower() not in f.lower()]
-        memory.save()
-        removed = before - len(memory.data["facts"])
+        with memory._save_lock:
+            before = len(memory.data["facts"])
+            memory.data["facts"] = [f for f in memory.data["facts"] if fact.lower() not in f.lower()]
+            memory.save()
+            removed = before - len(memory.data["facts"])
         return f"Removed {removed} fact(s) matching '{fact}'"
 
     elif name == "recall":
         query = args.get("query", "").strip().lower()
-        facts = memory.data.get("facts", [])
+        with memory._save_lock:
+            facts = list(memory.data.get("facts", []))
         matches = [f for f in facts if not query or query in f.lower()]
         if not matches:
             return "No matching facts found." if query else "Memory is empty."
