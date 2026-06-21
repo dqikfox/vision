@@ -1839,7 +1839,7 @@ function connect() {
   ws.onclose = () => {
     document.getElementById('wsHudDot').classList.remove('on');
     document.getElementById('wsHudLbl').textContent = 'OFFLINE';
-    wsTimer = setTimeout(() => connect(), Math.min(3000*(wsRetry+1), 15000));
+    wsTimer = setTimeout(() => connect(), Math.min(3000*(wsRetry+1) + Math.random()*1500, 15000));
     wsRetry++;
   };
   ws.onerror = () => {};
@@ -1999,8 +1999,15 @@ function handleMsg(msg) {
       }
       break;
     }
+    case 'confirmation_expired':
+      toast('⏱ Pending action timed out — please re-request.', 'red');
+      addMessage('system', '⏱ Pending confirmation expired.');
+      break;
     case 'error':
       addMessage('system', '⚠ ' + msg.message);
+      break;
+    default:
+      console.warn('[vision] unhandled ws message type:', msg.type, msg);
       break;
   }
 }

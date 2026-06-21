@@ -30,11 +30,9 @@ jobs:
 
       - name: Format check (ruff format)
         run: python -m ruff format --check .
-        continue-on-error: true
 
       - name: Lint (ruff)
         run: python -m ruff check .
-        continue-on-error: true
 
       - name: Type check (pyright)
         run: python -m pyright
@@ -42,7 +40,6 @@ jobs:
 
       - name: Doc consistency check
         run: python scripts/check_doc_consistency.py
-        continue-on-error: true
 
       - name: Security scan (bandit)
         run: python -m bandit -r . -f json -o bandit.json
@@ -76,7 +73,7 @@ jobs:
           pip install -e ".[test]"
 
       - name: Run unit tests
-        run: pytest -v --cov-report=xml --junit-xml=junit.xml
+        run: pytest -v --cov-report=xml --junit-xml=junit.xml --cov-fail-under=50
         continue-on-error: true
 
       - name: Upload coverage to Codecov

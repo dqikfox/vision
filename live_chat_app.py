@@ -21,6 +21,7 @@ import os
 import queue
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -258,8 +259,8 @@ def _load_key(name: str, env_var: str) -> str:
         v = keyring.get_password("operator", env_var)
         if v:
             return v
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[keyring] load {env_var} failed: {e}")
     return ""
 
 
@@ -276,8 +277,8 @@ def _save_key(env_var: str, value: str) -> None:
         import keyring
 
         keyring.set_password("operator", env_var, value)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[keyring] save {env_var} failed: {e}")
     # Also write back to .env file
     try:
         lines = _ENV_FILE.read_text(encoding="utf-8").splitlines() if _ENV_FILE.exists() else []
@@ -428,6 +429,7 @@ _session_input_busy: dict[WebSocket, bool] = {}
 _session_input_locks: dict[WebSocket, asyncio.Lock] = {}
 _session_speak_tasks: dict[WebSocket, asyncio.Task[None]] = {}
 _active_request_targets: set[object] = set()
+_background_tasks: set[asyncio.Task[Any]] = set()  # tracked fire-and-forget tasks
 
 audio_q: asyncio.Queue[Any] | None = None
 muted: bool = False
@@ -735,6 +737,20 @@ def write_log(event: str, detail: str) -> None:
     ts = datetime.now().isoformat(timespec="milliseconds")
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
+
+
+def _tracked_task(coro: Any) -> "asyncio.Task[Any]":
+    """Create a tracked asyncio task so exceptions surface and cleanup works on shutdown."""
+    task: asyncio.Task[Any] = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _done(t: asyncio.Task[Any]) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled() and (exc := t.exception()):
+            write_log("task_error", f"{t.get_name()}: {exc}")
+
+    task.add_done_callback(_done)
+    return task
 
 
 def _is_invalid_elevenlabs_auth(error_text: str) -> bool:
@@ -1215,6 +1231,17 @@ class Memory:
         data.setdefault("session_count", 0)
         data.setdefault("last_session", None)
         data.setdefault("task_history", [])
+        # Type coercion — guard against corrupted values
+        if not isinstance(data["session_count"], int):
+            data["session_count"] = 0
+        if not isinstance(data["facts"], list):
+            data["facts"] = []
+        if not isinstance(data["task_history"], list):
+            data["task_history"] = []
+        if not isinstance(data.get("user"), dict):
+            data["user"] = {"name": None, "preferences": []}
+        if not isinstance(data.get("voice"), dict):
+            data["voice"] = {"continuous_listening": False, "wake_word": False}
         data["user"].setdefault("name", None)
         data["user"].setdefault("preferences", [])
         data["user"]["preferences"] = self._dedupe(
@@ -4816,8 +4843,16 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         cmd = args.get("command", "")
         timeout = int(args.get("timeout", 30))
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            # Use create_subprocess_exec with a parsed argument list to prevent
+            # shell injection — never pass raw user input to create_subprocess_shell.
+            try:
+                cmd_parts = shlex.split(cmd, posix=False)
+            except ValueError:
+                cmd_parts = [cmd]
+            if not cmd_parts:
+                return "Error: empty command"
+            proc = await asyncio.create_subprocess_exec(
+                *cmd_parts, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -7383,6 +7418,7 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 pending_expired = _pending_tool_confirmation_expired()
                 if pending_expired:
                     _pop_pending_tool_confirmation()
+                    await broadcast({"type": "confirmation_expired", "message": "Pending action timed out."})
 
                 if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
                     await set_state("thinking")
@@ -7867,21 +7903,52 @@ async def startup():
             await asyncio.sleep(5)
             await _maybe_restore_ollama_provider()
 
-    asyncio.create_task(_voice_supervisor())
-    asyncio.create_task(_restore_ollama_after_startup())
+    _tracked_task(_voice_supervisor())
+    _tracked_task(_restore_ollama_after_startup())
 
     try:
-        asyncio.create_task(_open_ui_browser())
+        _tracked_task(_open_ui_browser())
     except Exception:
         pass
 
     # Pre-warm Playwright so first browser_open call is instant
     try:
-        asyncio.create_task(_prewarm_playwright())
+        _tracked_task(_prewarm_playwright())
     except Exception:
         pass
 
     await asyncio.sleep(1.2)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    """Cancel tracked background tasks and release browser resources on shutdown."""
+    # Cancel all tracked background tasks
+    for task in list(_background_tasks):
+        if not task.done():
+            task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
+
+    # Close Playwright browser gracefully
+    global _pw_page, _pw_browser, _pw_driver
+    try:
+        if _pw_page is not None and not _pw_page.is_closed():
+            await _pw_page.close()
+    except Exception:
+        pass
+    try:
+        if _pw_browser is not None:
+            await _pw_browser.close()
+    except Exception:
+        pass
+    try:
+        if _pw_driver is not None:
+            await _pw_driver.stop()
+    except Exception:
+        pass
+    write_log("shutdown", "background tasks cancelled, browser closed")
 
 
 async def _open_ui_browser():
