@@ -3149,9 +3149,11 @@ async def ws_ep(websocket: WebSocket) -> None:
             elif t == "del_fact":
                 fact = msg.get("fact", "")
                 idx = msg.get("index")
-                if idx is not None and isinstance(idx, int) and 0 <= idx < len(memory.data["facts"]):
-                    memory.data["facts"].pop(idx)
-                    memory.save()
+                if idx is not None and isinstance(idx, int):
+                    with memory._save_lock:
+                        if 0 <= idx < len(memory.data["facts"]):
+                            memory.data["facts"].pop(idx)
+                            memory.save()
                 elif fact and fact in memory.data["facts"]:
                     memory.data["facts"].remove(fact)
                     memory.save()
@@ -3207,8 +3209,14 @@ async def ws_ep(websocket: WebSocket) -> None:
                 async with _global_state_lock:
                     preferred_stt = msg.get("preferred_stt", preferred_stt)
                     preferred_tts = msg.get("preferred_tts", preferred_tts)
-                    tts_rate = int(msg.get("tts_rate", tts_rate))
-                    tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
+                    try:
+                        tts_rate = int(msg.get("tts_rate", tts_rate))
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
+                    except (ValueError, TypeError):
+                        pass
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
                 await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
