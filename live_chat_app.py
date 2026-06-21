@@ -4412,8 +4412,27 @@ def _normalize_assistant_text(text: str) -> str:
 
 
 def _tool_err(action: str, e: Exception) -> str:
-    """Standardised one-line error string for exec_tool handlers."""
-    return f"{action} error: {e}"
+    """Standardised error string for exec_tool handlers with classification and recovery hint."""
+    err_str = str(e)
+    err_lower = err_str.lower()
+
+    # Classify the error and attach an actionable hint
+    if any(k in err_lower for k in ("permission", "access denied", "access is denied", "winerror 5")):
+        hint = "Hint: try running Vision as Administrator or check file/folder permissions."
+    elif any(k in err_lower for k in ("timeout", "timed out", "time out")):
+        hint = "Hint: the operation timed out — retry, or check if the target app/service is responsive."
+    elif any(k in err_lower for k in ("no such file", "filenotfound", "cannot find", "does not exist")):
+        hint = "Hint: verify the file/path exists and the spelling is correct."
+    elif any(k in err_lower for k in ("connection refused", "cannot connect", "connectionerror", "network")):
+        hint = "Hint: check that the target service is running and reachable."
+    elif any(k in err_lower for k in ("not installed", "not found", "no module named")):
+        hint = "Hint: the required tool or package may not be installed — check setup docs."
+    elif any(k in err_lower for k in ("invalid", "bad argument", "valueerror", "typeerror")):
+        hint = "Hint: check the argument values — one may be the wrong type or out of range."
+    else:
+        hint = "Hint: check the log (chat_events.log) for more detail."
+
+    return f"{action} error: {err_str} | {hint}"
 
 
 _CONFIRMATION_TIMEOUT_SECS = 180.0
