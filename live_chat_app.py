@@ -797,12 +797,13 @@ async def _handle_invalid_elevenlabs_auth(error_text: str) -> None:
     _elevenlabs_auth_failed = True
     changed = False
 
-    if preferred_stt in {"auto", "elevenlabs"}:
-        preferred_stt = "local"
-        changed = True
-    if preferred_tts in {"auto", "elevenlabs"}:
-        preferred_tts = "local"
-        changed = True
+    async with _global_state_lock:
+        if preferred_stt in {"auto", "elevenlabs"}:
+            preferred_stt = "local"
+            changed = True
+        if preferred_tts in {"auto", "elevenlabs"}:
+            preferred_tts = "local"
+            changed = True
 
     if already_disabled and not changed:
         return
@@ -1223,6 +1224,7 @@ class Memory:
     }
 
     def __init__(self) -> None:
+        self._save_lock = threading.Lock()
         self.data = self._load()
         self.data["session_count"] += 1
         self.data["last_session"] = datetime.now().isoformat()
@@ -1368,15 +1370,17 @@ class Memory:
 
     def save(self) -> None:
         import tempfile as _tf
+
         payload = json.dumps(self.data, indent=2, ensure_ascii=False)
-        tmp_fd, tmp_path = _tf.mkstemp(dir=MEMORY_FILE.parent, suffix=".tmp", text=True)
-        try:
-            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
-                f.write(payload)
-            Path(tmp_path).replace(MEMORY_FILE)  # atomic rename on Windows + Unix
-        except Exception:
-            with contextlib.suppress(OSError):
-                Path(tmp_path).unlink()
+        with self._save_lock:
+            tmp_fd, tmp_path = _tf.mkstemp(dir=MEMORY_FILE.parent, suffix=".tmp", text=True)
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    f.write(payload)
+                Path(tmp_path).replace(MEMORY_FILE)  # atomic rename on Windows + Unix
+            except Exception:
+                with contextlib.suppress(OSError):
+                    Path(tmp_path).unlink()
 
     def add_fact(self, fact: str) -> None:
         fact = self._clean_text(fact, 160).strip(" \"'")
@@ -7270,11 +7274,14 @@ async def _fast_completion(prompt: str, max_tokens: int = 200) -> str | None:
                     timeout=httpx.Timeout(connect=3.0, read=45.0, write=10.0, pool=5.0),
                     max_retries=1,
                 )
-                resp = await client.chat.completions.create(
-                    model=ollama_model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,
-                )
+                try:
+                    resp = await client.chat.completions.create(
+                        model=ollama_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_tokens,
+                    )
+                finally:
+                    await client.close()
             else:
                 model = _FAST_MODEL_MAP.get(provider) or _provider_default_model(provider)
                 client = AsyncOpenAI(
@@ -7283,11 +7290,14 @@ async def _fast_completion(prompt: str, max_tokens: int = 200) -> str | None:
                     timeout=httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0),
                     max_retries=1,
                 )
-                resp = await client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,
-                )
+                try:
+                    resp = await client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_tokens,
+                    )
+                finally:
+                    await client.close()
             return resp.choices[0].message.content or ""
         except openai.APIStatusError as e:
             if provider != "ollama" and e.status_code in (401, 403, 429):
@@ -7510,8 +7520,11 @@ async def speak(text_gen):
                     eng.say(text)
                     eng.runAndWait()
 
-                await loop.run_in_executor(None, _sapi)
+                await asyncio.wait_for(loop.run_in_executor(None, _sapi), timeout=30.0)
                 return True
+            except asyncio.TimeoutError:
+                print("[tts] pyttsx3 timeout after 30s")
+                return False
             except asyncio.CancelledError:
                 raise
             except Exception as e:
