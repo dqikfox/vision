@@ -309,6 +309,10 @@ class VisionRAGManager:
         chunk_size: int = 1400,
         overlap: int = 220,
     ) -> dict[str, Any]:
+        # Validate and clamp parameters to safe ranges
+        max_files = max(0, min(max_files, 100_000))
+        chunk_size = max(100, min(chunk_size, 10_000))
+        overlap = max(0, min(overlap, chunk_size - 1))
         started = datetime.utcnow()
         files = self._iter_source_files(max_files=max_files)
 
