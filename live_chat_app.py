@@ -5807,15 +5807,15 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             await loop.run_in_executor(None, _notify)
             return f"Notification sent: '{title}'"
         except Exception:
-            # Fallback: PowerShell MessageBox — pass strings as separate args to avoid injection
-            safe_msg = message.replace('"', '""')
-            safe_title = title.replace('"', '""')
+            # Fallback: PowerShell MessageBox — pass title/message via -ArgumentList
+            # to avoid any injection risk from special chars (newlines, backticks, quotes)
             proc = await asyncio.create_subprocess_exec(
                 "powershell",
                 "-NoProfile",
                 "-Command",
-                f'Add-Type -AssemblyName System.Windows.Forms; '
-                f'[System.Windows.Forms.MessageBox]::Show("{safe_msg}", "{safe_title}")',
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "[System.Windows.Forms.MessageBox]::Show($args[0], $args[1])",
+                "-ArgumentList", message, title,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -6328,7 +6328,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
-            print(f"[llm/prompttools] {e} - live_chat_app.py:4191")
+            print(f"[llm/prompttools] {e}")
             err = f"Error: {str(e)[:120]}"
             yield err
             return
@@ -6740,7 +6740,7 @@ async def _llm_stream_ollama(user_text: str):
         except OllamaResponseError as e:
             # Native tool calling not supported — fall back to prompt-based
             if "tool" in str(e.error).lower() or "function" in str(e.error).lower():
-                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:4603")
+                print(f"[llm/ollama] tool error → prompt fallback: {e.error}")
                 oai = get_oai_client()
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -6749,7 +6749,7 @@ async def _llm_stream_ollama(user_text: str):
             yield f"Ollama error: {e.error}"
             break
         except Exception as e:
-            print(f"[llm/ollama] {e} - live_chat_app.py:4612")
+            print(f"[llm/ollama] {e}")
             yield f"Error: {str(e)[:120]}"
             break
 
@@ -6919,7 +6919,7 @@ async def _llm_stream_openai(user_text: str):
 
         except openai.RateLimitError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:4779")
+            print(f"[llm/openai] rate_limit request_id={rid}")
             yield "Rate limit reached — please wait a moment."
             break
         except openai.APIStatusError as e:
@@ -6935,7 +6935,7 @@ async def _llm_stream_openai(user_text: str):
             break
         except Exception as e:
             err_s = str(e)
-            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:4797")
+            print(f"[llm/openai] {err_s[:120]}")
             if any(k in err_s.lower() for k in ("tool", "function", "schema", "unsupported")):
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -7394,7 +7394,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             fallback_provider = _choose_fallback_provider()
             if fallback_provider:
                 _ollama_failover_active = True
-                print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:5255")
+                print(f"[llm] Ollama failed  cascading to {fallback_provider}")
                 await _activate_provider(fallback_provider)
             elif first_error:
                 yield _no_provider_message()
@@ -7436,7 +7436,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             yield _no_provider_message()
             return
 
-        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:5297")
+        print(f"[llm] {active_provider} failed  cascading to {fallback_provider}")
         await _activate_provider(fallback_provider)
 
 
@@ -7472,14 +7472,14 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] pyttsx3: {e} - live_chat_app.py:5333")
+                print(f"[tts] pyttsx3: {e}")
                 return False
 
         async def _win32_tts(text: str) -> bool:
             """Speak using a Windows OneCore neural voice via win32com SAPI."""
             token_key = _onecore_voices.get(tts_voice_idx, "")
             if not token_key:
-                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:5340")
+                print(f"[tts] win32: no token for voice index {tts_voice_idx}")
                 return False
             try:
 
@@ -7508,7 +7508,7 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] win32 onecore: {e} - live_chat_app.py:5369")
+                print(f"[tts] win32 onecore: {e}")
                 return False
 
         async def _fallback_tts(text: str) -> bool:
@@ -7691,12 +7691,12 @@ async def speak(text_gen):
                                     except json.JSONDecodeError as e:
                                         if not eleven_failure_reason:
                                             eleven_failure_reason = f"bad TTS payload: {e.msg}"
-                                        print(f"[tts] decode: {e.msg} - live_chat_app.py:_recv")
+                                        print(f"[tts] decode: {e.msg}")
                                         break
                                     except (ValueError, binascii.Error, sd.PortAudioError) as e:
                                         if not eleven_failure_reason:
                                             eleven_failure_reason = str(e)[:80]
-                                        print(f"[tts] audio output: {str(e)[:80]} - live_chat_app.py:_recv")
+                                        print(f"[tts] audio output: {str(e)[:80]}")
                                         break
 
                             try:
@@ -7730,13 +7730,13 @@ async def speak(text_gen):
                                 playback_duration += max(audio_finished_at - audio_started_at, 0.0)
                             return got_audio
                     except asyncio.CancelledError:
-                        print("[tts] bargein - live_chat_app.py:5573")
+                        print("[tts] bargein")
                         raise
                     except Exception as e:
                         eleven_failure_reason = str(e)[:80]
                         if _is_invalid_elevenlabs_auth(eleven_failure_reason):
                             await _handle_invalid_elevenlabs_auth(eleven_failure_reason)
-                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:5579")
+                        print(f"[tts] ElevenLabs stream: {str(e)[:80]}")
                         return False
 
                 success = await _patched_eleven()
@@ -7866,7 +7866,7 @@ async def voice_loop() -> None:
         await set_state(start_state)
         if start_state == "listening":
             winsound.Beep(880, 120)
-        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:5691")
+        print(f"[operator] Ready  {current_provider}/{current_model}")
         while True:
             try:
                 frame = await audio_q.get()
@@ -7921,7 +7921,7 @@ async def voice_loop() -> None:
                     try:
                         text = await transcribe(data)
                     except Exception as e:
-                        print(f"[stt] transcribe error: {e} - live_chat_app.py:5746")
+                        print(f"[stt] transcribe error: {e}")
                         _voice_capture_active = False
                         await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
@@ -7933,7 +7933,7 @@ async def voice_loop() -> None:
                         await set_state("listening")
                         vad.reset()
                         continue
-                    print(f"[operator] 🎙 {text} - live_chat_app.py:5758")
+                    print(f"[operator] 🎙 {text}")
                     # ── Wake-word gate ──────────────────────────────────────
                     if wake_word_active:
                         txt_lo = text.lower().strip()
@@ -7999,7 +7999,7 @@ async def voice_loop() -> None:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:5809")
+                print(f"[voice_loop] error: {e}  continuing")
                 await asyncio.sleep(0.5)
 
 
@@ -8236,7 +8236,7 @@ async def startup():
     _active_request_targets.clear()
     _input_busy = False
     if not API_11:
-        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:5985")
+        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks")
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
     if ollama_models:
@@ -8270,7 +8270,7 @@ async def startup():
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:6007")
+                print(f"[voice] crashed ({e}), restarting in 2s…")
                 await broadcast({"type": "state", "state": "idle"})
                 await asyncio.sleep(2)
 
@@ -8363,9 +8363,9 @@ async def _prewarm_playwright():
     try:
         await asyncio.sleep(3)  # let server fully initialise first
         await get_browser_page()
-        print("[playwright] browser prewarmed ✓ - live_chat_app.py:6062")
+        print("[playwright] browser prewarmed ✓")
     except Exception as e:
-        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:6064")
+        print(f"[playwright] prewarm skipped: {e}")
 
 
 if __name__ == "__main__":

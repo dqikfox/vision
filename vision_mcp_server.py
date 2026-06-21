@@ -59,8 +59,14 @@ def _vision_request(
 
     try:
         data = response.json()
-    except ValueError:
-        data = {"text": response.text}
+    except ValueError as json_err:
+        return {
+            "ok": False,
+            "url": url,
+            "status_code": response.status_code,
+            "error": f"JSON parse error: {json_err}",
+            "text": response.text[:500],
+        }
 
     if isinstance(data, dict):
         return {"ok": True, "status_code": response.status_code, **data}

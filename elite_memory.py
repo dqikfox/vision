@@ -5,6 +5,9 @@ Sliding window context, relevance ranking, automatic summary generation.
 """
 
 import json
+import os
+import tempfile
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -147,6 +150,7 @@ class EliteMemory:
         self.search_index = SemanticMemoryIndex()
         self.memory_file = memory_file or Path("memory.json")
         self.facts: dict[str, list[str]] = {}
+        self._save_lock = threading.Lock()
         self.load()
 
     def add_message(self, role: str, content: str) -> None:
@@ -187,25 +191,38 @@ class EliteMemory:
         return self.facts.get(category, [])
 
     def save(self) -> None:
-        """Persist to disk."""
+        """Persist to disk atomically under a lock (thread-safe)."""
         data = {
             "facts": self.facts,
             "updated": datetime.now().isoformat(),
         }
-        try:
-            self.memory_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        except Exception as e:
-            print(f"[memory] save failed: {e}")
+        with self._save_lock:
+            try:
+                parent = self.memory_file.parent
+                fd, tmp_path = tempfile.mkstemp(dir=parent, suffix=".tmp")
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+                    Path(tmp_path).replace(self.memory_file)
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+            except Exception as e:
+                print(f"[memory] save failed: {e}")
 
     def load(self) -> None:
-        """Load from disk."""
-        if not self.memory_file.exists():
-            return
-        try:
-            data = json.loads(self.memory_file.read_text(encoding="utf-8"))
-            self.facts = data.get("facts", {})
-        except Exception as e:
-            print(f"[memory] load failed: {e}")
+        """Load from disk under a lock (thread-safe)."""
+        with self._save_lock:
+            if not self.memory_file.exists():
+                return
+            try:
+                data = json.loads(self.memory_file.read_text(encoding="utf-8"))
+                self.facts = data.get("facts", {})
+            except Exception as e:
+                print(f"[memory] load failed: {e}")
 
     def clear(self) -> None:
         """Clear all memory."""
