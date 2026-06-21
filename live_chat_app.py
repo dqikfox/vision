@@ -4812,10 +4812,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── Screenshot region (zoom in for precision) ──────────────────────────────
     elif name == "screenshot_region":
-        x = int(args.get("x", 0))
-        y = int(args.get("y", 0))
-        w = int(args.get("width", 400))
-        h = int(args.get("height", 300))
+        x = max(0, min(int(args.get("x", 0)), 65535))
+        y = max(0, min(int(args.get("y", 0)), 65535))
+        w = max(1, min(int(args.get("width", 400)), 4096))
+        h = max(1, min(int(args.get("height", 300)), 4096))
 
         def _snap_r():
             im = pyautogui.screenshot(region=(x, y, w, h))
@@ -4872,8 +4872,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return f"Dragged from ({x1},{y1}) to ({x2},{y2})"
     elif name == "scroll":
         x, y = args.get("x", 0), args.get("y", 0)
+        x = max(0, min(int(x), 65535))
+        y = max(0, min(int(y), 65535))
         dir_ = args.get("direction", "down")
-        clicks = args.get("clicks", 3)
+        clicks = max(1, min(int(args.get("clicks", 3)), 50))
         amount = clicks if dir_ == "up" else -clicks
         await loop.run_in_executor(None, lambda: pyautogui.scroll(amount, x=x, y=y))
         return f"Scrolled {dir_} {clicks} clicks at ({x},{y})"
@@ -5233,7 +5235,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_scroll":
         direction = args.get("direction", "down")
-        amount = int(args.get("amount", 300))
+        amount = max(10, min(int(args.get("amount", 300)), 10000))
         page = await get_browser_page()
         if page is None:
             return "Browser unavailable"
@@ -5470,8 +5472,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # (screenshot_region duplicate removed - handled earlier with OCR support)
 
     elif name == "ocr_region":
-        x, y = int(args.get("x", 0)), int(args.get("y", 0))
-        w, h = int(args.get("width", 400)), int(args.get("height", 300))
+        x, y = max(0, min(int(args.get("x", 0)), 65535)), max(0, min(int(args.get("y", 0)), 65535))
+        w, h = max(1, min(int(args.get("width", 400)), 4096)), max(1, min(int(args.get("height", 300)), 4096))
 
         def _ocr_region():
             img = pyautogui.screenshot(region=(x, y, w, h))
@@ -5632,14 +5634,22 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return "\n".join(procs[:80]) or "(no processes found)"
 
     elif name == "kill_process":
-        pid = args.get("pid")
+        pid_arg = args.get("pid")
         pname = args.get("name", "")
         if not HAS_PSUTIL:
             return "psutil not available"
         killed = []
+        pid: int | None = None
+        if pid_arg is not None:
+            try:
+                pid = int(pid_arg)
+                if pid <= 0:
+                    return f"kill_process error: pid must be > 0 (got {pid})"
+            except (ValueError, TypeError):
+                return f"kill_process error: invalid pid {pid_arg!r}"
         for p in psutil.process_iter(["pid", "name"]):
             try:
-                if pid and p.info["pid"] == int(pid):
+                if pid is not None and p.info["pid"] == pid:
                     p.kill()
                     killed.append(str(p.info["pid"]))
                 elif pname and pname.lower() in (p.info["name"] or "").lower():
@@ -8032,6 +8042,11 @@ async def startup():
     failures = [k for k, v in _preflight_result.items() if not v]
     if failures:
         print(f"[preflight] ⚠ checks failed: {', '.join(failures)}")
+    await broadcast({
+        "type": "system_preflight",
+        "preflight": _preflight_result,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
@@ -8098,7 +8113,14 @@ async def shutdown() -> None:
             await _pw_driver.stop()
     except Exception:
         pass
-    write_log("shutdown", "background tasks cancelled, browser closed")
+    write_log("shutdown", "background tasks cancelled, browser closed, database flushed")
+
+    # Close RAG manager (flushes WAL checkpoint)
+    try:
+        if _rag_manager is not None:
+            _rag_manager.close()
+    except Exception:
+        pass
 
 
 async def _open_ui_browser():
