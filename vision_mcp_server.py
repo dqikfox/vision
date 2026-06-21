@@ -24,7 +24,10 @@ VISION_MCP_INCLUDE_SCREENSHOT_B64 = os.environ.get("VISION_MCP_INCLUDE_SCREENSHO
 
 mcp = FastMCP("Vision Local")
 
-_http_client = httpx.Client(timeout=VISION_MCP_TIMEOUT)
+_http_client = httpx.Client(
+    timeout=VISION_MCP_TIMEOUT,
+    limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+)
 atexit.register(_http_client.close)
 
 
