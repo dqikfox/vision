@@ -2228,7 +2228,13 @@ function clearChat() {
   addMessage('system','Chat cleared.');
 }
 function escHtml(t) {
-  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  return String(t)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;')
+    .replace(/\n/g,'<br>');
 }
 
 /* ═══════════════════════════════════════

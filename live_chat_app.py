@@ -418,6 +418,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 clients: set[WebSocket] = set()
 _clients_lock: asyncio.Lock  # initialised in startup()
+_global_state_lock: asyncio.Lock  # initialised in startup(); protects provider/model/muted/mode globals
 history: list[dict[str, Any]] = []
 _session_histories: dict[WebSocket, list[dict[str, Any]]] = {}
 _session_target_var: contextvars.ContextVar[WebSocket | None] = contextvars.ContextVar("session_target", default=None)
@@ -1809,7 +1810,19 @@ def _load_command_center_config() -> dict[str, Any]:
         _save_command_center_config(DEFAULT_COMMAND_CENTER_CONFIG)
         return dict(DEFAULT_COMMAND_CENTER_CONFIG)
 
-    payload = json.loads(COMMAND_CENTER_CONFIG_FILE.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(COMMAND_CENTER_CONFIG_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError) as e:
+        write_log("config_error", f"Corrupt vision_command_center_config.json: {e}")
+        print(f"[config] Quarantining corrupt config file: {e}")
+        try:
+            bad = COMMAND_CENTER_CONFIG_FILE.with_name(
+                f"{COMMAND_CENTER_CONFIG_FILE.stem}.bad-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+            )
+            COMMAND_CENTER_CONFIG_FILE.rename(bad)
+        except Exception:
+            pass
+        return dict(DEFAULT_COMMAND_CENTER_CONFIG)
     if not isinstance(payload, dict):
         raise ValueError("vision_command_center_config.json must contain a JSON object.")
     return _merge_nested_dicts(DEFAULT_COMMAND_CENTER_CONFIG, payload)
@@ -1828,7 +1841,11 @@ def _load_automation_state() -> dict[str, Any]:
         _save_automation_state(DEFAULT_AUTOMATION_STATE)
         return dict(DEFAULT_AUTOMATION_STATE)
 
-    payload = json.loads(AUTOMATION_STATE_FILE.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(AUTOMATION_STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError) as e:
+        write_log("automation_error", f"Corrupt vision_automation_state.json: {e}")
+        return dict(DEFAULT_AUTOMATION_STATE)
     if not isinstance(payload, dict):
         raise ValueError("vision_automation_state.json must contain a JSON object.")
 
@@ -2884,7 +2901,13 @@ async def ws_ep(websocket: WebSocket) -> None:
             except json.JSONDecodeError:
                 write_log("ws_error", f"JSON parse failed: {raw[:200]!r}")
                 continue
+            if not isinstance(msg, dict):
+                write_log("ws_error", f"WS message must be a JSON object, got {type(msg).__name__}")
+                continue
             t = msg.get("type")
+            if not isinstance(t, str) or not t:
+                write_log("ws_error", f"WS message missing 'type' field: {raw[:100]!r}")
+                continue
             if t == "mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
@@ -2945,9 +2968,10 @@ async def ws_ep(websocket: WebSocket) -> None:
                         _set_request_lane_busy(websocket, True)
                         asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
-                current_provider = msg.get("provider", current_provider)
-                current_model = msg.get("model", current_model)
-                _ollama_failover_active = False
+                async with _global_state_lock:
+                    current_provider = msg.get("provider", current_provider)
+                    current_model = msg.get("model", current_model)
+                    _ollama_failover_active = False
                 _clear_all_histories()
                 write_log("model", f"{current_provider}/{current_model}")
                 await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
@@ -3045,10 +3069,11 @@ async def ws_ep(websocket: WebSocket) -> None:
                     write_log("key", f"Saved key for {provider}")
                     await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
-                preferred_stt = msg.get("preferred_stt", preferred_stt)
-                preferred_tts = msg.get("preferred_tts", preferred_tts)
-                tts_rate = int(msg.get("tts_rate", tts_rate))
-                tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
+                async with _global_state_lock:
+                    preferred_stt = msg.get("preferred_stt", preferred_stt)
+                    preferred_tts = msg.get("preferred_tts", preferred_tts)
+                    tts_rate = int(msg.get("tts_rate", tts_rate))
+                    tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
                 await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
@@ -4509,24 +4534,27 @@ def _normalize_assistant_text(text: str) -> str:
 import collections as _collections
 
 _rate_buckets: dict[str, _collections.deque] = {}  # key → deque of timestamps
+_rate_limit_lock = threading.Lock()
 
 
 def _check_rate_limit(key: str, max_calls: int = 20, window_secs: float = 60.0) -> bool:
     """Return True if the call is allowed; False if rate-limited.
 
     Uses a sliding-window counter keyed by *key* (e.g. endpoint name or IP).
+    Thread-safe via _rate_limit_lock.
     """
-    now = time.monotonic()
-    if key not in _rate_buckets:
-        _rate_buckets[key] = _collections.deque()
-    dq = _rate_buckets[key]
-    # Evict timestamps outside the window
-    while dq and dq[0] < now - window_secs:
-        dq.popleft()
-    if len(dq) >= max_calls:
-        return False
-    dq.append(now)
-    return True
+    with _rate_limit_lock:
+        now = time.monotonic()
+        if key not in _rate_buckets:
+            _rate_buckets[key] = _collections.deque()
+        dq = _rate_buckets[key]
+        # Evict timestamps outside the window
+        while dq and dq[0] < now - window_secs:
+            dq.popleft()
+        if len(dq) >= max_calls:
+            return False
+        dq.append(now)
+        return True
 
 
 # Blocked path prefixes — prevent tools from reaching system/credential files
@@ -5388,10 +5416,13 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return f"Search error: {e}"
 
     elif name == "fetch_url":
-        url = args.get("url", "")
+        url = str(args.get("url", "")).strip()
         as_markdown = args.get("as_markdown", True)
+        if not url.startswith(("http://", "https://")):
+            return "fetch_url error: URL must start with http:// or https://"
+        timeout_secs = max(5, min(int(args.get("timeout_secs", 20)), 60))
         try:
-            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=timeout_secs, follow_redirects=True) as client:
                 r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 VISION-Operator/1.0"})
                 r.raise_for_status()
                 content_type = r.headers.get("content-type", "")
@@ -8017,6 +8048,8 @@ async def startup():
     _response_lock = asyncio.Lock()
     global _clients_lock
     _clients_lock = asyncio.Lock()
+    global _global_state_lock
+    _global_state_lock = asyncio.Lock()
     _session_input_locks.clear()
     _session_input_busy.clear()
     _session_speak_tasks.clear()
