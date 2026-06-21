@@ -109,28 +109,38 @@ def check_drift(
     """
     Return a list of drift messages.
 
-    Default mode: flag items that appear in docs but are GONE from code.
-    Strict mode: also flag items that are in code but missing from docs.
+    Default mode: flag items mentioned in docs that are GONE from code.
+    Strict mode: also flag items in code that are never mentioned in docs.
     """
     drift: list[str] = []
 
-    # Items in docs that no longer exist in code
-    for item in code_items:
-        pass  # all code items exist — nothing to flag here by definition
-
-    # Items mentioned in docs but absent from code
-    # (Only meaningful if docs explicitly list them)
-    # We look for doc references like backtick-wrapped names or bold names
+    # Extract all backtick-wrapped identifiers from docs
     doc_refs: set[str] = set(re.findall(r"`([a-z][a-z0-9_/]{1,50})`", docs_text))
-    for item in code_items:
-        if item in doc_refs:
-            pass  # documented ✓
 
-    # Strict: items in code NOT mentioned anywhere in docs
+    # Items referenced in docs but absent from code (regression check)
+    code_set = set(code_items)
+    for ref in doc_refs:
+        # Only check refs that look like tool/route/provider names (not prose)
+        if re.fullmatch(r"[a-z][a-z0-9_]{2,40}", ref) and ref not in code_set:
+            # Avoid false positives on common prose words
+            _prose_words = {
+                "the", "and", "for", "with", "from", "that", "this", "not",
+                "are", "was", "has", "can", "will", "get", "set", "run", "use",
+                "true", "false", "none", "main", "env", "key", "log", "api",
+                "str", "int", "bool", "list", "dict", "any", "type", "path",
+            }
+            if ref not in _prose_words:
+                drift.append(
+                    f"  [{label}] '{ref}' is referenced in docs but no longer exists in code"
+                )
+
+    # Strict: items in code not mentioned anywhere in docs
     if strict:
         for item in code_items:
             if item not in docs_text:
-                drift.append(f"  [{label}] '{item}' exists in code but is not mentioned in any doc")
+                drift.append(
+                    f"  [{label}] '{item}' exists in code but is not mentioned in any doc"
+                )
 
     return drift
 
@@ -164,11 +174,10 @@ def main() -> int:
 
     drift: list[str] = []
 
-    # Check for any tool names referenced in docs that are no longer in TOOLS
-    for tool in re.findall(r"`([a-z][a-z0-9_]{2,40})`", docs_text):
-        # Only flag if it LOOKS like a tool name (no / path chars) and is
-        # explicitly described as a tool in docs
-        pass  # conservative — only flag clear removals
+    # Default checks (always run): flag doc references that vanished from code
+    drift.extend(check_drift("tools", tool_names, docs_text, strict=False))
+    drift.extend(check_drift("routes", route_paths, docs_text, strict=False))
+    drift.extend(check_drift("providers", provider_names, docs_text, strict=False))
 
     # Check duplicate tool names
     seen: set[str] = set()
@@ -184,7 +193,7 @@ def main() -> int:
             drift.append(f"  [routes] Duplicate route path: '{path}'")
         seen_routes.add(path)
 
-    # Strict-mode: undocumented items
+    # Strict-mode: also flag code items missing from docs
     if args.strict:
         drift.extend(check_drift("tools", tool_names, docs_text, strict=True))
         drift.extend(check_drift("routes", route_paths, docs_text, strict=True))
