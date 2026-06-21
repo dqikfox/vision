@@ -485,6 +485,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .hud-item span{color:var(--p2)}
 #wsHudDot.on{background:var(--g2)}.wsHudDot.off{background:var(--r)}
 
+/* ═══════ CONFIRMATION BANNER ═══════ */
+#confirmBanner{
+  display:none;position:fixed;top:44px;left:50%;transform:translateX(-50%);
+  background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.5);
+  color:var(--gold2,#fbbf24);border-radius:8px;padding:7px 18px;font-size:12px;
+  z-index:9990;text-align:center;pointer-events:none;
+  box-shadow:0 2px 12px rgba(0,0,0,.3);
+}
+#confirmBanner.visible{display:block;}
+
 /* ═══════ COMPONENT STATUS STRIP ═══════ */
 #compStatus{
   position:fixed;top:56px;left:50%;transform:translateX(-50%);
@@ -944,6 +954,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ BACKGROUND CANVAS ═══ -->
 <canvas id="bgCanvas"></canvas>
+
+<!-- ═══ CONFIRMATION BANNER ═══ -->
+<div id="confirmBanner">⚠ Awaiting confirmation — reply <strong>yes</strong> to proceed or <strong>cancel</strong> to abort</div>
 
 <!-- ═══ HUD ═══ -->
 <div id="hud">
@@ -2000,6 +2013,7 @@ function handleMsg(msg) {
       break;
     }
     case 'confirmation_expired':
+      document.getElementById('confirmBanner').classList.remove('visible');
       toast('⏱ Pending action timed out — please re-request.', 'red');
       addMessage('system', '⏱ Pending confirmation expired.');
       break;
@@ -2199,11 +2213,14 @@ function appendStreamToken(text) {
 function finalizeStreamBubble(text) {
   const bubble = document.getElementById('streamBubble');
   if (bubble) {
-    // Clean the final text (strip any tool call artifacts)
     bubble.textContent = text.trim();
-    bubble.removeAttribute('id'); // detach id so next stream starts fresh
+    bubble.removeAttribute('id');
   }
   streamEl = null;
+  // Show confirmation banner if the reply asks for user confirmation
+  if (text && text.includes('Confirmation required')) {
+    document.getElementById('confirmBanner').classList.add('visible');
+  }
 }
 function clearChat() {
   document.getElementById('consoleMessages').innerHTML = '';
@@ -2226,6 +2243,7 @@ function sendText() {
   if (!t) return;
   inp.value = '';
   addMessage('user', t);
+  document.getElementById('confirmBanner').classList.remove('visible');
   send({ type:'input', text:t });
 }
 

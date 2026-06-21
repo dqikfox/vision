@@ -3183,7 +3183,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
     loop = asyncio.get_running_loop()
     _stt_t0 = time.monotonic()  # timing: STT wall-clock start
 
-    async def _try_elevenlabs():
+    async def _try_elevenlabs() -> str | None:
         if _elevenlabs_auth_failed:
             return None
         api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
@@ -3211,7 +3211,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             print(f"[stt] ElevenLabs: {err[:80]}")
             return None
 
-    async def _try_groq():
+    async def _try_groq() -> str | None:
         global _stt_groq_failure_until
         if time.time() < _stt_groq_failure_until:
             return None
@@ -3235,7 +3235,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             print(f"[stt] Groq: {err[:60]}")
             return None
 
-    async def _try_local():
+    async def _try_local() -> str | None:
         # Must use global keyword here because we assign to _faster_whisper_model
         global _faster_whisper_model
         try:
@@ -4811,7 +4811,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             import pyperclip
 
-            return pyperclip.paste() or "(clipboard empty)"
+            result = await loop.run_in_executor(None, pyperclip.paste)
+            return result or "(clipboard empty)"
         except Exception as e:
             return f"Clipboard error: {e}"
     elif name == "set_clipboard":
@@ -4819,7 +4820,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             import pyperclip
 
-            pyperclip.copy(text)
+            await loop.run_in_executor(None, lambda: pyperclip.copy(text))
             return f"Copied to clipboard: {text[:60]}"
         except Exception as e:
             return f"Clipboard error: {e}"
@@ -5084,7 +5085,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             content = str(row.get("content", "")).strip().replace("\n", " ")
             if len(content) > 600:
                 content = content[:600] + "..."
-            lines.append(f"[{idx}] {rel}")
+            score = row.get("score", row.get("rank", None))
+            score_str = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+            lines.append(f"[{idx}] {rel}{score_str}")
             lines.append(f"Snippet: {snippet}")
             lines.append(f"Content: {content}")
         return "\n".join(lines)
@@ -5308,7 +5311,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         fpath = args.get("path", "")
         enc = args.get("encoding", "utf-8")
         try:
-            content = Path(fpath).read_text(encoding=enc)
+            content = await loop.run_in_executor(None, lambda: Path(fpath).read_text(encoding=enc))
             return content[:8000] + (f"\n[truncated — {len(content)} chars]" if len(content) > 8000 else "")
         except Exception as e:
             return f"Error reading {fpath}: {e}"
@@ -5318,9 +5321,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         content = args.get("content", "")
         enc = args.get("encoding", "utf-8")
         try:
-            p = Path(fpath)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding=enc)
+            def _write():
+                p = Path(fpath)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content, encoding=enc)
+            await loop.run_in_executor(None, _write)
             return f"Written {len(content)} chars to {fpath}"
         except Exception as e:
             return f"Error writing {fpath}: {e}"
@@ -5329,24 +5334,26 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         fpath = args.get("path", ".") or "."
         pattern = args.get("pattern", "*")
         try:
-            p = Path(fpath)
-            entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
-            lines = []
-            for entry in entries:
-                if fnmatch.fnmatch(entry.name, pattern):
-                    if entry.is_dir():
-                        lines.append(f"📁 {entry.name}/")
-                    else:
-                        size = entry.stat().st_size
-                        sz = (
-                            f"{size}B"
-                            if size < 1024
-                            else f"{size // 1024}KB"
-                            if size < 1048576
-                            else f"{size // 1048576}MB"
-                        )
-                        lines.append(f"📄 {entry.name} ({sz})")
-            return "\n".join(lines[:100]) or "(empty)"
+            def _listdir():
+                p = Path(fpath)
+                entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
+                lines: list[str] = []
+                for entry in entries:
+                    if fnmatch.fnmatch(entry.name, pattern):
+                        if entry.is_dir():
+                            lines.append(f"📁 {entry.name}/")
+                        else:
+                            size = entry.stat().st_size
+                            sz = (
+                                f"{size}B"
+                                if size < 1024
+                                else f"{size // 1024}KB"
+                                if size < 1048576
+                                else f"{size // 1048576}MB"
+                            )
+                            lines.append(f"📄 {entry.name} ({sz})")
+                return "\n".join(lines[:100]) or "(empty)"
+            return await loop.run_in_executor(None, _listdir)
         except Exception as e:
             return f"Error listing {fpath}: {e}"
 
@@ -7005,7 +7012,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
 
     full_response = []
 
-    async def _handle_and_learn(generator):
+    async def _handle_and_learn(generator) -> AsyncGenerator[str, None]:
         async for chunk in generator:
             full_response.append(chunk)
             yield chunk
@@ -7897,7 +7904,7 @@ async def startup():
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
-    async def _voice_supervisor():
+    async def _voice_supervisor() -> None:
         while True:
             try:
                 await voice_loop()
@@ -7908,7 +7915,7 @@ async def startup():
                 await broadcast({"type": "state", "state": "idle"})
                 await asyncio.sleep(2)
 
-    async def _restore_ollama_after_startup():
+    async def _restore_ollama_after_startup() -> None:
         for _ in range(12):
             if current_provider == "ollama" or not _ollama_failover_active:
                 return
