@@ -2594,7 +2594,10 @@ async def api_rag_status() -> JSONResponse:
 
 
 @app.post("/api/rag/index")
-async def api_rag_index(payload: dict[str, Any]) -> JSONResponse:
+async def api_rag_index(payload: dict[str, Any], request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"rag_index:{client_ip}", max_calls=5, window_secs=300.0):
+        return JSONResponse({"error": "Rate limit exceeded — max 5 index builds per 5 minutes"}, status_code=429)
     max_files = int(payload.get("max_files", 0) or 0)
     chunk_size = int(payload.get("chunk_size", 1400) or 1400)
     overlap = int(payload.get("overlap", 220) or 220)
@@ -2653,6 +2656,9 @@ async def screenshot_ep() -> JSONResponse:
 
 @app.post("/api/tool/execute")
 async def tool_execute(request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"tool_execute:{client_ip}", max_calls=30, window_secs=60.0):
+        return JSONResponse({"error": "Rate limit exceeded — max 30 tool calls per minute"}, status_code=429)
     data = await request.json()
     name = data.get("name", "")
     params = data.get("parameters", {})
@@ -4499,6 +4505,64 @@ def _normalize_assistant_text(text: str) -> str:
         return text
 
 
+# ── Simple in-memory rate limiter ─────────────────────────────────────────────
+import collections as _collections
+
+_rate_buckets: dict[str, _collections.deque] = {}  # key → deque of timestamps
+
+
+def _check_rate_limit(key: str, max_calls: int = 20, window_secs: float = 60.0) -> bool:
+    """Return True if the call is allowed; False if rate-limited.
+
+    Uses a sliding-window counter keyed by *key* (e.g. endpoint name or IP).
+    """
+    now = time.monotonic()
+    if key not in _rate_buckets:
+        _rate_buckets[key] = _collections.deque()
+    dq = _rate_buckets[key]
+    # Evict timestamps outside the window
+    while dq and dq[0] < now - window_secs:
+        dq.popleft()
+    if len(dq) >= max_calls:
+        return False
+    dq.append(now)
+    return True
+
+
+# Blocked path prefixes — prevent tools from reaching system/credential files
+_BLOCKED_PATH_PREFIXES: tuple[str, ...] = (
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+    "/etc",
+    "/sys",
+    "/proc",
+    "/dev",
+)
+
+
+def _validate_tool_path(path: str) -> Path:
+    """Resolve *path* and block path-traversal + system directory access.
+
+    Raises ValueError with a human-readable message if the path is unsafe.
+    Returns the resolved Path on success.
+    """
+    if not path or not path.strip():
+        raise ValueError("Path argument is required")
+    resolved = Path(path).resolve()
+    # Reject traversal attempts that escape the working/home tree
+    for blocked in _BLOCKED_PATH_PREFIXES:
+        try:
+            resolved.relative_to(Path(blocked).resolve())
+            raise ValueError(
+                f"Access to system path {blocked!r} is not allowed"
+            )
+        except ValueError as e:
+            if "system path" in str(e):
+                raise
+    return resolved
+
+
 def _tool_err(action: str, e: Exception) -> str:
     """Standardised error string for exec_tool handlers with classification and recovery hint."""
     err_str = str(e)
@@ -5354,6 +5418,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         fpath = args.get("path", "")
         enc = args.get("encoding", "utf-8")
         try:
+            _validate_tool_path(fpath)
             content = await loop.run_in_executor(None, lambda: Path(fpath).read_text(encoding=enc))
             return content[:8000] + (f"\n[truncated — {len(content)} chars]" if len(content) > 8000 else "")
         except Exception as e:
@@ -5364,6 +5429,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         content = args.get("content", "")
         enc = args.get("encoding", "utf-8")
         try:
+            _validate_tool_path(fpath)
             def _write():
                 p = Path(fpath)
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -5590,6 +5656,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             fname = url.split("/")[-1].split("?")[0] or "download"
             dest = str(Path.home() / "Downloads" / fname)
         try:
+            _validate_tool_path(dest)
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 r = await client.get(url, headers={"User-Agent": "VISION-Operator/1.0"})
                 r.raise_for_status()
@@ -5602,6 +5669,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "move_file":
         src, dst = args.get("src", ""), args.get("dst", "")
         try:
+            _validate_tool_path(src)
+            _validate_tool_path(dst)
             shutil.move(src, dst)
             return f"Moved {src} → {dst}"
         except Exception as e:
@@ -5610,6 +5679,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "delete_file":
         fpath = args.get("path", "")
         try:
+            _validate_tool_path(fpath)
             p = Path(fpath)
             if p.is_dir():
                 shutil.rmtree(fpath)
@@ -5622,6 +5692,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "copy_file":
         src, dst = args.get("src", ""), args.get("dst", "")
         try:
+            _validate_tool_path(src)
+            _validate_tool_path(dst)
             shutil.copy2(src, dst)
             return f"Copied {src} → {dst}"
         except Exception as e:

@@ -68,12 +68,17 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - ✅ Add automated doc consistency checks for key runtime contracts
 - ✅ Add high-risk action confirmations with explicit user intent capture
 - ✅ Add standard tool error taxonomy and user-facing recovery hints
-- [ ] Improve test coverage to ≥50% (currently ~25%)
 - ✅ Add operator action trace export for debugging and audits (`GET /api/export/trace`)
+- ✅ Path traversal guard on all file tools (`_validate_tool_path`)
+- ✅ Rate limiting on `/api/tool/execute` and `/api/rag/index`
+- ✅ Memory.save() atomic write; write_log() rotation; WS size guard
+- [ ] Improve test coverage to ≥50% (currently ~30%)
 
 ### Later (Queued)
+- [ ] RAG incremental indexing (file_mtime/hash skip logic)
 - [ ] Add latency benchmark baselines per model/provider combination
 - [ ] Add onboarding validator that runs setup and smoke checks end-to-end
+- [ ] Bring unit test coverage to ≥50%
 
 ## Iteration Cadence
 - Planning: weekly, prioritize top 3 items from Now/Next
