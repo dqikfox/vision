@@ -379,9 +379,7 @@ class VisionRAGManager:
 
                 # Delete stale chunks for this path before re-inserting
                 conn.execute("DELETE FROM chunks WHERE abs_path = ?", (str(path),))
-                conn.execute(
-                    "DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)"
-                )
+                # Note: FTS orphan cleanup runs once after the full loop, not per-file
 
                 rel_path = str(path.relative_to(self.source_root)).replace("\\", "/")
                 chunks = _chunk_text(text, chunk_size=chunk_size, overlap=overlap)
