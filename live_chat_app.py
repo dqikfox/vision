@@ -2510,11 +2510,15 @@ async def api_models() -> JSONResponse:
 
 
 @app.post("/api/model")
-async def api_set_model(payload: dict[str, Any]) -> JSONResponse:
+async def api_set_model(payload: dict[str, Any], request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"set_model:{client_ip}", max_calls=10, window_secs=60.0):
+        return JSONResponse({"error": "Rate limit exceeded — max 10 model changes per minute"}, status_code=429)
     global current_provider, current_model, _ollama_failover_active
-    current_provider = payload.get("provider", current_provider)
-    current_model = payload.get("model", current_model)
-    _ollama_failover_active = False
+    async with _global_state_lock:
+        current_provider = payload.get("provider", current_provider)
+        current_model = payload.get("model", current_model)
+        _ollama_failover_active = False
     _clear_all_histories()
     write_log("model", f"{current_provider}/{current_model}")
     await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
@@ -3045,29 +3049,30 @@ async def ws_ep(websocket: WebSocket) -> None:
                     )
                 )
             elif t == "set_api_key":
-                provider = msg.get("provider", "")
-                key = msg.get("key", "").strip()
-                env_map = {
-                    "openai": "OPENAI_API_KEY",
-                    "github": "GITHUB_TOKEN",
-                    "anthropic": "ANTHROPIC_API_KEY",
-                    "deepseek": "DEEPSEEK_API_KEY",
-                    "groq": "GROQ_API_KEY",
-                    "mistral": "MISTRAL_API_KEY",
-                    "gemini": "GEMINI_API_KEY",
-                    "xai": "XAI_API_KEY",
-                    "elevenlabs": "ELEVENLABS_API_KEY",
-                }
-                if key:
-                    if provider in PROVIDERS:
-                        PROVIDERS[provider]["api_key"] = key
-                    env_name = env_map.get(provider, "")
-                    if env_name:
-                        _save_key(env_name, key)  # → os.environ + keyring + .env
-                    if provider == "elevenlabs":
-                        _elevenlabs_auth_failed = False
-                    write_log("key", f"Saved key for {provider}")
-                    await broadcast({"type": "key_saved", "provider": provider})
+                async with _global_state_lock:
+                    provider = msg.get("provider", "")
+                    key = msg.get("key", "").strip()
+                    env_map = {
+                        "openai": "OPENAI_API_KEY",
+                        "github": "GITHUB_TOKEN",
+                        "anthropic": "ANTHROPIC_API_KEY",
+                        "deepseek": "DEEPSEEK_API_KEY",
+                        "groq": "GROQ_API_KEY",
+                        "mistral": "MISTRAL_API_KEY",
+                        "gemini": "GEMINI_API_KEY",
+                        "xai": "XAI_API_KEY",
+                        "elevenlabs": "ELEVENLABS_API_KEY",
+                    }
+                    if key:
+                        if provider in PROVIDERS:
+                            PROVIDERS[provider]["api_key"] = key
+                        env_name = env_map.get(provider, "")
+                        if env_name:
+                            _save_key(env_name, key)  # → os.environ + keyring + .env
+                        if provider == "elevenlabs":
+                            _elevenlabs_auth_failed = False
+                        write_log("key", f"Saved key for {provider}")
+                        await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
                 async with _global_state_lock:
                     preferred_stt = msg.get("preferred_stt", preferred_stt)
@@ -3082,7 +3087,8 @@ async def ws_ep(websocket: WebSocket) -> None:
             elif t == "el_agent_stop":
                 asyncio.create_task(_stop_el_agent())
             elif t == "set_wake_word":
-                wake_word_active = bool(msg.get("enabled", False))
+                async with _global_state_lock:
+                    wake_word_active = bool(msg.get("enabled", False))
                 memory.set_voice_flags(wake_word=wake_word_active)
                 write_log("wake_word", str(wake_word_active))
                 await broadcast({"type": "wake_word_state", "enabled": wake_word_active})
@@ -3118,7 +3124,9 @@ async def ws_ep(websocket: WebSocket) -> None:
         _session_input_busy.pop(websocket, None)
         _session_input_locks.pop(websocket, None)
         _set_request_lane_busy(websocket, False)
-        _session_speak_tasks.pop(websocket, None)
+        pending_speak = _session_speak_tasks.pop(websocket, None)
+        if pending_speak and not pending_speak.done():
+            pending_speak.cancel()
 
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
@@ -5130,9 +5138,16 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "append_to_file":
         path_s, content = args.get("path", ""), args.get("content", "")
         try:
-            with open(path_s, "a", encoding="utf-8") as fh:
-                fh.write(content)
+            _validate_tool_path(path_s)
+
+            def _append() -> None:
+                with open(path_s, "a", encoding="utf-8") as fh:
+                    fh.write(content)
+
+            await asyncio.wait_for(loop.run_in_executor(None, _append), timeout=10.0)
             return f"Appended {len(content)} chars to {path_s}"
+        except asyncio.TimeoutError:
+            return f"append_to_file timed out after 10s writing to {path_s}"
         except Exception as e:
             return _tool_err("append_to_file", e)
     elif name == "find_files":
@@ -5273,12 +5288,21 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_eval":
         js = args.get("js", "")
+        _dangerous_js = re.compile(
+            r"fetch\s*\(|XMLHttpRequest|navigator\.credentials|localStorage|sessionStorage|indexedDB",
+            re.IGNORECASE,
+        )
+        m = _dangerous_js.search(js)
+        if m:
+            return f"browser_eval blocked: access to '{m.group()}' is not permitted"
         page = await get_browser_page()
         if page is None:
             return "Browser unavailable"
         try:
-            result = await page.evaluate(js)
+            result = await asyncio.wait_for(page.evaluate(js), timeout=10.0)
             return str(result)[:2000] if result is not None else "(no return value)"
+        except asyncio.TimeoutError:
+            return "browser_eval timed out after 10s"
         except Exception as e:
             return f"JS error: {e}"
 
@@ -5303,50 +5327,49 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Agent Orchestrator ─────────────────────────────────────────────────────
     elif name == "ao_start":
         repo = args.get("repo", "").strip()
-        cmd = f"ao start {repo}" if repo else "ao start"
 
-        # Try WSL if ao not on Windows PATH, otherwise try direct
-        async def _try_ao(command: str) -> str:
+        async def _try_ao_exec(*cmd_parts: str) -> str:
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd_parts, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:2000] if result else "(started)"
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 return "Orchestrator starting in background (dashboard at http://localhost:3000)"
             except Exception as e:
                 return str(e)
 
-        result = await _try_ao(cmd)
+        cmd_parts = ["ao", "start"] + ([repo] if repo else [])
+        result = await _try_ao_exec(*cmd_parts)
         if "not found" in result.lower() or "not recognized" in result.lower():
-            result = await _try_ao(f"wsl {cmd}")
+            result = await _try_ao_exec("wsl", *cmd_parts)
         return result or "Agent Orchestrator started. Dashboard: http://localhost:3000"
 
     elif name == "ao_status":
 
-        async def _ao_run(c: str) -> str:
+        async def _ao_run(c: list[str]) -> str:
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc = await asyncio.create_subprocess_exec(
+                    *c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=10)
                 return (out + err).decode(errors="replace").strip()[:2000]
             except Exception as e:
                 return str(e)
 
-        result = await _ao_run("ao list 2>&1")
+        result = await _ao_run(["ao", "list"])
         if not result or "not recognized" in result.lower():
-            result = await _ao_run("wsl ao list 2>&1")
+            result = await _ao_run(["wsl", "ao", "list"])
         return result or "Orchestrator not running or ao CLI not installed."
 
     elif name == "ao_stop":
 
         async def _ao_stop() -> str:
             try:
-                proc = await asyncio.create_subprocess_shell(
-                    "ao stop 2>&1", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc = await asyncio.create_subprocess_exec(
+                    "ao", "stop", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=10)
                 return (out + err).decode(errors="replace").strip()
@@ -5358,22 +5381,26 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "ao_command":
         ao_args = args.get("args", "").strip()
-        cmd = f"ao {ao_args}"
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            cmd_parts = shlex.split(ao_args, posix=False)
+        except ValueError:
+            return "ao_command error: invalid argument syntax"
+        cmd_list = ["ao"] + cmd_parts
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd_list, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
             result = (out + err).decode(errors="replace").strip()
             if not result or "not recognized" in result.lower():
-                proc2 = await asyncio.create_subprocess_shell(
-                    f"wsl {cmd}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                proc2 = await asyncio.create_subprocess_exec(
+                    "wsl", *cmd_list, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 out2, err2 = await asyncio.wait_for(proc2.communicate(), timeout=15)
                 result = (out2 + err2).decode(errors="replace").strip()
             return result[:2000] or "(no output)"
-        except TimeoutError:
-            return f"Command '{cmd}' timed out"
+        except asyncio.TimeoutError:
+            return f"Command '{shlex.join(cmd_list)}' timed out"
         except Exception as e:
             return _tool_err("ao_command", e)
 
@@ -5631,15 +5658,15 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             await loop.run_in_executor(None, _notify)
             return f"Notification sent: '{title}'"
         except Exception:
-            # Fallback: PowerShell toast
-            escaped_msg = message.replace("'", "''")
-            escaped_title = title.replace("'", "''")
+            # Fallback: PowerShell MessageBox — pass strings as separate args to avoid injection
+            safe_msg = message.replace('"', '""')
+            safe_title = title.replace('"', '""')
             proc = await asyncio.create_subprocess_exec(
                 "powershell",
                 "-NoProfile",
                 "-Command",
-                f"Add-Type -AssemblyName System.Windows.Forms; "
-                f"[System.Windows.Forms.MessageBox]::Show('{escaped_msg}', '{escaped_title}')",
+                f'Add-Type -AssemblyName System.Windows.Forms; '
+                f'[System.Windows.Forms.MessageBox]::Show("{safe_msg}", "{safe_title}")',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -6640,11 +6667,15 @@ async def _llm_stream_ollama(user_text: str):
             break
         for tc in tool_calls_pending:
             name = tc.function.name
-            args = (
-                tc.function.arguments
-                if isinstance(tc.function.arguments, dict)
-                else json.loads(getattr(tc.function, "arguments", "{}") or "{}")
-            )
+            try:
+                if isinstance(tc.function.arguments, dict):
+                    args = tc.function.arguments
+                else:
+                    raw_args = getattr(tc.function, "arguments", "{}") or "{}"
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+            except (json.JSONDecodeError, TypeError) as e:
+                write_log("tool_parse_error", f"{name}: {e}")
+                args = {}
             await set_state("thinking")
             result = await exec_tool(name, args)
             await broadcast_action(name, args, result)
