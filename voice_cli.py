@@ -145,16 +145,17 @@ def _speak_eleven(text: str):
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(audio); fname = f.name
     try:
-        # Use Windows Media Player via PowerShell
+        # Use Windows Media Player via PowerShell; pass fname via -ArgumentList
+        # to avoid injection risk from special characters in the temp path.
         ps = (
             "Add-Type -AssemblyName presentationCore;"
-            f"$p=[System.Windows.Media.MediaPlayer]::new();"
-            f"$p.Open([uri]'{fname}'); $p.Play();"
+            "$p=[System.Windows.Media.MediaPlayer]::new();"
+            "$p.Open([uri]$args[0]); $p.Play();"
             "Start-Sleep -Milliseconds 500;"
-            "while($p.Position -lt $p.NaturalDuration.TimeSpan){{Start-Sleep -Milliseconds 200}};"
+            "while($p.Position -lt $p.NaturalDuration.TimeSpan){Start-Sleep -Milliseconds 200};"
             "$p.Close()"
         )
-        subprocess.run(["powershell", "-c", ps], capture_output=True, timeout=120)
+        subprocess.run(["powershell", "-c", ps, "-ArgumentList", fname], capture_output=True, timeout=120)
     finally:
         try: os.unlink(fname)
         except Exception: pass
