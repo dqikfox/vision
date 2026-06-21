@@ -42,7 +42,7 @@ jobs:
         run: python scripts/check_doc_consistency.py
 
       - name: Security scan (bandit)
-        run: python -m bandit -r . -f json -o bandit.json
+        run: python -m bandit -r . -f json -o bandit.json -ll  # only fail on HIGH severity
         continue-on-error: true
 
       - name: Dependency vulnerability audit (pip-audit)

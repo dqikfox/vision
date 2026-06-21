@@ -2143,10 +2143,14 @@ def _run_automation_routine(routine_id: str, *, record_history: bool = True) -> 
         }
     elif action == "command":
         try:
+            import shlex
+            cmd_str = str(routine.get("command", ""))
+            # Use shlex.split for shell-free execution — eliminates injection via shell=True
+            cmd_args = shlex.split(cmd_str, posix=False)  # posix=False preserves Windows backslashes
             proc = subprocess.run(
-                str(routine.get("command", "")),
+                cmd_args,
                 cwd=str(BASE),
-                shell=True,
+                shell=False,
                 check=False,
                 capture_output=True,
                 text=True,
@@ -2681,7 +2685,9 @@ async def api_rag_status() -> JSONResponse:
 
 @app.post("/api/rag/index")
 async def api_rag_index(payload: dict[str, Any], request: Request) -> JSONResponse:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in {"127.0.0.1", "::1", "localhost"}:
+        return JSONResponse({"error": "Forbidden — RAG index endpoints are localhost-only"}, status_code=403)
     if not _check_rate_limit(f"rag_index:{client_ip}", max_calls=5, window_secs=300.0):
         return JSONResponse({"error": "Rate limit exceeded — max 5 index builds per 5 minutes"}, status_code=429)
     # Enforce a minimum 60-second gap between rebuilds to protect disk I/O
@@ -2718,7 +2724,10 @@ async def api_rag_search(payload: dict[str, Any]) -> JSONResponse:
 
 
 @app.post("/api/rag/export-training")
-async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
+async def api_rag_export_training(payload: dict[str, Any], request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in {"127.0.0.1", "::1", "localhost"}:
+        return JSONResponse({"error": "Forbidden — RAG export endpoints are localhost-only"}, status_code=403)
     max_examples = max(0, min(int(payload.get("max_examples", 0) or 0), 10_000))
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
@@ -5298,6 +5307,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         directory = args.get("directory", "") or str(Path.home())
         pattern = args.get("pattern", "*")
         try:
+            _validate_tool_path(directory)
             matches = []
             for root, _dirs, files in os.walk(directory):
                 for fname in files:
@@ -5431,6 +5441,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "browser_scroll":
         direction = args.get("direction", "down")
+        if direction not in ("up", "down"):
+            return "browser_scroll: direction must be 'up' or 'down'"
         amount = max(10, min(int(args.get("amount", 300)), 10000))
         page = await get_browser_page()
         if page is None:
@@ -5442,7 +5454,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_eval":
         js = args.get("js", "")
         _dangerous_js = re.compile(
-            r"fetch\s*\(|XMLHttpRequest|navigator\.credentials|localStorage|sessionStorage|indexedDB",
+            r"fetch\s*\(|XMLHttpRequest|navigator\.credentials|localStorage|sessionStorage|indexedDB"
+            r"|eval\s*\(|Function\s*\(|setTimeout\s*\(|setInterval\s*\(|document\.write\s*\(|\.innerHTML\s*=|WebSocket\s*\(",
             re.IGNORECASE,
         )
         m = _dangerous_js.search(js)
