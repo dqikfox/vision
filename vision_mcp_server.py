@@ -6,6 +6,7 @@ wraps the existing FastAPI app instead of duplicating backend logic.
 
 from __future__ import annotations
 
+import atexit
 import os
 from typing import Any
 
@@ -23,6 +24,9 @@ VISION_MCP_INCLUDE_SCREENSHOT_B64 = os.environ.get("VISION_MCP_INCLUDE_SCREENSHO
 
 mcp = FastMCP("Vision Local")
 
+_http_client = httpx.Client(timeout=VISION_MCP_TIMEOUT)
+atexit.register(_http_client.close)
+
 
 def _vision_request(
     method: str,
@@ -34,9 +38,8 @@ def _vision_request(
     url = f"{VISION_BASE_URL}{path}"
 
     try:
-        with httpx.Client(timeout=VISION_MCP_TIMEOUT) as client:
-            response = client.request(method, url, json=payload)
-            response.raise_for_status()
+        response = _http_client.request(method, url, json=payload)
+        response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text.strip() or str(exc)
         return {
