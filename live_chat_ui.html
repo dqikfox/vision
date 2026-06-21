@@ -1347,21 +1347,21 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- ═══ INPUT BAR ═══ -->
 <div id="inputBar">
   <div id="inputWrap">
-    <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false"/>
-    <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic">🎙</button>
+    <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
+    <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
     <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
   </div>
-  <button class="input-send-btn" onclick="sendText()" title="Send">➤</button>
+  <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
 
 <!-- ═══ CORNER BUTTONS BL ═══ -->
 <div id="cornerBL">
   <div class="corner-label-group">
-    <button class="corner-btn" id="modeBtn" onclick="cycleMode()" title="Toggle mode">💬</button>
+    <button class="corner-btn" id="modeBtn" onclick="cycleMode()" title="Toggle mode" aria-label="Cycle interaction mode">💬</button>
     <div class="corner-btn-lbl" id="modeLbl">CHAT</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="clearChat()" title="Clear chat">🗑</button>
+    <button class="corner-btn" onclick="clearChat()" title="Clear chat" aria-label="Clear chat history">🗑</button>
     <div class="corner-btn-lbl">CLEAR</div>
   </div>
 </div>
@@ -1369,7 +1369,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- ═══ CORNER BUTTONS BR ═══ -->
 <div id="cornerBR">
   <div class="corner-label-group">
-    <button class="corner-btn" id="btnContinuous" onclick="toggleContinuous()" title="Toggle always-listening mode">🟢</button>
+    <button class="corner-btn" id="btnContinuous" onclick="toggleContinuous()" title="Toggle always-listening mode" aria-label="Toggle continuous listening">🟢</button>
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
@@ -1377,7 +1377,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" id="wakeBtn" onclick="toggleWakeWord()" title="Toggle wake-word mode">🔒</button>
+    <button class="corner-btn" id="wakeBtn" onclick="toggleWakeWord()" title="Toggle wake-word mode" aria-label="Toggle wake word detection">🔒</button>
     <div class="corner-btn-lbl" id="wakeLbl">WAKE</div>
   </div>
 </div>
