@@ -178,7 +178,7 @@ class VisionRAGManager:
 
     def _connect(self) -> sqlite3.Connection:
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
         return conn

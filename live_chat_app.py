@@ -2514,10 +2514,23 @@ async def api_set_model(payload: dict[str, Any], request: Request) -> JSONRespon
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"set_model:{client_ip}", max_calls=10, window_secs=60.0):
         return JSONResponse({"error": "Rate limit exceeded — max 10 model changes per minute"}, status_code=429)
+    provider = payload.get("provider", "").strip()
+    model = payload.get("model", "").strip()
+    # Validate provider if provided (ollama has dynamic models list — skip its model check)
+    if provider and provider not in PROVIDERS:
+        return JSONResponse({"error": f"Unknown provider: {provider!r}"}, status_code=400)
+    if provider and model and provider != "ollama":
+        valid_models = PROVIDERS.get(provider, {}).get("models", [])
+        if valid_models and model not in valid_models:
+            return JSONResponse(
+                {"error": f"Model {model!r} not available for provider {provider!r}"}, status_code=400
+            )
     global current_provider, current_model, _ollama_failover_active
     async with _global_state_lock:
-        current_provider = payload.get("provider", current_provider)
-        current_model = payload.get("model", current_model)
+        if provider:
+            current_provider = provider
+        if model:
+            current_model = model
         _ollama_failover_active = False
     _clear_all_histories()
     write_log("model", f"{current_provider}/{current_model}")
@@ -2972,9 +2985,27 @@ async def ws_ep(websocket: WebSocket) -> None:
                         _set_request_lane_busy(websocket, True)
                         asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
+                ws_provider = msg.get("provider", "").strip()
+                ws_model = msg.get("model", "").strip()
+                if ws_provider and ws_provider not in PROVIDERS:
+                    await broadcast(
+                        {"type": "error", "message": f"Unknown provider: {ws_provider!r}"},
+                        websocket,
+                    )
+                    continue
+                if ws_provider and ws_model and ws_provider != "ollama":
+                    valid_models = PROVIDERS.get(ws_provider, {}).get("models", [])
+                    if valid_models and ws_model not in valid_models:
+                        await broadcast(
+                            {"type": "error", "message": f"Model {ws_model!r} not available for {ws_provider!r}"},
+                            websocket,
+                        )
+                        continue
                 async with _global_state_lock:
-                    current_provider = msg.get("provider", current_provider)
-                    current_model = msg.get("model", current_model)
+                    if ws_provider:
+                        current_provider = ws_provider
+                    if ws_model:
+                        current_model = ws_model
                     _ollama_failover_active = False
                 _clear_all_histories()
                 write_log("model", f"{current_provider}/{current_model}")
@@ -3143,13 +3174,19 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     for ws in recipients:
         try:
             await ws.send_text(json.dumps(msg))
-        except Exception:
+        except Exception as e:
+            write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
     if dead:
         async with _clients_lock:
             for ws in dead:
                 clients.discard(ws)
                 _session_histories.pop(ws, None)
+                _session_input_busy.pop(ws, None)
+                _session_input_locks.pop(ws, None)
+                pending = _session_speak_tasks.pop(ws, None)
+                if pending and not pending.done():
+                    pending.cancel()
 
 
 async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
@@ -4600,27 +4637,39 @@ def _validate_tool_path(path: str) -> Path:
 
 
 def _tool_err(action: str, e: Exception) -> str:
-    """Standardised error string for exec_tool handlers with classification and recovery hint."""
+    """Standardised error string for exec_tool handlers — safe classification only.
+
+    Full exception detail is written to the log; only a sanitised category and
+    hint are returned to the LLM/UI to avoid leaking paths, keys, or internals.
+    """
     err_str = str(e)
     err_lower = err_str.lower()
 
-    # Classify the error and attach an actionable hint
     if any(k in err_lower for k in ("permission", "access denied", "access is denied", "winerror 5")):
+        safe_msg = "Permission denied"
         hint = "Hint: try running Vision as Administrator or check file/folder permissions."
     elif any(k in err_lower for k in ("timeout", "timed out", "time out")):
+        safe_msg = "Operation timed out"
         hint = "Hint: the operation timed out — retry, or check if the target app/service is responsive."
     elif any(k in err_lower for k in ("no such file", "filenotfound", "cannot find", "does not exist")):
+        safe_msg = "File or path not found"
         hint = "Hint: verify the file/path exists and the spelling is correct."
     elif any(k in err_lower for k in ("connection refused", "cannot connect", "connectionerror", "network")):
+        safe_msg = "Connection failed"
         hint = "Hint: check that the target service is running and reachable."
     elif any(k in err_lower for k in ("not installed", "not found", "no module named")):
+        safe_msg = "Required tool or package not installed"
         hint = "Hint: the required tool or package may not be installed — check setup docs."
     elif any(k in err_lower for k in ("invalid", "bad argument", "valueerror", "typeerror")):
+        safe_msg = "Invalid argument or value"
         hint = "Hint: check the argument values — one may be the wrong type or out of range."
     else:
+        safe_msg = f"{action} failed"
         hint = "Hint: check the log (chat_events.log) for more detail."
 
-    return f"{action} error: {err_str} | {hint}"
+    # Always log the full error internally for debugging
+    write_log("tool_error_detail", f"{action}: {type(e).__name__}: {err_str[:300]}")
+    return f"{safe_msg} | {hint}"
 
 
 _CONFIRMATION_TIMEOUT_SECS = 180.0
@@ -5250,7 +5299,12 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return json.dumps(result, ensure_ascii=False)
 
     elif name == "window_resize":
-        title, w, h = args.get("title", ""), int(args.get("width", 800)), int(args.get("height", 600))
+        title = args.get("title", "")
+        try:
+            w = max(200, min(int(args.get("width", 800)), 7680))
+            h = max(200, min(int(args.get("height", 600)), 4320))
+        except (ValueError, TypeError):
+            return "window_resize error: width/height must be integers"
         try:
             import pygetwindow as gw
 
@@ -5264,7 +5318,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "window_move":
         title = args.get("title", "")
-        x, y = int(args.get("x", 0)), int(args.get("y", 0))
+        try:
+            x = max(-32768, min(int(args.get("x", 0)), 65535))
+            y = max(-32768, min(int(args.get("y", 0)), 65535))
+        except (ValueError, TypeError):
+            return "window_move error: x/y must be integers"
         try:
             import pygetwindow as gw
 
