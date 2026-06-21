@@ -157,8 +157,10 @@ def _speak_eleven(text: str):
         )
         subprocess.run(["powershell", "-c", ps, "-ArgumentList", fname], capture_output=True, timeout=120)
     finally:
-        try: os.unlink(fname)
-        except Exception: pass
+        try:
+            os.unlink(fname)
+        except OSError as e:
+            status("TTS", f"{RD}Failed to clean temp file: {e}{R}", RD)
 
 def _eleven_voice_id() -> str:
     try:
@@ -318,7 +320,8 @@ def _clip_watcher():
                 if cur != last and len(cur) > 15:
                     last = cur
                     speak(cur)
-            except Exception: pass
+            except Exception as e:
+                status("CLIP", f"{Y}Clipboard error: {e}{R}", Y)
 
 # ── Main ───────────────────────────────────────────
 def main():

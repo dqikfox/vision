@@ -7869,20 +7869,28 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                     _pop_pending_tool_confirmation()
                     await broadcast({"type": "confirmation_expired", "message": "Pending action timed out."})
 
+                # Atomically snapshot+pop confirmation to prevent concurrent handle_input races
+                _conf_snapshot: dict[str, Any] | None = None
+                _conf_is_no = False
+                async with _global_state_lock:
+                    if not pending_expired and _pending_tool_confirmation and (
+                        _is_confirmation_yes(text) or _is_confirmation_no(text)
+                    ):
+                        _conf_is_no = _is_confirmation_no(text)
+                        _conf_snapshot = _pop_pending_tool_confirmation()
+
                 if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
                     await set_state("thinking")
                     gen = _single_text_stream(
                         "The pending action expired. Please request it again if you still want it."
                     )
-                elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                elif _conf_snapshot is not None:
                     await set_state("thinking")
-                    if _is_confirmation_no(text):
-                        _pop_pending_tool_confirmation()
+                    if _conf_is_no:
                         gen = _single_text_stream("Cancelled the pending action.")
                     else:
-                        pending = _pop_pending_tool_confirmation()
-                        tool_name = str(pending.get("name", "")) if pending else ""
-                        tool_args = dict(pending.get("args", {})) if pending else {}
+                        tool_name = str(_conf_snapshot.get("name", ""))
+                        tool_args = dict(_conf_snapshot.get("args", {}))
                         if tool_name:
                             result = await exec_tool(tool_name, tool_args, confirmed=True)
                             await broadcast_action(tool_name, tool_args, result)
