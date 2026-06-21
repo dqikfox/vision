@@ -1723,10 +1723,11 @@ async def _activate_provider(provider: str) -> None:
     global current_provider, current_model, _ollama_failover_active
     if provider == current_provider and current_model in PROVIDERS.get(provider, {}).get("models", []):
         return
-    current_provider = provider
-    current_model = _provider_default_model(provider)
-    if provider == "ollama":
-        _ollama_failover_active = False
+    async with _global_state_lock:
+        current_provider = provider
+        current_model = _provider_default_model(provider)
+        if provider == "ollama":
+            _ollama_failover_active = False
     write_log("model", f"{current_provider}/{current_model}")
     await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
 
@@ -2718,7 +2719,10 @@ async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
 
 
 @app.get("/screenshot")
-async def screenshot_ep() -> JSONResponse:
+async def screenshot_ep(request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(f"screenshot:{client_ip}", max_calls=10, window_secs=60.0):
+        return JSONResponse({"error": "Rate limit exceeded — max 10 screenshots per minute"}, status_code=429)
     loop = asyncio.get_running_loop()
 
     def _snap():
@@ -3075,7 +3079,8 @@ async def ws_ep(websocket: WebSocket) -> None:
                     if runtime_state != target_state:
                         await set_state(target_state)
             elif t == "set_continuous":
-                continuous_listening = bool(msg.get("enabled", False))
+                async with _global_state_lock:
+                    continuous_listening = bool(msg.get("enabled", False))
                 memory.set_voice_flags(continuous=continuous_listening)
                 write_log("continuous", str(continuous_listening))
                 await broadcast({"type": "continuous_state", "enabled": continuous_listening})
