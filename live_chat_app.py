@@ -2705,6 +2705,17 @@ async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "received": event})
 
 
+
+@app.get("/api/export/trace")
+async def api_export_trace() -> FileResponse | JSONResponse:
+    """Download the operator action trace log for debugging and audits."""
+    if not LOG_FILE.exists():
+        return JSONResponse({"error": "No trace log available yet"}, status_code=404)
+    from datetime import datetime as _dt
+    filename = f"vision_trace_{_dt.utcnow().strftime('%Y%m%dT%H%M%SZ')}.log"
+    return FileResponse(LOG_FILE, media_type="text/plain; charset=utf-8", filename=filename)
+
+
 @app.get("/api/voices")
 async def api_voices() -> JSONResponse:
     """List all available TTS voices: pyttsx3 SAPI + Windows OneCore neural."""
@@ -4883,6 +4894,13 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_open":
         url = args.get("url", "")
         try:
+            from urllib.parse import urlparse as _urlparse
+            _p = _urlparse(url)
+            if _p.scheme not in ("http", "https"):
+                return f"browser_open error: only http/https URLs are allowed (got {_p.scheme!r})"
+            _blocked = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+            if _p.hostname and (_p.hostname in _blocked or _p.hostname.startswith("169.254.")):
+                return f"browser_open error: navigation to {_p.hostname!r} is blocked (SSRF protection)"
             page = await get_browser_page()
             if page is None:
                 raise RuntimeError("Browser unavailable")
@@ -5189,7 +5207,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "ao_status":
 
-        async def _ao_run(c):
+        async def _ao_run(c: str) -> str:
             try:
                 proc = await asyncio.create_subprocess_shell(
                     c, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -5206,7 +5224,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     elif name == "ao_stop":
 
-        async def _ao_stop():
+        async def _ao_stop() -> str:
             try:
                 proc = await asyncio.create_subprocess_shell(
                     "ao stop 2>&1", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -5413,19 +5431,33 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".py", delete=False) as fh:
                 fh.write(wrapper)
                 temp_path = fh.name
-            proc = await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
+
+            def _run_with_memory_guard() -> subprocess.CompletedProcess:
+                result = subprocess.run(
                     [sys.executable, temp_path],
                     capture_output=True,
                     text=True,
                     timeout=timeout,
-                ),
-            )
+                )
+                # Post-execution memory guard using psutil (best-effort, Windows-safe)
+                try:
+                    import psutil as _ps
+                    _MAX_RSS = 256 * 1024 * 1024  # 256 MB
+                    if result.returncode == 0:
+                        # Process already finished; check output size as a proxy
+                        if len(result.stdout) > 4_000_000:
+                            raise MemoryError("execute_python output too large (>4 MB)")
+                except ImportError:
+                    pass  # psutil not installed; skip memory check
+                return result
+
+            proc = await loop.run_in_executor(None, _run_with_memory_guard)
             output = (proc.stdout or proc.stderr or "").strip()
             return output[:4000] or "(code ran with no output)"
         except subprocess.TimeoutExpired:
             return f"execute_python timed out after {timeout}s and was terminated"
+        except MemoryError as e:
+            return f"execute_python aborted: {e}"
         finally:
             if temp_path:
                 with contextlib.suppress(OSError):

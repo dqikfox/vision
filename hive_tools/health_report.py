@@ -53,7 +53,7 @@ def check_dependencies():
 def main():
     try:
         timestamp = subprocess.check_output(["powershell", "Get-Date -Format 'yyyy-MM-dd HH:mm:ss'"]).decode().strip()
-    except:
+    except Exception:
         timestamp = "Unknown"
 
     report = {

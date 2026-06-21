@@ -69,7 +69,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - ✅ Add high-risk action confirmations with explicit user intent capture
 - ✅ Add standard tool error taxonomy and user-facing recovery hints
 - [ ] Improve test coverage to ≥50% (currently ~25%)
-- [ ] Add operator action trace export for debugging and audits
+- ✅ Add operator action trace export for debugging and audits (`GET /api/export/trace`)
 
 ### Later (Queued)
 - [ ] Add latency benchmark baselines per model/provider combination
