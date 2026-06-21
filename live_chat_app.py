@@ -2776,7 +2776,10 @@ async def tool_execute(request: Request) -> JSONResponse:
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"tool_execute:{client_ip}", max_calls=30, window_secs=60.0):
         return JSONResponse({"error": "Rate limit exceeded — max 30 tool calls per minute"}, status_code=429)
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception as exc:
+        return JSONResponse({"error": f"JSON parse failed: {str(exc)[:100]}"}, status_code=400)
     name = data.get("name", "")
     params = data.get("parameters", {})
     result = await exec_tool(name, params)
@@ -3390,10 +3393,6 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 
     audio = np.concatenate(frames, axis=0)
     path: str | None = None
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        path = f.name
-        wavfile.write(path, SR, audio)
-
     loop = asyncio.get_running_loop()
     _stt_t0 = time.monotonic()  # timing: STT wall-clock start
 
@@ -3472,6 +3471,10 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             return None
 
     try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            path = f.name
+            wavfile.write(path, SR, audio)
+
         result = None
         cascade: list[str] = []
         used_provider = ""
@@ -5079,6 +5082,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Keyboard ───────────────────────────────────────────────────────────────
     elif name == "type_text":
         text = args.get("text", "")
+        if len(text) > 10_000:
+            return _tool_err("type_text", ValueError(f"text too long ({len(text)} > 10 000 chars)"))
 
         def _type():
             # Use clipboard paste for unicode support; fallback to pyautogui.write for ASCII
@@ -5698,6 +5703,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "list_files":
         fpath = args.get("path", ".") or "."
         pattern = args.get("pattern", "*")
+        if not isinstance(pattern, str) or len(pattern) > 256 or any(c in pattern for c in ("/", "\\", "\0")):
+            return _tool_err("list_files", ValueError(f"invalid pattern: {str(pattern)[:60]}"))
         try:
             def _listdir():
                 p = Path(fpath)
@@ -5755,6 +5762,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     # ── Power tools ────────────────────────────────────────────────────────────
     elif name == "execute_python":
         code = args.get("code", "")
+        if len(code) > 50_000:
+            return _tool_err("execute_python", ValueError(f"code too long ({len(code)} > 50 000 chars)"))
         timeout = max(1, min(int(args.get("timeout", 30)), 120))
         write_log("execute_python", f"timeout={timeout}s code={code[:200].replace(chr(10), ' ')!r}")
         wrapper = (
@@ -7422,7 +7431,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             full_response.append(chunk)
             yield chunk
         # Trigger learning in background
-        asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+        _learn_task = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+        _learn_task.add_done_callback(
+            lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+            if not t.cancelled() and t.exception() is not None else None
+        )
 
     if current_provider == "anthropic":
         async for chunk in _handle_and_learn(_llm_stream_anthropic(user_text)):
@@ -7453,7 +7466,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
                 yield _no_provider_message()
                 return
         else:
-            asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+            _learn_task2 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+            _learn_task2.add_done_callback(
+                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                if not t.cancelled() and t.exception() is not None else None
+            )
             return
 
     attempted_providers: set[str] = set()
@@ -7480,7 +7497,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             full_response.append(chunk)
 
         if not errored:
-            asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+            _learn_task3 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
+            _learn_task3.add_done_callback(
+                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                if not t.cancelled() and t.exception() is not None else None
+            )
             return
 
         _provider_failure_until[active_provider] = time.time() + 300.0
