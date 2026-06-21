@@ -3032,7 +3032,7 @@ async def ws_ep(websocket: WebSocket) -> None:
                         )
                     else:
                         _set_request_lane_busy(websocket, True)
-                        asyncio.create_task(handle_input(text, websocket))
+                        _tracked_task(handle_input(text, websocket))
             elif t == "input":
                 # Alias — UI sends {type:"input", text:...}
                 text = msg.get("text", "").strip()
@@ -3045,7 +3045,7 @@ async def ws_ep(websocket: WebSocket) -> None:
                         )
                     else:
                         _set_request_lane_busy(websocket, True)
-                        asyncio.create_task(handle_input(text, websocket))
+                        _tracked_task(handle_input(text, websocket))
             elif t == "execute_tool":
                 # Direct tool execution from Actions tab
                 tool_name = msg.get("tool", "")
@@ -8100,10 +8100,17 @@ def _make_tool_handler(tool_name: str):
         if not _main_loop:
             return "Error: event loop not ready"
         try:
-            future = asyncio.run_coroutine_threadsafe(exec_tool(tool_name, params), _main_loop)
+            loop = _main_loop  # snapshot to avoid TOCTOU race on shutdown
+            if loop is None or loop.is_closed():
+                return "Error: event loop not ready"
+            future = asyncio.run_coroutine_threadsafe(exec_tool(tool_name, params), loop)
             result = future.result(timeout=30)
-            asyncio.run_coroutine_threadsafe(broadcast_action(tool_name, params, str(result)), _main_loop)
+            asyncio.run_coroutine_threadsafe(broadcast_action(tool_name, params, str(result)), loop)
             return result
+        except RuntimeError as e:
+            if "cannot schedule" in str(e) or "closed" in str(e):
+                return "Error: server shutting down"
+            return f"Error in {tool_name}: {e}"
         except Exception as e:
             return f"Error in {tool_name}: {e}"
 

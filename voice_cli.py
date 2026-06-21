@@ -116,7 +116,8 @@ def _tts_worker():
             break
         text = text.strip()
         if not text:
-            _tts_queue.task_done(); continue
+            _tts_queue.task_done()
+            continue
         # Clean markdown for speech
         text = re.sub(r"```[\s\S]*?```", "code block.", text)
         text = re.sub(r"`([^`]+)`", r"\1", text)
