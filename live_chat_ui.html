@@ -1548,7 +1548,7 @@ function syncLanExamples() {
   }
   const yamlCode = document.getElementById('agentOrchestratorYaml');
   if (yamlCode) {
-    yamlCode.innerHTML = `notifiers: [openclaw]<br>openclaw:<br>&nbsp;&nbsp;url: ${webhookUrl}`;
+    yamlCode.innerHTML = `notifiers: [openclaw]<br>openclaw:<br>&nbsp;&nbsp;url: ${escHtml(webhookUrl)}`;
   }
 }
 

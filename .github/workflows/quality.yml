@@ -86,7 +86,7 @@ jobs:
           pip install -e ".[test]"
 
       - name: Run unit tests
-        run: pytest -v --cov-report=xml --junit-xml=junit.xml --cov-fail-under=50
+        run: pytest -v --cov-report=xml --junit-xml=junit.xml --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
