@@ -2717,7 +2717,7 @@ async def api_rag_search(payload: dict[str, Any]) -> JSONResponse:
 
 @app.post("/api/rag/export-training")
 async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
-    max_examples = int(payload.get("max_examples", 0) or 0)
+    max_examples = max(0, min(int(payload.get("max_examples", 0) or 0), 10_000))
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
     status = 200 if result.get("ok") else 400
@@ -2991,12 +2991,14 @@ async def ws_ep(websocket: WebSocket) -> None:
                 write_log("ws_error", f"WS message missing 'type' field: {raw[:100]!r}")
                 continue
             if t == "mute":
-                muted = msg.get("muted", False)
+                async with _global_state_lock:
+                    muted = msg.get("muted", False)
                 write_log("mute", str(muted))
                 if muted:
                     await _cancel_all_speak_tasks()
             elif t == "mode":
-                mode = msg.get("mode", "chat")
+                async with _global_state_lock:
+                    mode = msg.get("mode", "chat")
                 _clear_all_histories()
                 write_log("mode", mode)
             elif t == "text":
@@ -3076,7 +3078,8 @@ async def ws_ep(websocket: WebSocket) -> None:
                 write_log("model", f"{current_provider}/{current_model}")
                 await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
             elif t == "set_mute":
-                muted = msg.get("muted", False)
+                async with _global_state_lock:
+                    muted = msg.get("muted", False)
                 write_log("mute", str(muted))
                 if muted:
                     await _cancel_all_speak_tasks()
@@ -3101,7 +3104,8 @@ async def ws_ep(websocket: WebSocket) -> None:
                     elif runtime_state != "idle":
                         await set_state("idle")
             elif t == "set_mode":
-                mode = msg.get("mode", "chat")
+                async with _global_state_lock:
+                    mode = msg.get("mode", "chat")
                 _clear_all_histories()
                 write_log("mode", mode)
             elif t == "clear":
@@ -3251,8 +3255,8 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
             recipients = list(clients)
     for ws in recipients:
         try:
-            await ws.send_text(msg_text)
-        except Exception as e:
+            await asyncio.wait_for(ws.send_text(msg_text), timeout=5.0)
+        except (asyncio.TimeoutError, Exception) as e:
             write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
     if dead:
@@ -3270,7 +3274,8 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
 async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
     """Broadcast state + current active provider/model for UI indicators."""
     global runtime_state
-    runtime_state = s
+    async with _global_state_lock:
+        runtime_state = s
     write_log("state", s)
     await broadcast({"type": "state", "state": s, "provider": current_provider, "model": current_model}, target)
 
@@ -3366,9 +3371,10 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         return ""
 
     audio = np.concatenate(frames, axis=0)
+    path: str | None = None
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        wavfile.write(f.name, SR, audio)
         path = f.name
+        wavfile.write(path, SR, audio)
 
     loop = asyncio.get_running_loop()
     _stt_t0 = time.monotonic()  # timing: STT wall-clock start
@@ -3518,10 +3524,11 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         return ""
 
     finally:
-        try:
-            os.unlink(path)
-        except Exception:
-            pass
+        if path:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
 
 
 # ── Operator tools ────────────────────────────────────────────────────────────
@@ -5380,7 +5387,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         return "\n".join(lines)
 
     elif name == "kb_export_training_data":
-        max_examples = int(args.get("max_examples", 0) or 0)
+        max_examples = max(0, min(int(args.get("max_examples", 0) or 0), 10_000))
         result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
         return json.dumps(result, ensure_ascii=False)
 
