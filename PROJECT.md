@@ -62,14 +62,13 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 ## Active Iteration Board
 
 ### Now (In Progress)
-- [ ] Add runtime preflight checks for keys, OCR binary, browser availability, and audio devices
-- [ ] Add structured stage timing for STT, LLM, tool-call loop, and TTS
-- [ ] Add weekly home-ops maintenance workflow and summary output
-- [ ] Add automated doc consistency checks for key runtime contracts
-
-### Next (Planned)
-- [ ] Add high-risk action confirmations with explicit user intent capture
-- [ ] Add standard tool error taxonomy and user-facing recovery hints
+- ✅ Add runtime preflight checks for keys, OCR binary, browser availability, and audio devices
+- ✅ Add structured stage timing for STT, LLM, tool-call loop, and TTS
+- ✅ Add weekly home-ops maintenance workflow and summary output
+- ✅ Add automated doc consistency checks for key runtime contracts
+- ✅ Add high-risk action confirmations with explicit user intent capture
+- ✅ Add standard tool error taxonomy and user-facing recovery hints
+- [ ] Improve test coverage to ≥50% (currently ~25%)
 - [ ] Add operator action trace export for debugging and audits
 
 ### Later (Queued)

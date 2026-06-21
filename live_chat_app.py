@@ -417,6 +417,7 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 clients: set[WebSocket] = set()
+_clients_lock: asyncio.Lock  # initialised in startup()
 history: list[dict[str, Any]] = []
 _session_histories: dict[WebSocket, list[dict[str, Any]]] = {}
 _session_target_var: contextvars.ContextVar[WebSocket | None] = contextvars.ContextVar("session_target", default=None)
@@ -2608,7 +2609,7 @@ async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
 
 
 @app.get("/screenshot")
-async def screenshot_ep():
+async def screenshot_ep() -> JSONResponse:
     loop = asyncio.get_running_loop()
 
     def _snap():
@@ -2630,7 +2631,7 @@ async def screenshot_ep():
 
 
 @app.post("/api/tool/execute")
-async def tool_execute(request: Request):
+async def tool_execute(request: Request) -> JSONResponse:
     data = await request.json()
     name = data.get("name", "")
     params = data.get("parameters", {})
@@ -2656,7 +2657,7 @@ _AO_EVENT_ICONS = {
 
 
 @app.post("/webhook/agent-orchestrator")
-async def agent_orchestrator_webhook(request: Request):
+async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     """
     Receives Agent Orchestrator (Composio) notifications via the 'openclaw' notifier.
     Broadcasts them to all connected UI clients and optionally speaks them.
@@ -2705,7 +2706,7 @@ async def agent_orchestrator_webhook(request: Request):
 
 
 @app.get("/api/voices")
-async def api_voices():
+async def api_voices() -> JSONResponse:
     """List all available TTS voices: pyttsx3 SAPI + Windows OneCore neural."""
     global _onecore_voices
     import winreg
@@ -2774,7 +2775,7 @@ async def api_voices():
 
 
 @app.post("/api/el-agent/start")
-async def api_el_agent_start():
+async def api_el_agent_start() -> JSONResponse:
     if _el_active:
         message = "ConvAI agent already running."
         await _broadcast_el_agent_status("already_running", message)
@@ -2789,13 +2790,13 @@ async def api_el_agent_start():
 
 
 @app.post("/api/el-agent/stop")
-async def api_el_agent_stop():
+async def api_el_agent_stop() -> JSONResponse:
     asyncio.create_task(_stop_el_agent())
     return JSONResponse({"ok": True})
 
 
 @app.post("/api/wake-word")
-async def api_wake_word(body: dict):
+async def api_wake_word(body: dict[str, Any]) -> JSONResponse:
     global wake_word_active
     wake_word_active = bool(body.get("enabled", False))
     memory.set_voice_flags(wake_word=wake_word_active)
@@ -2803,13 +2804,14 @@ async def api_wake_word(body: dict):
 
 
 @app.websocket("/ws")
-async def ws_ep(websocket: WebSocket):
+async def ws_ep(websocket: WebSocket) -> None:
     global muted, mode, current_provider, current_model, _ollama_failover_active
     global _elevenlabs_auth_failed
     global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
     global wake_word_active, continuous_listening
     await websocket.accept()
-    clients.add(websocket)
+    async with _clients_lock:
+        clients.add(websocket)
     write_log("ws", "connected")
     # Send current state on connect
     await websocket.send_text(
@@ -3043,7 +3045,8 @@ async def ws_ep(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
-        clients.discard(websocket)
+        async with _clients_lock:
+            clients.discard(websocket)
         _session_histories.pop(websocket, None)
         _session_input_busy.pop(websocket, None)
         _session_input_locks.pop(websocket, None)
@@ -3057,15 +3060,21 @@ async def ws_ep(websocket: WebSocket):
 async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
     resolved_target = _resolve_target(target)
     dead = set()
-    recipients = [resolved_target] if resolved_target is not None else list(clients)
-    for ws in recipients:  # snapshot to avoid "Set changed size during iteration"
+    if resolved_target is not None:
+        recipients = [resolved_target]
+    else:
+        async with _clients_lock:
+            recipients = list(clients)
+    for ws in recipients:
         try:
             await ws.send_text(json.dumps(msg))
         except Exception:
             dead.add(ws)
-    for ws in dead:
-        clients.discard(ws)
-        _session_histories.pop(ws, None)
+    if dead:
+        async with _clients_lock:
+            for ws in dead:
+                clients.discard(ws)
+                _session_histories.pop(ws, None)
 
 
 async def set_state(s: str, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
@@ -5375,6 +5384,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "execute_python":
         code = args.get("code", "")
         timeout = max(1, min(int(args.get("timeout", 30)), 120))
+        write_log("execute_python", f"timeout={timeout}s code={code[:200].replace(chr(10), ' ')!r}")
         wrapper = (
             "import contextlib, io, traceback\n"
             f"CODE = {code!r}\n"
@@ -7857,6 +7867,8 @@ async def startup():
     _main_loop = asyncio.get_running_loop()
     _input_lock = asyncio.Lock()
     _response_lock = asyncio.Lock()
+    global _clients_lock
+    _clients_lock = asyncio.Lock()
     _session_input_locks.clear()
     _session_input_busy.clear()
     _session_speak_tasks.clear()
