@@ -40,6 +40,10 @@ jobs:
         run: python -m pyright
         continue-on-error: true
 
+      - name: Doc consistency check
+        run: python scripts/check_doc_consistency.py
+        continue-on-error: true
+
       - name: Security scan (bandit)
         run: python -m bandit -r . -f json -o bandit.json
         continue-on-error: true
@@ -129,6 +133,7 @@ jobs:
             comment += "This workflow uses the repo's current Python toolchain. Review the job logs and uploaded artifacts for exact pass/fail details.\n\n";
             comment += '| Check | Where to look |\n';
             comment += '|-------|---------------|\n';
+            comment += '| 📄 Doc consistency | `Code Quality Checks` job |\n';
             comment += '| 🎨 Format (`ruff format --check`) | `Code Quality Checks` job |\n';
             comment += '| ⚙️ Lint (`ruff check`) | `Code Quality Checks` job |\n';
             comment += '| 🔍 Type Check (`pyright`) | `Code Quality Checks` job |\n';

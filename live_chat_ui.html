@@ -963,7 +963,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <span id="hudTTS" class="provider-pill">AUTO</span>
     </div>
   </div>
-</div>
+  <div class="hud-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+    <div style="display:flex;align-items:center;gap:5px">
+      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">STT</span>
+      <span id="hudSttMs" style="font-size:9px;color:var(--accent);font-variant-numeric:tabular-nums">—ms</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px">
+      <span style="font-size:9px;color:var(--dim);letter-spacing:.1em">PIPE</span>
+      <span id="hudPipeMs" style="font-size:9px;color:var(--gold);font-variant-numeric:tabular-nums">—ms</span>
+    </div>
+  </div>
 
 <!-- ═══ COMPONENT STATUS ═══ -->
 <div id="compStatus">
@@ -976,6 +985,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="comp-item"><div class="comp-led" id="led-gpu"></div>GPU</div>
   <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
   <div class="comp-item"><div class="comp-led" id="led-ocr"></div>OCR</div>
+  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-item"><div class="comp-led" id="led-audio"></div>MIC</div>
+  <div style="width:1px;height:10px;background:rgba(29,78,216,.1)"></div>
+  <div class="comp-item"><div class="comp-led" id="led-playwright"></div>PW</div>
 </div>
 
 <!-- ═══ MODEL BADGE ═══ -->
@@ -1973,6 +1986,19 @@ function handleMsg(msg) {
       toast(`${icon} ${msg.title}`, msg.event === 'ci-failed' ? 'red' : 'cyan');
       break;
     }
+    case 'stage_timing': {
+      const sttEl = document.getElementById('hudSttMs');
+      const pipeEl = document.getElementById('hudPipeMs');
+      if (sttEl && msg.stt_ms != null) {
+        sttEl.textContent = Math.round(msg.stt_ms) + 'ms';
+        sttEl.style.color = msg.stt_ms > 1500 ? 'var(--red)' : msg.stt_ms > 800 ? 'var(--gold)' : 'var(--accent)';
+      }
+      if (pipeEl && msg.pipeline_ms != null) {
+        pipeEl.textContent = Math.round(msg.pipeline_ms) + 'ms';
+        pipeEl.style.color = msg.pipeline_ms > 5000 ? 'var(--red)' : msg.pipeline_ms > 2500 ? 'var(--gold)' : 'var(--green)';
+      }
+      break;
+    }
     case 'error':
       addMessage('system', '⚠ ' + msg.message);
       break;
@@ -2018,6 +2044,10 @@ async function fetchHealth() {
     setLed('browser', d.browser);
     setLed('gpu', d.gpu);
     setLed('ocr', d.ocr);
+    if (d.preflight) {
+      setLed('audio', d.preflight.audio_input);
+      setLed('playwright', d.preflight.playwright);
+    }
   } catch(e) {}
 }
 
