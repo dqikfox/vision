@@ -2502,7 +2502,7 @@ function buildKeysList() {
       <div style="font-family:var(--font-ui);font-size:8px;letter-spacing:.2em;color:var(--dim);margin-bottom:3px">${labels[k]}</div>
       <div class="key-row">
         <input class="key-inp" id="cfgkey_${k}" type="password" placeholder="Paste API key…"/>
-        <button class="key-save" onclick="saveCfgKey('${k}')">SAVE</button>
+        <button class="key-save" onclick="saveCfgKey('${escHtml(k)}')">SAVE</button>
       </div>
     </div>
   `).join('');
@@ -2513,12 +2513,11 @@ function saveCfgKey(provider) {
   const key = inp.value.trim(); if (!key) return;
   send({ type:'set_api_key', provider, key });
   inp.value = ''; inp.placeholder = '✓ Saved';
-  toast(`Key saved: ${provider}`, 'green');
+  toast(`Key saved: ${escHtml(provider)}`, 'green');
 }
 
 /* ═══════════════════════════════════════
    MEMORY
-═══════════════════════════════════════ */
 function renderMemory(mem) {
   const fl = document.getElementById('factList');
   if (!fl) return;
