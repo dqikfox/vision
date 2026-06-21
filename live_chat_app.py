@@ -3207,10 +3207,16 @@ async def ws_ep(websocket: WebSocket) -> None:
                         await broadcast({"type": "key_saved", "provider": provider})
             elif t == "set_voice_settings":
                 async with _global_state_lock:
-                    preferred_stt = msg.get("preferred_stt", preferred_stt)
-                    preferred_tts = msg.get("preferred_tts", preferred_tts)
+                    if "preferred_stt" in msg:
+                        _new_stt = msg.get("preferred_stt", preferred_stt)
+                        if _new_stt in {"auto", "elevenlabs", "groq", "local"}:
+                            preferred_stt = _new_stt
+                    if "preferred_tts" in msg:
+                        _new_tts = msg.get("preferred_tts", preferred_tts)
+                        if _new_tts in {"auto", "elevenlabs", "local"}:
+                            preferred_tts = _new_tts
                     try:
-                        tts_rate = int(msg.get("tts_rate", tts_rate))
+                        tts_rate = max(50, min(300, int(msg.get("tts_rate", tts_rate))))
                     except (ValueError, TypeError):
                         pass
                     try:
