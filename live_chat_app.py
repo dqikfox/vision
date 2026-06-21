@@ -1603,15 +1603,14 @@ def _persist_assistant_turn(user_text: str, assistant_text: str, actions_taken: 
         return ""
     _append_history({"role": "assistant", "content": normalized})
     latency_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
-    asyncio.create_task(
+    _tracked_task(
         brain_ai.ingest(
             user_text,
             normalized,
             tools_used=_brain_tool_names(actions_taken),
             latency_ms=latency_ms,
             outcome=_brain_outcome(normalized, actions_taken),
-        ),
-        name="brain_ingest",
+        )
     )
     return normalized
 
@@ -2847,7 +2846,7 @@ async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     _spoken_events = {"ci-failed", "agent-stuck", "approved", "changes-requested", "agent-done"}
     if event in _spoken_events and not muted:
         spoken = f"{title} in {project}" if project else title
-        asyncio.create_task(speak(spoken[:120]))
+        _tracked_task(speak(spoken[:120]))
 
     return JSONResponse({"ok": True, "received": event})
 
@@ -2943,13 +2942,13 @@ async def api_el_agent_start() -> JSONResponse:
         write_log("el_agent", f"start blocked: {error}")
         await _broadcast_el_agent_status("error", error)
         return JSONResponse({"ok": False, "status": "error", "error": error}, status_code=400)
-    asyncio.create_task(_start_el_agent())
+    _tracked_task(_start_el_agent())
     return JSONResponse({"ok": True, "status": "starting", "message": "Connecting to ConvAI…"})
 
 
 @app.post("/api/el-agent/stop")
 async def api_el_agent_stop() -> JSONResponse:
-    asyncio.create_task(_stop_el_agent())
+    _tracked_task(_stop_el_agent())
     return JSONResponse({"ok": True})
 
 
@@ -3205,9 +3204,9 @@ async def ws_ep(websocket: WebSocket) -> None:
                 await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
-                asyncio.create_task(_start_el_agent())
+                _tracked_task(_start_el_agent())
             elif t == "el_agent_stop":
-                asyncio.create_task(_stop_el_agent())
+                _tracked_task(_stop_el_agent())
             elif t == "set_wake_word":
                 async with _global_state_lock:
                     wake_word_active = bool(msg.get("enabled", False))
@@ -3520,7 +3519,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         if result:
             global last_stt_provider
             last_stt_provider = used_provider
-            asyncio.create_task(
+            _tracked_task(
                 broadcast(
                     {
                         "type": "stt_active",
@@ -6197,7 +6196,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return f"No voice matching '{voice_name}'. Available voices: {available}"
         matched_idx, matched_name = chosen
         tts_voice_idx = matched_idx
-        asyncio.create_task(
+        _tracked_task(
             broadcast(
                 {
                     "type": "voice_settings",
