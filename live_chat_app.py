@@ -1922,12 +1922,24 @@ def _with_absolute_paths(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _load_context_brain(*, persist: bool) -> dict[str, Any]:
     """Load or regenerate the context brain, optionally persisting the artifact."""
     if CONTEXT_BRAIN_FILE.exists() and not persist:
-        return json.loads(CONTEXT_BRAIN_FILE.read_text(encoding="utf-8"))
+        try:
+            return json.loads(CONTEXT_BRAIN_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            write_log("context_brain_corrupt", f"Discarding corrupted brain file: {e}")
+            # Fall through to rebuild below
 
-    brain = build_context_brain()
+    try:
+        brain = build_context_brain()
+    except Exception as e:
+        write_log("context_brain_rebuild_failed", str(e))
+        return {"catalog": {}, "automation": {}, "integration": {}}
+
     if persist or not CONTEXT_BRAIN_FILE.exists():
-        CONTEXT_BRAIN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CONTEXT_BRAIN_FILE.write_text(json.dumps(brain, indent=2), encoding="utf-8")
+        try:
+            CONTEXT_BRAIN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CONTEXT_BRAIN_FILE.write_text(json.dumps(brain, indent=2), encoding="utf-8")
+        except OSError as e:
+            write_log("context_brain_write_failed", str(e))
     return brain
 
 
@@ -3205,6 +3217,18 @@ async def ws_ep(websocket: WebSocket) -> None:
 async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_TARGET) -> None:
     resolved_target = _resolve_target(target)
     dead = set()
+    # Pre-serialize once; on failure sanitize then retry, then give up gracefully
+    try:
+        msg_text = json.dumps(msg)
+    except (TypeError, ValueError) as e:
+        write_log("broadcast_serialize_error", f"msg type serialization failed: {e}")
+        try:
+            safe = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v)[:500])
+                    for k, v in msg.items()}
+            msg_text = json.dumps(safe)
+        except Exception as e2:
+            write_log("broadcast_sanitize_failed", str(e2))
+            return
     if resolved_target is not None:
         recipients = [resolved_target]
     else:
@@ -3212,7 +3236,7 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
             recipients = list(clients)
     for ws in recipients:
         try:
-            await ws.send_text(json.dumps(msg))
+            await ws.send_text(msg_text)
         except Exception as e:
             write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
@@ -4943,10 +4967,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
     # ── Screenshot region (zoom in for precision) ──────────────────────────────
     elif name == "screenshot_region":
-        x = max(0, min(int(args.get("x", 0)), 65535))
-        y = max(0, min(int(args.get("y", 0)), 65535))
-        w = max(1, min(int(args.get("width", 400)), 4096))
-        h = max(1, min(int(args.get("height", 300)), 4096))
+        screen_w, screen_h = pyautogui.size()
+        x = max(0, min(int(args.get("x", 0)), screen_w - 1))
+        y = max(0, min(int(args.get("y", 0)), screen_h - 1))
+        w = max(1, min(int(args.get("width", 400)), screen_w - x))
+        h = max(1, min(int(args.get("height", 300)), screen_h - y))
 
         def _snap_r():
             im = pyautogui.screenshot(region=(x, y, w, h))
