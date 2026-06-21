@@ -199,20 +199,41 @@ class VisionRAGManager:
               content TEXT NOT NULL,
               char_count INTEGER NOT NULL,
               token_count INTEGER NOT NULL,
-              created_at TEXT NOT NULL
+              created_at TEXT NOT NULL,
+              file_mtime INTEGER,
+              file_hash TEXT
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts
             USING fts5(chunk_id UNINDEXED, rel_path, content, tokenize='unicode61');
 
             CREATE INDEX IF NOT EXISTS idx_chunks_rel_path ON chunks(rel_path);
+            CREATE INDEX IF NOT EXISTS idx_chunks_file_hash ON chunks(file_hash);
             """
         )
+        # Migrate existing tables — add columns if missing (idempotent)
+        for col, typedef in (("file_mtime", "INTEGER"), ("file_hash", "TEXT")):
+            try:
+                conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} {typedef};")
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def _clear_index(self, conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM chunks;")
         conn.execute("DELETE FROM chunks_fts;")
         conn.execute("DELETE FROM meta;")
+
+    def close(self) -> None:
+        """Run PRAGMA optimize and checkpoint WAL on the index database if it exists."""
+        if not self.db_path.exists():
+            return
+        try:
+            with self._connect() as conn:
+                conn.execute("PRAGMA optimize;")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                conn.commit()
+        except Exception:
+            pass
 
     def _extract_text(self, path: Path) -> tuple[str, str]:
         suffix = path.suffix.lower()
@@ -286,7 +307,16 @@ class VisionRAGManager:
 
         with self._connect() as conn:
             self._ensure_schema(conn)
-            self._clear_index(conn)
+
+            # Load existing file hashes so unchanged files can be skipped
+            existing_hashes: set[str] = set()
+            try:
+                rows = conn.execute(
+                    "SELECT DISTINCT file_hash FROM chunks WHERE file_hash IS NOT NULL"
+                ).fetchall()
+                existing_hashes = {r[0] for r in rows}
+            except sqlite3.OperationalError:
+                pass
 
             total_chunks = 0
             total_chars = 0
@@ -294,8 +324,11 @@ class VisionRAGManager:
 
             chunks_rows: list[tuple] = []
             fts_rows: list[tuple] = []
+            current_file_hashes: set[str] = set()
+            current_abs_paths: set[str] = set()
 
             for path in files:
+                current_abs_paths.add(str(path))
                 try:
                     text, source_type = self._extract_text(path)
                 except Exception:
@@ -304,26 +337,74 @@ class VisionRAGManager:
                 if not text.strip():
                     continue
 
+                # Compute a lightweight file identity hash (mtime + size)
+                try:
+                    stat = path.stat()
+                    file_mtime = int(stat.st_mtime)
+                    file_size = stat.st_size
+                except OSError:
+                    file_mtime = 0
+                    file_size = 0
+                file_hash = hashlib.sha256(
+                    f"{path.as_posix()}:{file_mtime}:{file_size}".encode()
+                ).hexdigest()
+                current_file_hashes.add(file_hash)
+
+                # Skip re-chunking if hash unchanged (incremental mode)
+                if file_hash in existing_hashes:
+                    # Still count existing chunks toward totals
+                    existing = conn.execute(
+                        "SELECT COUNT(*), SUM(char_count) FROM chunks WHERE file_hash = ?",
+                        (file_hash,),
+                    ).fetchone()
+                    if existing:
+                        total_chunks += existing[0] or 0
+                        total_chars += existing[1] or 0
+                    continue
+
+                # Delete stale chunks for this path before re-inserting
+                conn.execute("DELETE FROM chunks WHERE abs_path = ?", (str(path),))
+                conn.execute(
+                    "DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)"
+                )
+
                 rel_path = str(path.relative_to(self.source_root)).replace("\\", "/")
                 chunks = _chunk_text(text, chunk_size=chunk_size, overlap=overlap)
                 for idx, chunk in enumerate(chunks):
-                    chunk_id = hashlib.sha1(f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")).hexdigest()
+                    chunk_id = hashlib.sha1(
+                        f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")
+                    ).hexdigest()
                     char_count = len(chunk)
                     token_count = _token_count(chunk)
-                    chunks_rows.append((chunk_id, rel_path, str(path), source_type, chunk, char_count, token_count, now))
+                    chunks_rows.append(
+                        (chunk_id, rel_path, str(path), source_type, chunk,
+                         char_count, token_count, now, file_mtime, file_hash)
+                    )
                     fts_rows.append((chunk_id, rel_path, chunk))
                     total_chunks += 1
                     total_chars += char_count
 
+            # Remove chunks for files deleted from the source tree
+            if current_abs_paths:
+                placeholders = ",".join("?" * len(current_abs_paths))
+                conn.execute(
+                    f"DELETE FROM chunks WHERE abs_path NOT IN ({placeholders})",
+                    list(current_abs_paths),
+                )
+                conn.execute(
+                    "DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)"
+                )
+
             conn.executemany(
                 """
-                INSERT INTO chunks(chunk_id, rel_path, abs_path, source_type, content, char_count, token_count, created_at)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chunks(chunk_id, rel_path, abs_path, source_type,
+                  content, char_count, token_count, created_at, file_mtime, file_hash)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 chunks_rows,
             )
             conn.executemany(
-                "INSERT INTO chunks_fts(chunk_id, rel_path, content) VALUES(?, ?, ?)",
+                "INSERT OR REPLACE INTO chunks_fts(chunk_id, rel_path, content) VALUES(?, ?, ?)",
                 fts_rows,
             )
 
@@ -338,10 +419,12 @@ class VisionRAGManager:
                 "average_chunk_chars": str(avg_chars),
                 "updated_at": finished.isoformat(),
                 "build_elapsed_ms": str(elapsed_ms),
-                "schema_version": "1",
+                "schema_version": "2",
             }
             for key, value in meta.items():
-                conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value))
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value)
+                )
 
             conn.commit()
 
@@ -354,6 +437,7 @@ class VisionRAGManager:
             "build_elapsed_ms": elapsed_ms,
             "updated_at": finished.isoformat(),
             "db_path": str(self.db_path),
+            "incremental": True,
         }
 
     def status(self) -> dict[str, Any]:
