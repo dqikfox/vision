@@ -15,6 +15,7 @@ import contextlib
 import contextvars
 import fnmatch
 import io
+import importlib.util
 import json
 import os
 import queue
@@ -110,15 +111,14 @@ LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
 PORT = 8765
 
+
 def _settings_dir() -> Path:
     """Return a user-writable directory for persisted runtime settings."""
     configured = os.environ.get("VISION_SETTINGS_DIR", "").strip()
     if configured:
         return Path(configured).expanduser()
     if os.name == "nt":
-        appdata = (
-            os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA") or ""
-        ).strip()
+        appdata = (os.environ.get("APPDATA") or os.environ.get("LOCALAPPDATA") or "").strip()
         if appdata:
             return Path(appdata) / "Vision"
     xdg_config = os.environ.get("XDG_CONFIG_HOME", "").strip()
@@ -600,6 +600,8 @@ tts_rate: int = 175  # pyttsx3 words-per-minute
 tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
 _elevenlabs_auth_failed: bool = False
+_preflight_result: dict[str, bool] = {}  # populated at startup by _run_preflight()
+_last_stage_timing: dict[str, float] = {}  # stage -> elapsed_ms, reset each voice turn
 
 # ── Voice settings persistence ────────────────────────────────────────────────
 
@@ -632,10 +634,7 @@ def _get_str_setting(
 ) -> str:
     value = data.get(key, current)
     if not isinstance(value, str):
-        print(
-            f"[settings] Ignoring invalid {key} in {path}: "
-            f"expected string, got {type(value).__name__}"
-        )
+        print(f"[settings] Ignoring invalid {key} in {path}: expected string, got {type(value).__name__}")
         return current
     normalized = value.strip().lower()
     if allowed and normalized not in allowed:
@@ -661,6 +660,7 @@ def _get_int_setting(
         print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
         return current
     return parsed
+
 
 def _load_settings() -> None:
     """Load persisted voice/STT/TTS settings from settings.json into globals."""
@@ -989,17 +989,17 @@ def _fact_is_grounded_in_user_text(fact: str, user_text: str) -> bool:
 
 
 _SAFE_DIRECT_APP_COMMANDS: dict[str, tuple[str, str]] = {
-    "calculator": ("start \"\" calc.exe", "Opened Calculator."),
-    "calc": ("start \"\" calc.exe", "Opened Calculator."),
-    "notepad": ("start \"\" notepad.exe", "Opened Notepad."),
-    "paint": ("start \"\" mspaint.exe", "Opened Paint."),
-    "mspaint": ("start \"\" mspaint.exe", "Opened Paint."),
-    "file explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
-    "explorer": ("start \"\" explorer.exe", "Opened File Explorer."),
-    "task manager": ("start \"\" taskmgr.exe", "Opened Task Manager."),
-    "taskmgr": ("start \"\" taskmgr.exe", "Opened Task Manager."),
-    "settings": ("start \"\" ms-settings:", "Opened Windows Settings."),
-    "control panel": ("start \"\" control.exe", "Opened Control Panel."),
+    "calculator": ('start "" calc.exe', "Opened Calculator."),
+    "calc": ('start "" calc.exe', "Opened Calculator."),
+    "notepad": ('start "" notepad.exe', "Opened Notepad."),
+    "paint": ('start "" mspaint.exe', "Opened Paint."),
+    "mspaint": ('start "" mspaint.exe', "Opened Paint."),
+    "file explorer": ('start "" explorer.exe', "Opened File Explorer."),
+    "explorer": ('start "" explorer.exe', "Opened File Explorer."),
+    "task manager": ('start "" taskmgr.exe', "Opened Task Manager."),
+    "taskmgr": ('start "" taskmgr.exe', "Opened Task Manager."),
+    "settings": ('start "" ms-settings:', "Opened Windows Settings."),
+    "control panel": ('start "" control.exe', "Opened Control Panel."),
 }
 
 
@@ -2532,6 +2532,8 @@ async def api_health() -> JSONResponse:
     result["anthropic_sdk"] = HAS_ANTHROPIC
     # Cloud providers — report which keys are configured
     result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
+    result["preflight"] = _preflight_result
+    result["last_stage_timing"] = _last_stage_timing
     return JSONResponse(result)
 
 
@@ -2898,11 +2900,7 @@ async def ws_ep(websocket: WebSocket):
                 await broadcast({"type": "continuous_state", "enabled": continuous_listening})
                 if not muted:
                     if continuous_listening or wake_word_active:
-                        if (
-                            not _any_speak_active()
-                            and not _any_input_busy()
-                            and runtime_state != "listening"
-                        ):
+                        if not _any_speak_active() and not _any_input_busy() and runtime_state != "listening":
                             await set_state("listening")
                     elif runtime_state != "idle":
                         await set_state("idle")
@@ -3000,12 +2998,7 @@ async def ws_ep(websocket: WebSocket):
                             "text": f"🔒 Wake-word mode ON — say one of: {', '.join(WAKE_PHRASES)}",
                         }
                     )
-                    if (
-                        not muted
-                        and not _any_speak_active()
-                        and not _any_input_busy()
-                        and runtime_state != "listening"
-                    ):
+                    if not muted and not _any_speak_active() and not _any_input_busy() and runtime_state != "listening":
                         await set_state("listening")
                 else:
                     await broadcast(
@@ -3018,11 +3011,7 @@ async def ws_ep(websocket: WebSocket):
                     )
                     if not muted:
                         target_state = "listening" if continuous_listening else "idle"
-                        if (
-                            runtime_state != target_state
-                            and not _any_speak_active()
-                            and not _any_input_busy()
-                        ):
+                        if runtime_state != target_state and not _any_speak_active() and not _any_input_busy():
                             await set_state(target_state)
     except WebSocketDisconnect:
         pass
@@ -3156,6 +3145,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
         path = f.name
 
     loop = asyncio.get_running_loop()
+    _stt_t0 = time.monotonic()  # timing: STT wall-clock start
 
     async def _try_elevenlabs():
         if _elevenlabs_auth_failed:
@@ -3286,6 +3276,7 @@ async def transcribe(frames: list[np.ndarray]) -> str:
                     }
                 )
             )
+            _last_stage_timing["stt_ms"] = round((time.monotonic() - _stt_t0) * 1000, 1)
             return result
 
         # All failed — impose 30s cooldown to prevent hammering
@@ -7310,7 +7301,9 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
 
                 if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
                     await set_state("thinking")
-                    gen = _single_text_stream("The pending action expired. Please request it again if you still want it.")
+                    gen = _single_text_stream(
+                        "The pending action expired. Please request it again if you still want it."
+                    )
                 elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
                     await set_state("thinking")
                     if _is_confirmation_no(text):
@@ -7490,9 +7483,24 @@ async def voice_loop() -> None:
                             await broadcast({"type": "partial_transcript", "text": f"🎙 {text}"})
                             await add_transcript("user", text)
                             memory.add_task(text)
+                            _t_llm_start = time.monotonic()  # timing: LLM start
                             gen = llm_stream(text)
+                            _t_pipeline_start = time.monotonic()  # timing: TTS pipeline start
                             speak_task = asyncio.create_task(speak(gen))
                             await speak_task
+                            _last_stage_timing["pipeline_ms"] = round((time.monotonic() - _t_pipeline_start) * 1000, 1)
+                            await broadcast(
+                                {
+                                    "type": "stage_timing",
+                                    "stt_ms": _last_stage_timing.get("stt_ms", 0),
+                                    "pipeline_ms": _last_stage_timing.get("pipeline_ms", 0),
+                                }
+                            )
+                            write_log(
+                                "timing",
+                                f"stt={_last_stage_timing.get('stt_ms', 0)}ms"
+                                f" pipeline={_last_stage_timing.get('pipeline_ms', 0)}ms",
+                            )
                             duration = getattr(speak, "last_duration", 0.0)
                             await _drain(duration)
                         finally:
@@ -7684,12 +7692,44 @@ async def _stop_el_agent() -> None:
     write_log("el_agent", "stopped by user")
 
 
+async def _run_preflight() -> dict[str, bool]:
+    """Check critical runtime dependencies; return pass/fail dict."""
+    result: dict[str, bool] = {}
+    # 1. ElevenLabs API key
+    result["elevenlabs_key"] = bool(API_11 and API_11.strip() not in ("", "none"))
+    # 2. OCR (Tesseract)
+    result["ocr"] = _ocr_available()
+    # 3. Audio input device
+    loop = asyncio.get_running_loop()
+    try:
+        devices = await loop.run_in_executor(None, sd.query_devices)
+        result["audio_input"] = any(d.get("max_input_channels", 0) >= 1 for d in devices if isinstance(d, dict))
+    except Exception:
+        result["audio_input"] = False
+    # 4. Playwright / browser automation
+    if _pw_page is not None or shutil.which("playwright") is not None:
+        result["playwright"] = True
+    else:
+        try:
+            result["playwright"] = importlib.util.find_spec("playwright") is not None
+        except Exception:
+            result["playwright"] = False
+    return result
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 
 
 @app.on_event("startup")
 async def startup():
-    global _main_loop, _input_lock, _response_lock, current_provider, current_model, _ollama_failover_active, _input_busy
+    global \
+        _main_loop, \
+        _input_lock, \
+        _response_lock, \
+        current_provider, \
+        current_model, \
+        _ollama_failover_active, \
+        _input_busy
     _main_loop = asyncio.get_running_loop()
     _input_lock = asyncio.Lock()
     _response_lock = asyncio.Lock()
@@ -7713,6 +7753,11 @@ async def startup():
             current_provider = fallback_provider
             current_model = _provider_default_model(fallback_provider)
     write_log("startup", f"port={PORT} provider={current_provider} model={current_model}")
+    _preflight_result.update(await _run_preflight())
+    write_log("preflight", str(_preflight_result))
+    failures = [k for k, v in _preflight_result.items() if not v]
+    if failures:
+        print(f"[preflight] ⚠ checks failed: {', '.join(failures)}")
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
