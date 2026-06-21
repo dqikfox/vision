@@ -151,7 +151,7 @@ def _speak_eleven(text: str):
     )
     subprocess.run(["powershell", "-c", ps], capture_output=True)
     try: os.unlink(fname)
-    except: pass
+    except Exception: pass
 
 def _eleven_voice_id() -> str:
     try:
@@ -160,7 +160,7 @@ def _eleven_voice_id() -> str:
             if v.name.lower() in ("rachel", "bella", "antoni"):
                 return v.voice_id
         return vs[0].voice_id if vs else "21m00Tcm4TlvDq8ikWAM"
-    except:
+    except Exception:
         return "21m00Tcm4TlvDq8ikWAM"
 
 def _speak_local(text: str):
@@ -311,7 +311,7 @@ def _clip_watcher():
                 if cur != last and len(cur) > 15:
                     last = cur
                     speak(cur)
-            except: pass
+            except Exception: pass
 
 # ── Main ───────────────────────────────────────────
 def main():
