@@ -434,10 +434,10 @@ class VisionRAGManager:
                 "build_elapsed_ms": str(elapsed_ms),
                 "schema_version": "2",
             }
-            for key, value in meta.items():
-                conn.execute(
-                    "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value)
-                )
+            conn.executemany(
+                "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)",
+                list(meta.items()),
+            )
 
             conn.commit()
 
