@@ -736,6 +736,14 @@ _el_active: bool = False
 
 def write_log(event: str, detail: str) -> None:
     ts = datetime.now().isoformat(timespec="milliseconds")
+    try:
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size > 100_000_000:
+            rotated = LOG_FILE.with_name(
+                f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
+            )
+            LOG_FILE.rename(rotated)
+    except OSError:
+        pass
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
@@ -1354,7 +1362,16 @@ class Memory:
         return any(token in lowered for token in ("prefer", "likes", "uses", "wants", "always", "default"))
 
     def save(self) -> None:
-        MEMORY_FILE.write_text(json.dumps(self.data, indent=2, ensure_ascii=False), encoding="utf-8")
+        import tempfile as _tf
+        payload = json.dumps(self.data, indent=2, ensure_ascii=False)
+        tmp_fd, tmp_path = _tf.mkstemp(dir=MEMORY_FILE.parent, suffix=".tmp", text=True)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+            Path(tmp_path).replace(MEMORY_FILE)  # atomic rename on Windows + Unix
+        except Exception:
+            with contextlib.suppress(OSError):
+                Path(tmp_path).unlink()
 
     def add_fact(self, fact: str) -> None:
         fact = self._clean_text(fact, 160).strip(" \"'")
@@ -2562,6 +2579,10 @@ async def api_health() -> JSONResponse:
     result["providers"] = {p: _provider_has_key(p) for p in PROVIDERS if p != "ollama"}
     result["preflight"] = _preflight_result
     result["last_stage_timing"] = _last_stage_timing
+    result["current_provider"] = current_provider
+    result["current_model"] = current_model
+    result["active_connections"] = len(clients)
+    result["background_tasks"] = len(_background_tasks)
     return JSONResponse(result)
 
 
@@ -2849,9 +2870,13 @@ async def ws_ep(websocket: WebSocket) -> None:
     try:
         while True:
             raw = await websocket.receive_text()
+            if len(raw) > 1_000_000:
+                write_log("ws_error", f"oversized message rejected ({len(raw)} bytes) from {websocket.client}")
+                continue
             try:
                 msg = json.loads(raw)
-            except Exception:
+            except json.JSONDecodeError:
+                write_log("ws_error", f"JSON parse failed: {raw[:200]!r}")
                 continue
             t = msg.get("type")
             if t == "mute":
@@ -5453,6 +5478,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
             proc = await loop.run_in_executor(None, _run_with_memory_guard)
             output = (proc.stdout or proc.stderr or "").strip()
+            status = "success" if proc.returncode == 0 else f"error(rc={proc.returncode})"
+            write_log("execute_python_result", f"status={status} output_len={len(output)}")
             return output[:4000] or "(code ran with no output)"
         except subprocess.TimeoutExpired:
             return f"execute_python timed out after {timeout}s and was terminated"

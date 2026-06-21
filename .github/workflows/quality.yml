@@ -45,6 +45,19 @@ jobs:
         run: python -m bandit -r . -f json -o bandit.json
         continue-on-error: true
 
+      - name: Dependency vulnerability audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit --desc --format=json -o pip-audit.json || true
+        continue-on-error: true
+
+      - name: Upload pip-audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-results-py${{ matrix.python-version }}
+          path: pip-audit.json
+
       - name: Upload bandit results
         if: always()
         uses: actions/upload-artifact@v4
