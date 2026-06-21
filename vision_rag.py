@@ -292,6 +292,9 @@ class VisionRAGManager:
             total_chars = 0
             now = datetime.utcnow().isoformat()
 
+            chunks_rows: list[tuple] = []
+            fts_rows: list[tuple] = []
+
             for path in files:
                 try:
                     text, source_type = self._extract_text(path)
@@ -307,21 +310,22 @@ class VisionRAGManager:
                     chunk_id = hashlib.sha1(f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")).hexdigest()
                     char_count = len(chunk)
                     token_count = _token_count(chunk)
-
-                    conn.execute(
-                        """
-                        INSERT INTO chunks(chunk_id, rel_path, abs_path, source_type, content, char_count, token_count, created_at)
-                        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (chunk_id, rel_path, str(path), source_type, chunk, char_count, token_count, now),
-                    )
-                    conn.execute(
-                        "INSERT INTO chunks_fts(chunk_id, rel_path, content) VALUES(?, ?, ?)",
-                        (chunk_id, rel_path, chunk),
-                    )
-
+                    chunks_rows.append((chunk_id, rel_path, str(path), source_type, chunk, char_count, token_count, now))
+                    fts_rows.append((chunk_id, rel_path, chunk))
                     total_chunks += 1
                     total_chars += char_count
+
+            conn.executemany(
+                """
+                INSERT INTO chunks(chunk_id, rel_path, abs_path, source_type, content, char_count, token_count, created_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                chunks_rows,
+            )
+            conn.executemany(
+                "INSERT INTO chunks_fts(chunk_id, rel_path, content) VALUES(?, ?, ?)",
+                fts_rows,
+            )
 
             finished = datetime.utcnow()
             elapsed_ms = int((finished - started).total_seconds() * 1000)
