@@ -2704,9 +2704,12 @@ async def api_rag_index(payload: dict[str, Any], request: Request) -> JSONRespon
         wait = int(60.0 - (now_ts - last_ts))
         return JSONResponse({"error": f"Minimum 60s between rebuilds — retry in {wait}s"}, status_code=429)
     _rag_last_build_times[last_key] = now_ts
-    max_files = int(payload.get("max_files", 0) or 0)
-    chunk_size = int(payload.get("chunk_size", 1400) or 1400)
-    overlap = int(payload.get("overlap", 220) or 220)
+    try:
+        max_files = int(payload.get("max_files", 0) or 0)
+        chunk_size = int(payload.get("chunk_size", 1400) or 1400)
+        overlap = int(payload.get("overlap", 220) or 220)
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": f"Invalid parameter: {str(e)[:80]}"}, status_code=400)
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         None,
@@ -2717,9 +2720,12 @@ async def api_rag_index(payload: dict[str, Any], request: Request) -> JSONRespon
 
 @app.post("/api/rag/search")
 async def api_rag_search(payload: dict[str, Any]) -> JSONResponse:
-    query = str(payload.get("query", "")).strip()
-    limit = int(payload.get("limit", 8) or 8)
-    include_content = bool(payload.get("include_content", True))
+    try:
+        query = str(payload.get("query", "")).strip()
+        limit = int(payload.get("limit", 8) or 8)
+        include_content = bool(payload.get("include_content", True))
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": f"Invalid parameter: {str(e)[:80]}"}, status_code=400)
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         None,
@@ -2734,7 +2740,10 @@ async def api_rag_export_training(payload: dict[str, Any], request: Request) -> 
     client_ip = request.client.host if request.client else ""
     if client_ip not in {"127.0.0.1", "::1", "localhost"}:
         return JSONResponse({"error": "Forbidden — RAG export endpoints are localhost-only"}, status_code=403)
-    max_examples = max(0, min(int(payload.get("max_examples", 0) or 0), 10_000))
+    try:
+        max_examples = max(0, min(int(payload.get("max_examples", 0) or 0), 10_000))
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": f"Invalid parameter: {str(e)[:80]}"}, status_code=400)
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, lambda: _rag_manager.export_training_data(max_examples=max_examples))
     status = 200 if result.get("ok") else 400
@@ -3070,7 +3079,7 @@ async def ws_ep(websocket: WebSocket) -> None:
                         )
                     else:
                         _set_request_lane_busy(websocket, True)
-                        asyncio.create_task(_run_tool(tool_name, tool_args))
+                        _tracked_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
                 ws_provider = msg.get("provider", "").strip()
                 ws_model = msg.get("model", "").strip()
