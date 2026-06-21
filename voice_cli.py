@@ -108,7 +108,10 @@ def _get_pyttsx():
 
 def _tts_worker():
     while True:
-        text = _tts_queue.get()
+        try:
+            text = _tts_queue.get(timeout=2.0)
+        except queue.Empty:
+            continue
         if text is None:
             break
         text = text.strip()
@@ -138,20 +141,23 @@ def _speak_eleven(text: str):
         model_id="eleven_turbo_v2_5",
     ))
     audio = b"".join(chunks)
+    fname = None
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         f.write(audio); fname = f.name
-    # Use Windows Media Player via PowerShell
-    ps = (
-        "Add-Type -AssemblyName presentationCore;"
-        f"$p=[System.Windows.Media.MediaPlayer]::new();"
-        f"$p.Open([uri]'{fname}'); $p.Play();"
-        "Start-Sleep -Milliseconds 500;"
-        "while($p.Position -lt $p.NaturalDuration.TimeSpan){{Start-Sleep -Milliseconds 200}};"
-        "$p.Close()"
-    )
-    subprocess.run(["powershell", "-c", ps], capture_output=True)
-    try: os.unlink(fname)
-    except Exception: pass
+    try:
+        # Use Windows Media Player via PowerShell
+        ps = (
+            "Add-Type -AssemblyName presentationCore;"
+            f"$p=[System.Windows.Media.MediaPlayer]::new();"
+            f"$p.Open([uri]'{fname}'); $p.Play();"
+            "Start-Sleep -Milliseconds 500;"
+            "while($p.Position -lt $p.NaturalDuration.TimeSpan){{Start-Sleep -Milliseconds 200}};"
+            "$p.Close()"
+        )
+        subprocess.run(["powershell", "-c", ps], capture_output=True, timeout=120)
+    finally:
+        try: os.unlink(fname)
+        except Exception: pass
 
 def _eleven_voice_id() -> str:
     try:
