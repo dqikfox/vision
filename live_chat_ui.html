@@ -2370,7 +2370,7 @@ async function openPicker() {
     const r = await fetch(API_URL + '/api/models');
     renderPicker(await r.json());
   } catch(e) {
-    document.getElementById('pickerBody').innerHTML = `<div style="padding:20px;color:var(--r)">Error: ${e.message}</div>`;
+    document.getElementById('pickerBody').innerHTML = `<div style="padding:20px;color:var(--r)">Error: ${escHtml(String(e.message || e))}</div>`;
   }
 }
 function closePicker() { document.getElementById('pickerModal').classList.remove('open'); }

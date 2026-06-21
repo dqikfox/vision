@@ -87,7 +87,6 @@ jobs:
 
       - name: Run unit tests
         run: pytest -v --cov-report=xml --junit-xml=junit.xml --cov-fail-under=50
-        continue-on-error: true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

@@ -1611,6 +1611,7 @@ def _persist_assistant_turn(user_text: str, assistant_text: str, actions_taken: 
 # ── Persistent SDK clients (cached per provider+key to avoid re-creating) ─────
 
 _oai_client_cache: dict[str, AsyncOpenAI] = {}
+_OAI_CACHE_MAX = 20
 
 
 def get_oai_client() -> AsyncOpenAI:
@@ -1620,11 +1621,22 @@ def get_oai_client() -> AsyncOpenAI:
     - Persistent client (not recreated each call) — avoids connection overhead
     - Granular httpx.Timeout (connect / read / write / pool separately)
     - max_retries=2 with automatic exponential back-off (openai-python default)
+    - LRU eviction: when cache exceeds _OAI_CACHE_MAX entries, the oldest is
+      removed and its underlying httpx connection pool is closed to free sockets.
     """
     p = PROVIDERS[current_provider]
     key = p.get("api_key") or "none"
     cache_key = f"{current_provider}:{key}"
     if cache_key not in _oai_client_cache:
+        # Evict oldest entry when the cache is full
+        if len(_oai_client_cache) >= _OAI_CACHE_MAX:
+            oldest_key, old_client = next(iter(_oai_client_cache.items()))
+            _oai_client_cache.pop(oldest_key, None)
+            try:
+                # Close the underlying httpx pool to release OS sockets
+                old_client._client.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
         if current_provider == "ollama":
             timeout = httpx.Timeout(connect=5.0, read=180.0, write=30.0, pool=5.0)
         else:
@@ -2115,25 +2127,37 @@ def _run_automation_routine(routine_id: str, *, record_history: bool = True) -> 
             },
         }
     elif action == "command":
-        proc = subprocess.run(
-            str(routine.get("command", "")),
-            cwd=str(BASE),
-            shell=True,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        output = "\n".join(part for part in [proc.stdout.strip(), proc.stderr.strip()] if part).strip()
-        payload = {
-            "routine": routine,
-            "result": {
-                "ok": proc.returncode == 0,
-                "summary": "Routine completed." if proc.returncode == 0 else "Routine failed.",
-                "exit_code": proc.returncode,
-                "output": output[-4000:],
-            },
-        }
+        try:
+            proc = subprocess.run(
+                str(routine.get("command", "")),
+                cwd=str(BASE),
+                shell=True,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            output = "\n".join(part for part in [proc.stdout.strip(), proc.stderr.strip()] if part).strip()
+            payload = {
+                "routine": routine,
+                "result": {
+                    "ok": proc.returncode == 0,
+                    "summary": "Routine completed." if proc.returncode == 0 else "Routine failed.",
+                    "exit_code": proc.returncode,
+                    "output": output[-4000:],
+                },
+            }
+        except subprocess.TimeoutExpired:
+            write_log("automation_timeout", f"routine {routine_id!r} timed out after 300s")
+            payload = {
+                "routine": routine,
+                "result": {
+                    "ok": False,
+                    "summary": "Routine timed out after 300 seconds.",
+                    "exit_code": -1,
+                    "output": "Timeout",
+                },
+            }
     else:
         raise ValueError(f"Unsupported automation routine action: {action}")
 
@@ -2639,6 +2663,14 @@ async def api_rag_index(payload: dict[str, Any], request: Request) -> JSONRespon
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"rag_index:{client_ip}", max_calls=5, window_secs=300.0):
         return JSONResponse({"error": "Rate limit exceeded — max 5 index builds per 5 minutes"}, status_code=429)
+    # Enforce a minimum 60-second gap between rebuilds to protect disk I/O
+    now_ts = time.time()
+    last_key = f"rag_index_last:{client_ip}"
+    last_ts = _rag_last_build_times.get(last_key, 0.0)
+    if now_ts - last_ts < 60.0:
+        wait = int(60.0 - (now_ts - last_ts))
+        return JSONResponse({"error": f"Minimum 60s between rebuilds — retry in {wait}s"}, status_code=429)
+    _rag_last_build_times[last_key] = now_ts
     max_files = int(payload.get("max_files", 0) or 0)
     chunk_size = int(payload.get("chunk_size", 1400) or 1400)
     overlap = int(payload.get("overlap", 220) or 220)
@@ -4587,6 +4619,7 @@ import collections as _collections
 
 _rate_buckets: dict[str, _collections.deque] = {}  # key → deque of timestamps
 _rate_limit_lock = threading.Lock()
+_rag_last_build_times: dict[str, float] = {}  # client_ip key → last build timestamp
 
 
 def _check_rate_limit(key: str, max_calls: int = 20, window_secs: float = 60.0) -> bool:

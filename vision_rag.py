@@ -312,7 +312,8 @@ class VisionRAGManager:
         started = datetime.utcnow()
         files = self._iter_source_files(max_files=max_files)
 
-        with self._connect() as conn:
+        conn = self._connect()
+        try:
             self._ensure_schema(conn)
 
             # Load existing file hashes so unchanged files can be skipped
@@ -434,6 +435,19 @@ class VisionRAGManager:
                 )
 
             conn.commit()
+
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.close()
+            except Exception:
+                pass
 
         return {
             "ok": True,
