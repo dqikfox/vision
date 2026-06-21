@@ -281,15 +281,17 @@ def _save_key(env_var: str, value: str) -> None:
         print(f"[keyring] save {env_var} failed: {e}")
     # Also write back to .env file
     try:
+        # Strip newlines/carriage-returns: a multi-line value would corrupt .env format
+        safe_value = value.replace("\r", "").replace("\n", "")
         lines = _ENV_FILE.read_text(encoding="utf-8").splitlines() if _ENV_FILE.exists() else []
         updated = False
         for i, ln in enumerate(lines):
             if ln.strip().startswith(env_var + "="):
-                lines[i] = f"{env_var}={value}"
+                lines[i] = f"{env_var}={safe_value}"
                 updated = True
                 break
         if not updated:
-            lines.append(f"{env_var}={value}")
+            lines.append(f"{env_var}={safe_value}")
         _ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception:
         pass
@@ -5094,8 +5096,14 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "press_key":
         key = args.get("key", "")
         parts = [p.strip() for p in key.lower().split("+")]
-        await loop.run_in_executor(None, lambda: pyautogui.hotkey(*parts))
-        return f"Pressed: {key}"
+        # Reject suspiciously long or non-ASCII key names before hitting pyautogui
+        if not parts or any(not p or len(p) > 30 or not p.isascii() for p in parts):
+            return f"press_key error: invalid key name in '{key}'"
+        try:
+            await loop.run_in_executor(None, lambda: pyautogui.hotkey(*parts))
+            return f"Pressed: {key}"
+        except Exception as e:
+            return _tool_err("press_key", e)
 
     # ── Clipboard ──────────────────────────────────────────────────────────────
     elif name == "get_clipboard":
@@ -5130,11 +5138,17 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             import pygetwindow as gw
 
-            wins = [w for w in gw.getAllWindows() if title.lower() in w.title.lower()]
+            all_wins = gw.getAllWindows()
+            # Exact match first to avoid focusing the wrong window with a common substring
+            wins = [w for w in all_wins if w.title.lower() == title.lower()]
+            match_type = "exact"
+            if not wins:
+                wins = [w for w in all_wins if title.lower() in w.title.lower()]
+                match_type = "substring"
             if wins:
                 wins[0].activate()
                 await asyncio.sleep(0.3)
-                return f"Focused: {wins[0].title}"
+                return f"Focused ({match_type}): {wins[0].title}"
             return f"No window matching '{title}' found"
         except Exception as e:
             return _tool_err("focus_window", e)
@@ -5413,7 +5427,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             import pygetwindow as gw
 
-            wins = [w_ for w_ in gw.getAllWindows() if title.lower() in w_.title.lower()]
+            all_wins = gw.getAllWindows()
+            wins = [w_ for w_ in all_wins if w_.title.lower() == title.lower()] or \
+                   [w_ for w_ in all_wins if title.lower() in w_.title.lower()]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].resizeTo(w, h)
@@ -5431,7 +5447,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             import pygetwindow as gw
 
-            wins = [w for w in gw.getAllWindows() if title.lower() in w.title.lower()]
+            all_wins = gw.getAllWindows()
+            wins = [w for w in all_wins if w.title.lower() == title.lower()] or \
+                   [w for w in all_wins if title.lower() in w.title.lower()]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].moveTo(x, y)
