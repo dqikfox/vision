@@ -431,6 +431,7 @@ _session_input_busy: dict[WebSocket, bool] = {}
 _session_input_locks: dict[WebSocket, asyncio.Lock] = {}
 _session_speak_tasks: dict[WebSocket, asyncio.Task[None]] = {}
 _active_request_targets: set[object] = set()
+_request_lane_lock: threading.Lock = threading.Lock()  # protects _active_request_targets / _input_busy
 _background_tasks: set[asyncio.Task[Any]] = set()  # tracked fire-and-forget tasks
 
 audio_q: asyncio.Queue[Any] | None = None
@@ -533,14 +534,15 @@ def _set_session_speak_task(target: WebSocket | None, task: asyncio.Task[None] |
 def _set_request_lane_busy(target: WebSocket | None, busy: bool) -> None:
     """Track request-lane occupancy per session while keeping a global voice gate."""
     global _input_busy
-    key = _request_target_key(target)
-    if busy:
-        _active_request_targets.add(key)
-    else:
-        _active_request_targets.discard(key)
-    if target is not None:
-        _session_input_busy[target] = busy
-    _input_busy = bool(_active_request_targets)
+    with _request_lane_lock:
+        key = _request_target_key(target)
+        if busy:
+            _active_request_targets.add(key)
+        else:
+            _active_request_targets.discard(key)
+        if target is not None:
+            _session_input_busy[target] = busy
+        _input_busy = bool(_active_request_targets)
 
 
 def _any_input_busy() -> bool:
@@ -5650,10 +5652,12 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 p = Path(fpath)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding=enc)
-            await loop.run_in_executor(None, _write)
+            await asyncio.wait_for(loop.run_in_executor(None, _write), timeout=10.0)
             return f"Written {len(content)} chars to {fpath}"
+        except asyncio.TimeoutError:
+            return _tool_err("write_file", TimeoutError(f"write to {fpath} timed out after 10s"))
         except Exception as e:
-            return f"Error writing {fpath}: {e}"
+            return _tool_err("write_file", e)
 
     elif name == "list_files":
         fpath = args.get("path", ".") or "."
@@ -7636,6 +7640,7 @@ async def speak(text_gen):
                                     }
                                 )
                             )
+                            out: sd.OutputStream | None = None
                             out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
                             out_started = False
                             out.start()
@@ -7732,7 +7737,8 @@ async def speak(text_gen):
                                                 await _handle_invalid_elevenlabs_auth(str(result))
                                 if out_started:
                                     out.stop()
-                                out.close()
+                                if out is not None:
+                                    out.close()
                             if got_audio and audio_started_at is not None and audio_finished_at is not None:
                                 playback_duration += max(audio_finished_at - audio_started_at, 0.0)
                             return got_audio
@@ -8271,15 +8277,18 @@ async def startup():
     brain_ai.start_background_tasks()
 
     async def _voice_supervisor() -> None:
+        backoff = 2.0
         while True:
             try:
                 await voice_loop()
+                backoff = 2.0  # reset on clean exit
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[voice] crashed ({e}), restarting in 2s…")
+                print(f"[voice] crashed ({e}), restarting in {backoff:.0f}s…")
                 await broadcast({"type": "state", "state": "idle"})
-                await asyncio.sleep(2)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)  # cap at 30s
 
     async def _restore_ollama_after_startup() -> None:
         for _ in range(12):

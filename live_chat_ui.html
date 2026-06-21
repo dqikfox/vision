@@ -2671,7 +2671,7 @@ async function loadVoices() {
     if (!container) return;
     container.innerHTML = voices.map((v) => {
       const shortName = v.name.replace('Microsoft ','').replace(' Desktop','');
-      return `<div class="r-opt" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${shortName}</div>`;
+      return `<div class="r-opt" data-val="${v.index}" onclick="selectRadio(this,'voiceRadios')">${escHtml(shortName)}</div>`;
     }).join('');
     // Restore the saved voice selection; fall back to the first voice
     const savedIdx = String(voiceSettings.tts_voice_idx ?? 0);
