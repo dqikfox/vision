@@ -212,7 +212,10 @@ class VisionRAGManager:
             """
         )
         # Migrate existing tables — add columns if missing (idempotent)
+        _ALLOWED_MIGRATION_COLS = {"file_mtime": "INTEGER", "file_hash": "TEXT"}
         for col, typedef in (("file_mtime", "INTEGER"), ("file_hash", "TEXT")):
+            if col not in _ALLOWED_MIGRATION_COLS or _ALLOWED_MIGRATION_COLS[col] != typedef:
+                raise ValueError(f"Unexpected migration column: {col!r}")
             try:
                 conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} {typedef};")
             except sqlite3.OperationalError:

@@ -2520,14 +2520,20 @@ async def api_command_center_config_save(payload: dict[str, Any]) -> JSONRespons
 
 
 @app.post("/api/command-center/routines/{routine_id}")
-async def api_command_center_run_routine(routine_id: str) -> JSONResponse:
+async def api_command_center_run_routine(routine_id: str, request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in {"127.0.0.1", "::1", "localhost"}:
+        return JSONResponse({"error": "Forbidden — command center endpoints are localhost-only"}, status_code=403)
     loop = asyncio.get_running_loop()
     payload = await loop.run_in_executor(None, lambda: _run_automation_routine(routine_id))
     return JSONResponse(payload)
 
 
 @app.post("/api/command-center/missions/{mission_id}")
-async def api_command_center_run_mission(mission_id: str) -> JSONResponse:
+async def api_command_center_run_mission(mission_id: str, request: Request) -> JSONResponse:
+    client_ip = request.client.host if request.client else ""
+    if client_ip not in {"127.0.0.1", "::1", "localhost"}:
+        return JSONResponse({"error": "Forbidden — command center endpoints are localhost-only"}, status_code=403)
     loop = asyncio.get_running_loop()
     payload = await loop.run_in_executor(None, lambda: _run_automation_mission(mission_id))
     return JSONResponse(payload)
@@ -2736,7 +2742,11 @@ async def screenshot_ep(request: Request) -> JSONResponse:
             base64.b64encode(buf_ui.getvalue()).decode(),
         )
 
-    hd, data = await loop.run_in_executor(None, _snap)
+    try:
+        hd, data = await asyncio.wait_for(loop.run_in_executor(None, _snap), timeout=10.0)
+    except asyncio.TimeoutError:
+        write_log("screenshot_timeout", "pyautogui.screenshot() exceeded 10s — possible display driver hang")
+        return JSONResponse({"error": "Screenshot timed out (display driver hang?)"}, status_code=504)
     return JSONResponse({"data": data, "hd": hd})
 
 
@@ -5585,7 +5595,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return "fetch_url error: URL must start with http:// or https://"
         timeout_secs = max(5, min(int(args.get("timeout_secs", 20)), 60))
         try:
-            async with httpx.AsyncClient(timeout=timeout_secs, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5.0, read=float(timeout_secs), write=10.0, pool=5.0),
+                follow_redirects=True,
+            ) as client:
                 r = await client.get(url, headers={"User-Agent": "Mozilla/5.0 VISION-Operator/1.0"})
                 r.raise_for_status()
                 content_type = r.headers.get("content-type", "")
