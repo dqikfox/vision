@@ -26,7 +26,7 @@ httpx>=0.27.0
 mcp[cli]>=1.0.0
 
 # Web / search
-ddgs>=6.0
+ddgs>=9.14.4
 markdownify>=0.11.6
 
 # Utilities
