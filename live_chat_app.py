@@ -5706,6 +5706,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         if not isinstance(pattern, str) or len(pattern) > 256 or any(c in pattern for c in ("/", "\\", "\0")):
             return _tool_err("list_files", ValueError(f"invalid pattern: {str(pattern)[:60]}"))
         try:
+            _validate_tool_path(fpath)
             def _listdir():
                 p = Path(fpath)
                 entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
