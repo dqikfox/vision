@@ -227,13 +227,20 @@ class VisionRAGManager:
         """Run PRAGMA optimize and checkpoint WAL on the index database if it exists."""
         if not self.db_path.exists():
             return
+        conn = None
         try:
-            with self._connect() as conn:
-                conn.execute("PRAGMA optimize;")
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.commit()
+            conn = self._connect()
+            conn.execute("PRAGMA optimize;")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.commit()
         except Exception:
             pass
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def _extract_text(self, path: Path) -> tuple[str, str]:
         suffix = path.suffix.lower()

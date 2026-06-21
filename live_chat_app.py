@@ -1753,7 +1753,8 @@ async def fetch_ollama_models() -> list[str]:
     try:
         client = get_ollama_client()
         resp = await client.list()
-        return [m.model for m in resp.models if m.model] if resp.models else []
+        models = [str(m.model).strip() for m in resp.models if m and m.model]
+        return [m for m in models if m] if resp.models else []
     except OllamaResponseError as e:
         print(f"[ollama] list error: {e.error}")
     except Exception as e:
@@ -1820,8 +1821,14 @@ def _load_command_center_config() -> dict[str, Any]:
                 f"{COMMAND_CENTER_CONFIG_FILE.stem}.bad-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
             )
             COMMAND_CENTER_CONFIG_FILE.rename(bad)
-        except Exception:
-            pass
+            write_log("config_quarantined", f"moved corrupt file to {bad.name}")
+        except Exception as rename_err:
+            # Fallback: delete if rename fails (e.g. locked file on Windows)
+            write_log("config_rename_failed", f"rename failed ({rename_err}) — deleting corrupt file")
+            try:
+                COMMAND_CENTER_CONFIG_FILE.unlink(missing_ok=True)
+            except Exception as del_err:
+                write_log("config_delete_failed", str(del_err))
         return dict(DEFAULT_COMMAND_CENTER_CONFIG)
     if not isinstance(payload, dict):
         raise ValueError("vision_command_center_config.json must contain a JSON object.")
@@ -4586,7 +4593,8 @@ def _check_rate_limit(key: str, max_calls: int = 20, window_secs: float = 60.0) 
     """Return True if the call is allowed; False if rate-limited.
 
     Uses a sliding-window counter keyed by *key* (e.g. endpoint name or IP).
-    Thread-safe via _rate_limit_lock.
+    Thread-safe via _rate_limit_lock. Cleans up empty buckets to prevent
+    unbounded memory growth from unique IP keys on long-running servers.
     """
     with _rate_limit_lock:
         now = time.monotonic()
@@ -4596,6 +4604,11 @@ def _check_rate_limit(key: str, max_calls: int = 20, window_secs: float = 60.0) 
         # Evict timestamps outside the window
         while dq and dq[0] < now - window_secs:
             dq.popleft()
+        # Opportunistic sweep: remove at most 20 stale empty buckets per call
+        if len(_rate_buckets) > 500:
+            stale = [k for k, v in _rate_buckets.items() if not v and k != key][:20]
+            for stale_key in stale:
+                del _rate_buckets[stale_key]
         if len(dq) >= max_calls:
             return False
         dq.append(now)
@@ -5360,9 +5373,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             result = await asyncio.wait_for(page.evaluate(js), timeout=10.0)
             return str(result)[:2000] if result is not None else "(no return value)"
         except asyncio.TimeoutError:
+            write_log("browser_eval_timeout", f"js={js[:100]!r}")
             return "browser_eval timed out after 10s"
         except Exception as e:
-            return f"JS error: {e}"
+            write_log("browser_eval_error", f"js={js[:100]!r} error={type(e).__name__}")
+            return _tool_err("browser_eval", e)
 
     elif name == "browser_get_url":
         page = await get_browser_page()
