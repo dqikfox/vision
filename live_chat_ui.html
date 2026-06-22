@@ -620,6 +620,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.08);border:1px solid rgba(29,78,216,.2);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
   color:var(--tx2);transition:all .2s;
+  padding:0;
 }
 .modal-close:hover{background:rgba(239,68,68,.2);color:var(--r);border-color:var(--r)}
 
@@ -1088,7 +1089,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="panel-body">
     <div class="panel-header" style="color:var(--p2)">
       ⬡ VISION CONSOLE
-      <button onclick="clearChat()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--dim);font-size:10px;letter-spacing:.15em;font-family:var(--font-ui)">CLEAR</button>
+      <button onclick="clearChat()" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--dim);font-size:10px;letter-spacing:.15em;font-family:var(--font-ui)" aria-label="Clear chat history">CLEAR</button>
     </div>
     <div class="panel-scroll" id="consoleMessages"></div>
     <!-- Memory mini -->
@@ -1349,7 +1350,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1373,7 +1374,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="Open ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
@@ -1389,7 +1390,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODALS ═══ -->
 <div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+  <button class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')" aria-label="Close screenshot preview">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
@@ -1397,7 +1398,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px" aria-label="Close model picker">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
@@ -1407,7 +1408,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" onclick="closeSystemMap()" aria-label="Close system map">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
