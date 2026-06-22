@@ -24,7 +24,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - Memory store: `memory.json`
 - Event log: `chat_events.log`
 - MCP integration: workspace-configured servers for tools, memory, and automation
-- Chronicle layer: `/chronicle tips` slash command + `GET /api/chronicle/tips` — analyzes session history, preferences, and facts to stream personalized LLM-powered usage tips
+- Chronicle layer: `/chronicle tips` slash command + `GET /api/chronicle/context` — analyzes session history, preferences, and facts to stream personalized LLM-powered usage tips
 
 ## Evolution Roadmap
 

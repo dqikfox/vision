@@ -1168,6 +1168,9 @@ async def _single_text_stream(text: str) -> AsyncGenerator[str, Any]:
 
 def _chronicle_tips_context() -> str:
     """Build a summary of the user's session history and usage patterns for /chronicle tips."""
+    _MAX_PREFS = 20
+    _MAX_FACTS = 30
+    _MAX_TASKS = 50
     d = memory.data
     lines: list[str] = []
 
@@ -1180,16 +1183,16 @@ def _chronicle_tips_context() -> str:
 
     prefs = user.get("preferences", [])
     if prefs:
-        lines.append("Recorded preferences:\n" + "\n".join(f"  - {p}" for p in prefs[-20:]))
+        lines.append("Recorded preferences:\n" + "\n".join(f"  - {p}" for p in prefs[-_MAX_PREFS:]))
 
     facts = d.get("facts", [])
     if facts:
-        lines.append("Remembered facts:\n" + "\n".join(f"  - {f}" for f in facts[-30:]))
+        lines.append("Remembered facts:\n" + "\n".join(f"  - {f}" for f in facts[-_MAX_FACTS:]))
 
     tasks = d.get("task_history", [])
     if tasks:
         lines.append("Recent tasks (most-recent last):")
-        for t in tasks[-50:]:
+        for t in tasks[-_MAX_TASKS:]:
             ts_short = t.get("ts", "")[:10]
             lines.append(f"  [{ts_short}] {t['task']}")
 
@@ -1197,7 +1200,7 @@ def _chronicle_tips_context() -> str:
 
 
 async def _chronicle_tips_stream() -> AsyncGenerator[str, Any]:
-    """Stream personalised tips derived from the user's stored session history via LLM."""
+    """Stream personalized tips derived from the user's stored session history via LLM."""
     ctx = _chronicle_tips_context()
     if not ctx.strip():
         yield "No session history found yet. Use Vision for a while and then try /chronicle tips again."
@@ -1205,7 +1208,7 @@ async def _chronicle_tips_stream() -> AsyncGenerator[str, Any]:
 
     prompt = (
         "You are Vision's personal coach. Based on the user's session history below, "
-        "produce 5–8 concise, actionable, personalised tips that will help them get more "
+        "produce 5–8 concise, actionable, personalized tips that will help them get more "
         "out of Vision. Focus on patterns you see: repeated tasks that could be automated, "
         "underused features, preferred workflows, and any friction points suggested by the "
         "history. Format each tip as a numbered list item. Be specific and reference "
@@ -2673,12 +2676,12 @@ async def api_memory() -> JSONResponse:
     return JSONResponse(memory.get_all())
 
 
-@app.get("/api/chronicle/tips")
-async def api_chronicle_tips() -> JSONResponse:
-    """Return personalized tips based on the user's stored session history."""
+@app.get("/api/chronicle/context")
+async def api_chronicle_context() -> JSONResponse:
+    """Return the raw session-history context used to generate /chronicle tips."""
     ctx = _chronicle_tips_context()
     if not ctx.strip():
-        return JSONResponse({"tips": None, "message": "No session history available yet."})
+        return JSONResponse({"context": None, "message": "No session history available yet."})
     return JSONResponse({"context": ctx})
 
 
@@ -8010,7 +8013,7 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 else:
                     memory.add_task(text)
                     await set_state("thinking")
-                    if text.strip().casefold().startswith("/chronicle"):
+                    if text.strip().casefold() in ("/chronicle", "/chronicle tips"):
                         write_log("chronicle", "tips requested")
                         gen = _chronicle_tips_stream()
                     else:

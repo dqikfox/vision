@@ -310,7 +310,7 @@ Vision analyzes your stored task history, preferences, and remembered facts, the
 The same data is available as a REST endpoint:
 
 ```
-GET http://localhost:8765/api/chronicle/tips
+GET http://localhost:8765/api/chronicle/context
 ```
 
 ---
