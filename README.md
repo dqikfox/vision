@@ -297,6 +297,22 @@ The system remembers facts, preferences, and past tasks across sessions.
 
 Memory is stored in `memory.json` — delete to reset.
 
+### `/chronicle tips` — Personalized Usage Tips
+
+Type `/chronicle tips` (or just `/chronicle`) in the chat to get LLM-powered, personalized tips based on your session history:
+
+```
+/chronicle tips
+```
+
+Vision analyzes your stored task history, preferences, and remembered facts, then streams a numbered list of actionable tips tailored to your usage patterns — highlighting repeated tasks that could be automated, underused features, and preferred workflows.
+
+The same data is available as a REST endpoint:
+
+```
+GET http://localhost:8765/api/chronicle/tips
+```
+
 ---
 
 ## RAG Knowledge Base (F:\\rag-v1\\data)

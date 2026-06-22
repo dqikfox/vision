@@ -24,6 +24,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 - Memory store: `memory.json`
 - Event log: `chat_events.log`
 - MCP integration: workspace-configured servers for tools, memory, and automation
+- Chronicle layer: `/chronicle tips` slash command + `GET /api/chronicle/tips` — analyzes session history, preferences, and facts to stream personalized LLM-powered usage tips
 
 ## Evolution Roadmap
 
@@ -123,6 +124,7 @@ Build and maintain VISION as a reliable, secure, and high-performance accessibil
 ## Change Log
 - 2026-04-11: Initialized project file with mission, roadmap, quality gates, and ownership
 - 2026-04-11: Added success metrics, iteration board, cadence, and risk management sections
+- 2026-06-22: Added `/chronicle tips` slash command and `GET /api/chronicle/tips` endpoint for personalized LLM-powered session tips
 
 ## Ownership
 - Primary maintainers: project owner and collaborating agents

@@ -1166,6 +1166,56 @@ async def _single_text_stream(text: str) -> AsyncGenerator[str, Any]:
     yield text
 
 
+def _chronicle_tips_context() -> str:
+    """Build a summary of the user's session history and usage patterns for /chronicle tips."""
+    d = memory.data
+    lines: list[str] = []
+
+    sessions = d.get("session_count", 0)
+    lines.append(f"Sessions: {sessions}")
+
+    user = d.get("user", {})
+    if user.get("name"):
+        lines.append(f"User name: {user['name']}")
+
+    prefs = user.get("preferences", [])
+    if prefs:
+        lines.append("Recorded preferences:\n" + "\n".join(f"  - {p}" for p in prefs[-20:]))
+
+    facts = d.get("facts", [])
+    if facts:
+        lines.append("Remembered facts:\n" + "\n".join(f"  - {f}" for f in facts[-30:]))
+
+    tasks = d.get("task_history", [])
+    if tasks:
+        lines.append("Recent tasks (most-recent last):")
+        for t in tasks[-50:]:
+            ts_short = t.get("ts", "")[:10]
+            lines.append(f"  [{ts_short}] {t['task']}")
+
+    return "\n".join(lines)
+
+
+async def _chronicle_tips_stream() -> AsyncGenerator[str, Any]:
+    """Stream personalised tips derived from the user's stored session history via LLM."""
+    ctx = _chronicle_tips_context()
+    if not ctx.strip():
+        yield "No session history found yet. Use Vision for a while and then try /chronicle tips again."
+        return
+
+    prompt = (
+        "You are Vision's personal coach. Based on the user's session history below, "
+        "produce 5–8 concise, actionable, personalised tips that will help them get more "
+        "out of Vision. Focus on patterns you see: repeated tasks that could be automated, "
+        "underused features, preferred workflows, and any friction points suggested by the "
+        "history. Format each tip as a numbered list item. Be specific and reference "
+        "actual tasks or preferences where relevant.\n\n"
+        f"=== SESSION HISTORY ===\n{ctx}\n=== END ==="
+    )
+    async for chunk in llm_stream(prompt):
+        yield chunk
+
+
 def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -> str:
     normalized = " ".join((result or "").split())
     lowered = normalized.lower()
@@ -2621,6 +2671,15 @@ async def api_del_fact(payload: dict[str, Any]) -> JSONResponse:
 @app.get("/api/memory")
 async def api_memory() -> JSONResponse:
     return JSONResponse(memory.get_all())
+
+
+@app.get("/api/chronicle/tips")
+async def api_chronicle_tips() -> JSONResponse:
+    """Return personalized tips based on the user's stored session history."""
+    ctx = _chronicle_tips_context()
+    if not ctx.strip():
+        return JSONResponse({"tips": None, "message": "No session history available yet."})
+    return JSONResponse({"context": ctx})
 
 
 @app.get("/api/metrics")
@@ -7951,14 +8010,18 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 else:
                     memory.add_task(text)
                     await set_state("thinking")
-                    direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
-                    if direct_tool:
-                        tool_name, tool_args, success_reply = direct_tool
-                        result = await exec_tool(tool_name, tool_args)
-                        await broadcast_action(tool_name, tool_args, result)
-                        gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
+                    if text.strip().casefold().startswith("/chronicle"):
+                        write_log("chronicle", "tips requested")
+                        gen = _chronicle_tips_stream()
                     else:
-                        gen = llm_stream(text)
+                        direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
+                        if direct_tool:
+                            tool_name, tool_args, success_reply = direct_tool
+                            result = await exec_tool(tool_name, tool_args)
+                            await broadcast_action(tool_name, tool_args, result)
+                            gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
+                        else:
+                            gen = llm_stream(text)
                 current_speak_task = asyncio.create_task(speak(gen))
                 _set_session_speak_task(target, current_speak_task)
                 await current_speak_task
