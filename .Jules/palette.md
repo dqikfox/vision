@@ -1,0 +1,4 @@
+## 2024-05-17 - Missing ARIA labels and non-semantic buttons
+
+**Learning:** It is common for quick UI actions in command centers (like modal close buttons or action triggers) to use `div` elements with click handlers or icon-only `button` elements without `aria-label` attributes. This breaks keyboard accessibility and leaves screen reader users without context for these actions.
+**Action:** Always use semantic `<button>` elements for clickable actions, and ensure any button relying on an icon or text like "✕" has a descriptive `aria-label` (e.g., `aria-label="Close modal"`). When converting `div`s to `button`s, verify that the CSS styling accommodates the default button appearance (e.g., overriding `padding`, `border`, and `background`).
