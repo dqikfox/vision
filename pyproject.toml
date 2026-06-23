@@ -86,7 +86,6 @@ module = [
     "pyautogui",
     "sounddevice",
     "pynvml",
-    "nvidia_ml_py",
     "elevenlabs.*",
     "ollama",
     "anthropic",
