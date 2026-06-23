@@ -4,6 +4,7 @@ elite_memory.py — Semantic memory, context optimization, auto-summarization
 Sliding window context, relevance ranking, automatic summary generation.
 """
 
+import contextlib
 import json
 import os
 import tempfile
@@ -11,7 +12,6 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -20,9 +20,7 @@ class Message:
 
     role: str  # "user", "assistant", "system"
     content: str
-    timestamp: float = field(
-        default_factory=lambda: datetime.now().timestamp()
-    )
+    timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
     tokens: int = 0
     relevance_score: float = 1.0
     is_summary: bool = False
@@ -33,7 +31,7 @@ class ContextOptimizer:
 
     def __init__(self, max_tokens: int = 8000):
         self.max_tokens = max_tokens
-        self.messages: List[Message] = []
+        self.messages: list[Message] = []
         self.total_tokens = 0
 
     def add_message(self, role: str, content: str, tokens: int = 0) -> None:
@@ -51,10 +49,7 @@ class ContextOptimizer:
         """Remove least relevant messages to fit token budget."""
         while self.total_tokens > self.max_tokens and len(self.messages) > 1:
             # Keep system prompts, remove oldest non-critical
-            candidates = [
-                (i, m) for i, m in enumerate(self.messages)
-                if m.role != "system"
-            ]
+            candidates = [(i, m) for i, m in enumerate(self.messages) if m.role != "system"]
             if not candidates:
                 break
 
@@ -63,7 +58,7 @@ class ContextOptimizer:
             self.messages.pop(idx)
             self.total_tokens -= msg.tokens
 
-    def get_context(self) -> List[dict]:
+    def get_context(self) -> list[dict]:
         """Return optimized context for LLM."""
         return [
             {
@@ -83,13 +78,13 @@ class ConversationSummarizer:
 
     def __init__(self, threshold_messages: int = 20):
         self.threshold = threshold_messages
-        self.summaries: List[str] = []
+        self.summaries: list[str] = []
 
     async def maybe_summarize(
         self,
-        messages: List[Message],
+        messages: list[Message],
         summarize_fn,  # async callable returning summary
-    ) -> Optional[str]:
+    ) -> str | None:
         """Trigger summarization if messages exceed threshold."""
         if len(messages) < self.threshold:
             return None
@@ -98,9 +93,7 @@ class ConversationSummarizer:
         cutoff = int(len(messages) * 0.7)
         to_summarize = messages[:cutoff]
 
-        conversation_text = "\n".join([
-            f"{m.role}: {m.content}" for m in to_summarize
-        ])
+        conversation_text = "\n".join([f"{m.role}: {m.content}" for m in to_summarize])
 
         summary = await summarize_fn(conversation_text)
         self.summaries.append(summary)
@@ -114,7 +107,7 @@ class SemanticMemoryIndex:
 
     def __init__(self):
         # keyword → [(msg_idx, relevance), ...]
-        self.index: dict[str, List[tuple[int, float]]] = {}
+        self.index: dict[str, list[tuple[int, float]]] = {}
 
     def index_message(self, idx: int, content: str) -> None:
         """Index message by keywords."""
@@ -125,7 +118,7 @@ class SemanticMemoryIndex:
                     self.index[word] = []
                 self.index[word].append((idx, 1.0))
 
-    def search(self, query: str, top_k: int = 3) -> List[int]:
+    def search(self, query: str, top_k: int = 3) -> list[int]:
         """Find most relevant messages by keyword overlap."""
         query_words = set(query.lower().split())
         scores: dict[int, float] = {}
@@ -135,16 +128,13 @@ class SemanticMemoryIndex:
                 for idx, _ in self.index[word]:
                     scores[idx] = scores.get(idx, 0) + 1.0
 
-        return [
-            idx for idx, _
-            in sorted(scores.items(), key=lambda x: -x[1])[:top_k]
-        ]
+        return [idx for idx, _ in sorted(scores.items(), key=lambda x: -x[1])[:top_k]]
 
 
 class EliteMemory:
     """Enhanced memory with context optimization + semantic search."""
 
-    def __init__(self, memory_file: Optional[Path] = None):
+    def __init__(self, memory_file: Path | None = None):
         self.context_opt = ContextOptimizer(max_tokens=8000)
         self.summarizer = ConversationSummarizer()
         self.search_index = SemanticMemoryIndex()
@@ -159,25 +149,21 @@ class EliteMemory:
         idx = len(self.context_opt.messages) - 1
         self.search_index.index_message(idx, content)
 
-    async def maybe_summarize(self, summarize_fn) -> Optional[str]:
+    async def maybe_summarize(self, summarize_fn) -> str | None:
         """Auto-summarize if needed."""
         return await self.summarizer.maybe_summarize(
             self.context_opt.messages,
             summarize_fn,
         )
 
-    def get_context(self) -> List[dict]:
+    def get_context(self) -> list[dict]:
         """Get optimized context for LLM."""
         return self.context_opt.get_context()
 
-    def search(self, query: str) -> List[str]:
+    def search(self, query: str) -> list[str]:
         """Semantic search in conversation."""
         indices = self.search_index.search(query)
-        return [
-            self.context_opt.messages[i].content
-            for i in indices
-            if i < len(self.context_opt.messages)
-        ]
+        return [self.context_opt.messages[i].content for i in indices if i < len(self.context_opt.messages)]
 
     def add_fact(self, category: str, fact: str) -> None:
         """Store semantic fact."""
@@ -186,7 +172,7 @@ class EliteMemory:
         self.facts[category].append(fact)
         self.save()
 
-    def get_facts(self, category: str) -> List[str]:
+    def get_facts(self, category: str) -> list[str]:
         """Retrieve facts by category."""
         return self.facts.get(category, [])
 
@@ -205,10 +191,8 @@ class EliteMemory:
                         json.dump(data, f, indent=2)
                     Path(tmp_path).replace(self.memory_file)
                 except Exception:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.unlink(tmp_path)
-                    except OSError:
-                        pass
                     raise
             except Exception as e:
                 print(f"[memory] save failed: {e}")

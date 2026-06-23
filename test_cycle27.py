@@ -57,8 +57,7 @@ def test_make_tool_handler_snapshots_main_loop():
     body = fn.group()
     # Must assign _main_loop to a local variable before using it
     assert "loop = _main_loop" in body or "local_loop = _main_loop" in body, (
-        "_make_tool_handler must snapshot _main_loop to a local variable "
-        "to avoid TOCTOU race during server shutdown"
+        "_make_tool_handler must snapshot _main_loop to a local variable to avoid TOCTOU race during server shutdown"
     )
 
 
@@ -72,8 +71,7 @@ def test_make_tool_handler_handles_runtime_error():
     assert fn is not None
     body = fn.group()
     assert "RuntimeError" in body, (
-        "_make_tool_handler must catch RuntimeError from run_coroutine_threadsafe "
-        "on a closed/None event loop"
+        "_make_tool_handler must catch RuntimeError from run_coroutine_threadsafe on a closed/None event loop"
     )
 
 
@@ -90,8 +88,7 @@ def test_make_tool_handler_no_bare_main_loop_in_run():
     assert "run_coroutine_threadsafe(exec_tool" in body, "exec_tool dispatch must exist"
     # The direct _main_loop reference in the run call should be gone
     assert "run_coroutine_threadsafe(exec_tool(tool_name, params), _main_loop)" not in body, (
-        "run_coroutine_threadsafe must use a local snapshot of _main_loop, "
-        "not the global directly"
+        "run_coroutine_threadsafe must use a local snapshot of _main_loop, not the global directly"
     )
 
 
@@ -115,6 +112,5 @@ def test_tts_worker_no_compound_statements():
         if stripped.startswith("#"):
             continue
         assert ";" not in stripped, (
-            f"_tts_worker contains compound statement: {stripped!r} — "
-            "split onto separate lines for clarity"
+            f"_tts_worker contains compound statement: {stripped!r} — split onto separate lines for clarity"
         )
