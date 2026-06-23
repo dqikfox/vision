@@ -29,12 +29,9 @@ def _read(path: str) -> str:
 def test_run_tool_uses_tracked_task():
     src = _read(APP)
     assert "asyncio.create_task(_run_tool(" not in src, (
-        "WS tool dispatch must use _tracked_task(_run_tool(...)) "
-        "not bare asyncio.create_task()"
+        "WS tool dispatch must use _tracked_task(_run_tool(...)) not bare asyncio.create_task()"
     )
-    assert "_tracked_task(_run_tool(" in src, (
-        "_tracked_task(_run_tool(...)) must be present in WS handler"
-    )
+    assert "_tracked_task(_run_tool(" in src, "_tracked_task(_run_tool(...)) must be present in WS handler"
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +55,7 @@ def test_rag_index_int_params_guarded():
     except_pos = body.find("(ValueError, TypeError)")
     assert try_pos != -1, "api_rag_index must wrap int() parsing in try block"
     assert except_pos != -1, "api_rag_index must catch ValueError/TypeError"
-    assert try_pos < int_pos < except_pos or try_pos < int_pos, (
-        "int() parsing must be inside the try block"
-    )
+    assert try_pos < int_pos < except_pos or try_pos < int_pos, "int() parsing must be inside the try block"
 
 
 def test_rag_index_returns_400_on_bad_params():
@@ -72,9 +67,7 @@ def test_rag_index_returns_400_on_bad_params():
     )
     assert fn is not None
     body = fn.group()
-    assert "status_code=400" in body, (
-        "api_rag_index must return HTTP 400 on invalid integer parameters"
-    )
+    assert "status_code=400" in body, "api_rag_index must return HTTP 400 on invalid integer parameters"
 
 
 # ---------------------------------------------------------------------------
@@ -91,12 +84,8 @@ def test_rag_search_int_params_guarded():
     )
     assert fn is not None, "api_rag_search not found"
     body = fn.group()
-    assert "(ValueError, TypeError)" in body, (
-        "api_rag_search must catch ValueError/TypeError from int() parsing"
-    )
-    assert "status_code=400" in body, (
-        "api_rag_search must return HTTP 400 on invalid parameters"
-    )
+    assert "(ValueError, TypeError)" in body, "api_rag_search must catch ValueError/TypeError from int() parsing"
+    assert "status_code=400" in body, "api_rag_search must return HTTP 400 on invalid parameters"
 
 
 # ---------------------------------------------------------------------------
@@ -116,9 +105,7 @@ def test_rag_export_int_params_guarded():
     assert "(ValueError, TypeError)" in body, (
         "api_rag_export_training must catch ValueError/TypeError from int() parsing"
     )
-    assert "status_code=400" in body, (
-        "api_rag_export_training must return HTTP 400 on invalid parameters"
-    )
+    assert "status_code=400" in body, "api_rag_export_training must return HTTP 400 on invalid parameters"
 
 
 # ---------------------------------------------------------------------------
@@ -132,9 +119,7 @@ def test_ui_save_cfg_key_onclick_escaped():
     assert "onclick=\"saveCfgKey('${k}')\"" not in src, (
         "Provider key in onclick must be escaped: saveCfgKey('${escHtml(k)}')"
     )
-    assert "escHtml(k)" in src, (
-        "saveCfgKey onclick must use escHtml(k) to prevent XSS"
-    )
+    assert "escHtml(k)" in src, "saveCfgKey onclick must use escHtml(k) to prevent XSS"
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +137,5 @@ def test_ui_key_saved_toast_escaped():
     )
     assert fn is not None, "saveCfgKey function not found"
     body = fn.group(1)
-    assert "escHtml(provider)" in body, (
-        "toast in saveCfgKey must use escHtml(provider) to prevent XSS"
-    )
-    assert "${provider}" not in body or "escHtml" in body, (
-        "Raw ${provider} in toast is unescaped — must use escHtml"
-    )
+    assert "escHtml(provider)" in body, "toast in saveCfgKey must use escHtml(provider) to prevent XSS"
+    assert "${provider}" not in body or "escHtml" in body, "Raw ${provider} in toast is unescaped — must use escHtml"
