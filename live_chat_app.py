@@ -47,7 +47,7 @@ import pyautogui
 import sounddevice as sd
 import uvicorn
 import websockets as ws_lib
-from elevenlabs.client import ElevenLabs
+from elevenlabs import ElevenLabs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -898,7 +898,7 @@ if HAS_CONVAI:
                 while True:
                     self.output_queue.get(block=False)
             except queue.Empty:
-                pass
+                write_log("audio", "Audio queue emptied on interrupt")
 
         def _output_thread(self) -> None:
             while not self.should_stop.is_set():
