@@ -14,14 +14,14 @@ from dataclasses import dataclass
 
 SENSITIVE_PATTERNS = {
     "api_key": re.compile(
-        r"(?i)(api[_-]?key|secret|token)\s*[:=]?\s*['\"]?"
+        r"(?i)(api[_-]?key|secret|token)\s*[:=]\s*['\"]?"
         r"([a-zA-Z0-9\-._~+/]+=*)['\"]?",
         re.IGNORECASE,
     ),
     "aws_key": re.compile(r"(AKIA[0-9A-Z]{16})"),
     "github_token": re.compile(r"ghp_[0-9a-zA-Z]{36}"),
     "password": re.compile(
-        r"(?i)(password|passwd|pwd)\s*[:=]?\s*['\"]([^'\"]+)['\"]"
+        r"(?i)(password|passwd|pwd)\s*[:=]\s*['\"]([^'\"]+)['\"]"
     ),
     "database_url": re.compile(r"(mongodb|postgres|mysql|redis):\/\/.*?@"),
     "private_key": re.compile(
