@@ -5847,16 +5847,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                     text=True,
                     timeout=timeout,
                 )
-                # Post-execution memory guard using psutil (best-effort, Windows-safe)
-                try:
-                    import psutil as _ps
-                    _MAX_RSS = 256 * 1024 * 1024  # 256 MB
-                    if result.returncode == 0:
-                        # Process already finished; check output size as a proxy
-                        if len(result.stdout) > 4_000_000:
-                            raise MemoryError("execute_python output too large (>4 MB)")
-                except ImportError:
-                    pass  # psutil not installed; skip memory check
+                if result.returncode == 0:
+                    # Process already finished; check output size as a proxy
+                    if len(result.stdout) > 4_000_000:
+                        raise MemoryError("execute_python output too large (>4 MB)")
                 return result
 
             proc = await loop.run_in_executor(None, _run_with_memory_guard)
