@@ -1,0 +1,3 @@
+## 2024-06-23 - Interactive Elements Missing Screen Reader Context
+**Learning:** Found several icon-only buttons (like `+` for add fact, `📷` for screenshot, and `✕` for closing modals) and raw inputs (like the TTS rate slider) in `live_chat_ui.html` that did not have accessible names, making them difficult or impossible for screen reader users to understand. Also, `div` elements used as buttons (e.g., `.modal-close`) lacked the `role="button"` and keyboard focus attributes (`tabindex="0"`).
+**Action:** When building or updating UI elements, ensure that any control lacking visible text has a clear `aria-label`, and interactive `div`/`span` elements receive `role="button"` and `tabindex="0"` if a `<button>` tag cannot be used.
