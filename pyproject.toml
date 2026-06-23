@@ -28,7 +28,7 @@ dependencies = [
     "sounddevice>=0.4,<1.0",
     "pillow>=10,<12",
     "psutil>=5.9,<7.0",
-    "pynvml>=12.5,<13",
+    "pynvml",
 ]
 
 [project.optional-dependencies]
@@ -55,10 +55,7 @@ minversion = "7.0"
 testpaths = ["."]
 asyncio_mode = "auto"
 addopts = [
-    "--strict-markers",
-    "--cov=live_chat_app",
-    "--cov-report=term-missing:skip-covered",
-    "--cov-report=html",
+    "--strict-markers"
 ]
 markers = [
     "asyncio: async tests",
