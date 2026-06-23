@@ -898,7 +898,7 @@ if HAS_CONVAI:
                 while True:
                     self.output_queue.get(block=False)
             except queue.Empty:
-                pass
+                write_log("audio", "Audio queue emptied on interrupt")
 
         def _output_thread(self) -> None:
             while not self.should_stop.is_set():
