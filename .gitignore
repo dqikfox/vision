@@ -49,3 +49,4 @@ retest_failed_keys.py
 
 # Bundled JDK (openJdk-25 — dependency dropped into repo root, not project code)
 openJdk-25/
+.coverage
