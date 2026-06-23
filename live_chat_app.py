@@ -4774,6 +4774,69 @@ def _validate_tool_path(path: str) -> Path:
     return resolved
 
 
+
+import ast
+
+class _PythonSecurityScanner(ast.NodeVisitor):
+    def __init__(self):
+        self.errors = []
+        self.allowed_modules = {
+            'math', 'cmath', 'json', 're', 'datetime', 'random', 'time',
+            'collections', 'itertools', 'functools', 'urllib.parse',
+            'base64', 'hashlib', 'binascii', 'string', 'uuid', 'typing',
+            'statistics', 'fractions', 'decimal', 'colorsys', 'bisect',
+            'heapq', 'copy', 'enum', 'calendar', 'zoneinfo'
+        }
+        self.banned_names = {
+            'eval', 'exec', '__import__', 'open', 'globals', 'locals',
+            'getattr', 'setattr', 'delattr', 'compile', 'input', 'breakpoint',
+            'memoryview', '__builtins__', '__dict__'
+        }
+        self.allowed_dunders = {
+            '__init__', '__str__', '__repr__', '__len__', '__iter__', '__next__',
+            '__name__', '__class__', '__doc__'
+        }
+
+    def visit_Import(self, node):
+        for alias in node.names:
+            base_module = alias.name.split('.')[0]
+            if base_module not in self.allowed_modules and alias.name not in self.allowed_modules:
+                self.errors.append(f"Import of module '{alias.name}' is not allowed for security reasons.")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        if node.module:
+            base_module = node.module.split('.')[0]
+            if base_module not in self.allowed_modules and node.module not in self.allowed_modules:
+                self.errors.append(f"Import from module '{node.module}' is not allowed for security reasons.")
+        self.generic_visit(node)
+
+    def visit_Name(self, node):
+        if node.id in self.banned_names:
+            self.errors.append(f"Use of '{node.id}' is not allowed for security reasons.")
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Attribute) and node.func.attr.startswith('__') and node.func.attr.endswith('__'):
+            if node.func.attr not in self.allowed_dunders:
+                self.errors.append(f"Calling restricted dunder method '{node.func.attr}' is not allowed.")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        if node.attr.startswith('__') and node.attr not in self.allowed_dunders:
+            self.errors.append(f"Accessing restricted dunder attribute '{node.attr}' is not allowed.")
+        self.generic_visit(node)
+
+def _check_python_code_security(code: str) -> list[str]:
+    try:
+        tree = ast.parse(code)
+        scanner = _PythonSecurityScanner()
+        scanner.visit(tree)
+        return scanner.errors
+    except SyntaxError as e:
+        return [f"Syntax Error: {e}"]
+
+
 def _tool_err(action: str, e: Exception) -> str:
     """Standardised error string for exec_tool handlers — safe classification only.
 
@@ -5816,6 +5879,12 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         code = args.get("code", "")
         if len(code) > 50_000:
             return _tool_err("execute_python", ValueError(f"code too long ({len(code)} > 50 000 chars)"))
+
+        security_errors = _check_python_code_security(code)
+        if security_errors:
+            err_msg = "Security Policy Violation:\n" + "\n".join(f"- {e}" for e in security_errors)
+            write_log("execute_python_blocked", f"violations={len(security_errors)}")
+            return _tool_err("execute_python", ValueError(err_msg))
         timeout = max(1, min(int(args.get("timeout", 30)), 120))
         write_log("execute_python", f"timeout={timeout}s code={code[:200].replace(chr(10), ' ')!r}")
         wrapper = (
