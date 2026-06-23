@@ -195,8 +195,8 @@ def stop_recording_and_transcribe():
         if wav_path:
             try:
                 os.unlink(wav_path)
-            except OSError:
-                pass
+            except OSError as e:
+                log(f"Failed to delete temp file {wav_path}: {e}")
 
     if text:
         pyperclip.copy(text)
