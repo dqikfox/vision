@@ -908,8 +908,8 @@ class SelfEvolutionEngine:
             issue_hint = str(parsed.get("issue_hint", fallback_issue)).strip()
             if trigger and guidance:
                 return AdaptationCandidate(trigger=trigger, guidance=guidance, issue_hint=issue_hint)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Adaptation generation failed: %s", exc)
         return self._fallback_candidate(user_message, fallback_issue)
 
     def _fallback_candidate(self, user_message: str, issue: str) -> AdaptationCandidate:
