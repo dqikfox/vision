@@ -27,7 +27,6 @@ import sys
 import tempfile
 import threading
 import time
-import traceback
 import warnings
 import webbrowser
 from collections import deque
