@@ -1,5 +1,5 @@
 🎯 **What:**
-Added an error log to the empty `except queue.Empty:` block inside `live_chat_app.py` around line 900. Also fixed the CI failing issues by loosening the strict requirement limits in pyproject.toml, and updated Github workflow Node warning.
+Added an error log to the empty `except queue.Empty:` block inside `live_chat_app.py` around line 900. Also fixed the CI failing issues by loosening the strict requirement limits in pyproject.toml, and updated Github workflow Node warning. Changed the import statement of ElevenLabs to fix the import error.
 
 💡 **Why:**
 This improves maintainability by making it clear that the exception is expected, but also providing visibility into when the audio queue is emptied upon an interrupt. Fixing the CI is important to unblock other pull requests.

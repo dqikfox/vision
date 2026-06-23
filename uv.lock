@@ -1912,7 +1912,7 @@ test = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.25,<1.0" },
     { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.7" },
-    { name = "elevenlabs", specifier = ">=2.42,<4.0" },
+    { name = "elevenlabs", specifier = ">=2.42" },
     { name = "fastapi", specifier = ">=0.104,<0.120" },
     { name = "httpx", specifier = ">=0.25,<0.30" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0.0,<2.0" },
