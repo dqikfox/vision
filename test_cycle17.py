@@ -11,8 +11,6 @@ Tests verify:
 
 import re
 
-import pytest
-
 
 def _read(path: str) -> str:
     with open(path, encoding="utf-8") as f:

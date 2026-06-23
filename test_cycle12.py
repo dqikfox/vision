@@ -14,14 +14,9 @@ Covers:
 from __future__ import annotations
 
 import importlib
-import os
-import subprocess
-import sys
-import threading
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
 
 ROOT = Path(__file__).parent
 

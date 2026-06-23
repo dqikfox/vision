@@ -4,12 +4,10 @@ elite_metrics.py — Observability, metrics, profiling
 Real-time performance tracking, latency histograms, token usage analytics.
 """
 
-import json
 import time
 from collections import defaultdict, deque
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass
@@ -26,10 +24,10 @@ class LatencyHistogram:
     """Track latency distribution (percentiles)."""
     name: str
     measurements: deque = field(default_factory=lambda: deque(maxlen=1000))
-    
+
     def record(self, ms: float):
         self.measurements.append(ms)
-    
+
     def percentile(self, p: float) -> float:
         """Get percentile (e.g., 0.95 for p95)."""
         if not self.measurements:
@@ -37,7 +35,7 @@ class LatencyHistogram:
         sorted_vals = sorted(self.measurements)
         idx = int(len(sorted_vals) * p)
         return sorted_vals[min(idx, len(sorted_vals) - 1)]
-    
+
     def snapshot(self) -> dict:
         if not self.measurements:
             return {"name": self.name, "count": 0}
@@ -54,7 +52,7 @@ class LatencyHistogram:
 
 class MetricsCollector:
     """Central metrics hub for Vision."""
-    
+
     def __init__(self):
         self.latencies: dict[str, LatencyHistogram] = defaultdict(
             lambda: LatencyHistogram(name="")
@@ -63,21 +61,21 @@ class MetricsCollector:
         self.gauges: dict[str, float] = {}
         self.events: deque = deque(maxlen=10000)  # Event audit log
         self.session_start = time.time()
-    
+
     def record_latency(self, name: str, ms: float):
         """Record latency measurement."""
         if name not in self.latencies:
             self.latencies[name] = LatencyHistogram(name=name)
         self.latencies[name].record(ms)
-    
+
     def increment(self, counter: str, value: int = 1):
         """Increment counter."""
         self.counters[counter] += value
-    
+
     def set_gauge(self, gauge: str, value: float):
         """Set gauge value."""
         self.gauges[gauge] = value
-    
+
     def record_event(self, event_type: str, detail: str, level: str = "info"):
         """Log structured event."""
         self.events.append({
@@ -86,14 +84,14 @@ class MetricsCollector:
             "level": level,
             "timestamp": datetime.now().isoformat(),
         })
-    
+
     def llm_request_stats(self, provider: str, model: str, tokens: int, latency_ms: float):
         """Record LLM API call metrics."""
         self.record_latency(f"llm_latency_{provider}", latency_ms)
         self.increment(f"llm_tokens_{provider}", tokens)
         self.increment(f"llm_requests_{provider}")
-        self.record_event(f"llm_call", f"{provider}/{model}: {tokens} tokens, {latency_ms:.0f}ms")
-    
+        self.record_event("llm_call", f"{provider}/{model}: {tokens} tokens, {latency_ms:.0f}ms")
+
     def tool_execution_stats(self, tool_name: str, duration_ms: float, success: bool):
         """Record tool execution metrics."""
         self.record_latency(f"tool_latency_{tool_name}", duration_ms)
@@ -102,7 +100,7 @@ class MetricsCollector:
             self.increment(f"tool_success_{tool_name}")
         else:
             self.increment(f"tool_error_{tool_name}")
-    
+
     def snapshot(self) -> dict:
         """Return complete metrics snapshot."""
         return {
@@ -116,7 +114,7 @@ class MetricsCollector:
             "gauges": self.gauges,
             "recent_events": list(self.events)[-20:],
         }
-    
+
     def summary(self) -> dict:
         """High-level summary for dashboard."""
         llm_requests = {
@@ -144,20 +142,20 @@ class MetricsCollector:
 
 class ExecutionProfiler:
     """Profile execution time of async functions."""
-    
+
     def __init__(self, name: str):
         self.name = name
-        self.start_time: Optional[float] = None
+        self.start_time: float | None = None
         self.elapsed_ms: float = 0.0
-    
+
     async def __aenter__(self):
         self.start_time = time.monotonic()
         return self
-    
+
     async def __aexit__(self, *args):
         if self.start_time:
             self.elapsed_ms = (time.monotonic() - self.start_time) * 1000
-    
+
     def report(self) -> str:
         return f"[profile] {self.name}: {self.elapsed_ms:.1f}ms"
 

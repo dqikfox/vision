@@ -7,22 +7,20 @@ Covers: provider/model validation on /api/model and WS set_model,
 """
 
 import asyncio
-import json
 import sqlite3
 import types
-from pathlib import Path
 from unittest import mock
 
-import pytest
 import httpx
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _app_module():
-    import importlib, sys
+    import importlib
+    import sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -137,9 +135,8 @@ class TestBroadcastExceptionLogging:
         async with app._clients_lock:
             app.clients.add(ws_bad)
 
-        with mock.patch.object(app, "_resolve_target", return_value=None):
-            with mock.patch.object(app, "write_log"):
-                await app.broadcast({"type": "test"})
+        with mock.patch.object(app, "_resolve_target", return_value=None), mock.patch.object(app, "write_log"):
+            await app.broadcast({"type": "test"})
 
         assert ws_bad not in app.clients
 

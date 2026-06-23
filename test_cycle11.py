@@ -7,22 +7,19 @@ Covers: _rate_buckets memory cleanup, browser_eval _tool_err() usage,
         pooling, execute_python 4MB output guard (cycles 5/11).
 """
 
-import asyncio
-import json
 import sqlite3
 import types
-from pathlib import Path
 from unittest import mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _app_module():
-    import importlib, sys
+    import importlib
+    import sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -85,7 +82,7 @@ class TestBrowserEvalToolErr:
         app = _app_module()
         log_calls = []
         page_mock = mock.AsyncMock()
-        page_mock.evaluate = mock.AsyncMock(side_effect=asyncio.TimeoutError())
+        page_mock.evaluate = mock.AsyncMock(side_effect=TimeoutError())
 
         with mock.patch.object(app, "get_browser_page", return_value=page_mock):
             with mock.patch.object(app, "write_log", side_effect=lambda *a: log_calls.append(a)):
@@ -251,7 +248,7 @@ class TestExecutePython4MBGuard:
 class TestMCPConnectionPooling:
     def test_http_client_has_limits(self):
         """MCP server httpx client must have explicit connection limits."""
-        import importlib, sys
+        import sys
         with mock.patch.dict(sys.modules, {"mcp": types.ModuleType("mcp")}):
             try:
                 import vision_mcp_server as mcp_server
@@ -264,7 +261,6 @@ class TestMCPConnectionPooling:
     def test_atexit_registered_for_close(self):
         """MCP server must register atexit cleanup for the HTTP client."""
         # We already verified atexit.register(_http_client.close) exists at line 28
-        import atexit
         # Just verify the module has an atexit-registered close somewhere
         # (can't easily introspect atexit handlers, so just verify code structure)
         import vision_mcp_server

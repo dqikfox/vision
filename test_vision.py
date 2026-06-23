@@ -2,7 +2,12 @@
 test_vision.py — Full integration test for Vision accessibility operator
 Tests: HTTP, WebSocket, Ollama chat, tool execution, STT, TTS, Firefox
 """
-import asyncio, json, time, sys, os, tempfile
+import asyncio
+import json
+import os
+import tempfile
+import time
+
 import numpy as np
 from scipy.io import wavfile
 
@@ -106,7 +111,7 @@ async def test_ollama_chat():
                                 return True
                         if msg.get('type') == 'state':
                             print(f'     state: {msg.get("state")}')
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         print('     waiting for reply...')
                 else:
                     break
@@ -140,7 +145,7 @@ async def run_tool(tool_name, args, timeout=45):
                         if is_busy_message(msg):
                             await asyncio.sleep(2.0)
                             break
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         pass
         except Exception as e:
             return f'ERROR: {e}'
@@ -237,13 +242,15 @@ try:
     segs, info = wm.transcribe(fpath, beam_size=1, language='en')
     result = ' '.join(s.text for s in segs).strip()
     os.unlink(fpath)
-    ok(f'STT: faster-whisper tiny loaded', f'lang={info.language} result={result!r}')
+    ok('STT: faster-whisper tiny loaded', f'lang={info.language} result={result!r}')
 except Exception as e:
     fail('STT faster-whisper', e)
 
 # Check ElevenLabs STT key
 try:
-    import keyring, os as _os
+    import os as _os
+
+    import keyring
     k = _os.environ.get('ELEVENLABS_API_KEY', '') or keyring.get_password('operator', 'ELEVENLABS_API_KEY') or ''
     if k:
         ok('STT ElevenLabs key present', f'key={k[:8]}…')
@@ -323,7 +330,7 @@ async def test_ollama_tools():
                                 print('     idle reached with no tool call/reply yet...')
                             else:
                                 break
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         print('     waiting...')
                 if not got_action:
                     fail('Ollama operator tool call', 'No tool action seen — model may not support native FC for this task')

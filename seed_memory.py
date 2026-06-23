@@ -4,8 +4,6 @@ Run once: python seed_memory.py
 The memory MCP server must be running (it starts automatically via mcp-config.json).
 """
 import json
-import subprocess
-import sys
 
 # Facts to seed into memory
 ENTITIES = [

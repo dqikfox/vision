@@ -6,17 +6,11 @@ Covers: RAG incremental indexing, tool argument bounds (scroll, screenshot_regio
         graceful shutdown RAG close, and VisionRAGManager.close().
 """
 
-import asyncio
-import hashlib
-import os
-import sqlite3
-import tempfile
 import types
 from pathlib import Path
 from unittest import mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers

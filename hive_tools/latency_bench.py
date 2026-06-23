@@ -1,8 +1,10 @@
 import asyncio
-import time
 import json
-import httpx
+import time
 from datetime import datetime
+
+import httpx
+
 
 async def bench_openai_latency():
     # Simple latency check to the API (doesn't need real key to measure network round-trip)

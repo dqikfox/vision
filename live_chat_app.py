@@ -14,14 +14,14 @@ import binascii
 import contextlib
 import contextvars
 import fnmatch
-import io
 import importlib.util
+import io
 import json
 import os
 import queue
 import re
-import shutil
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -845,7 +845,7 @@ if HAS_CONVAI:
 
         def __init__(self) -> None:
             self.input_callback: Any = None
-            self.output_queue: "queue.Queue[bytes]" = queue.Queue()
+            self.output_queue: queue.Queue[bytes] = queue.Queue()
             self.should_stop = threading.Event()
             self.output_thread: threading.Thread | None = None
             self.in_stream: sd.RawInputStream | None = None
@@ -2771,7 +2771,7 @@ async def screenshot_ep(request: Request) -> JSONResponse:
 
     try:
         hd, data = await asyncio.wait_for(loop.run_in_executor(None, _snap), timeout=10.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         write_log("screenshot_timeout", "pyautogui.screenshot() exceeded 10s — possible display driver hang")
         return JSONResponse({"error": "Screenshot timed out (display driver hang?)"}, status_code=504)
     return JSONResponse({"data": data, "hd": hd})
@@ -3302,7 +3302,7 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     for ws in recipients:
         try:
             await asyncio.wait_for(ws.send_text(msg_text), timeout=5.0)
-        except (asyncio.TimeoutError, Exception) as e:
+        except (TimeoutError, Exception) as e:
             write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
     if dead:
@@ -5351,7 +5351,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
             await asyncio.wait_for(loop.run_in_executor(None, _append), timeout=10.0)
             return f"Appended {len(content)} chars to {path_s}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"append_to_file timed out after 10s writing to {path_s}"
         except Exception as e:
             return _tool_err("append_to_file", e)
@@ -5537,7 +5537,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             result = await asyncio.wait_for(page.evaluate(js), timeout=10.0)
             return str(result)[:2000] if result is not None else "(no return value)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             write_log("browser_eval_timeout", f"js={js[:100]!r}")
             return "browser_eval timed out after 10s"
         except Exception as e:
@@ -5577,7 +5577,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:2000] if result else "(started)"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return "Orchestrator starting in background (dashboard at http://localhost:3000)"
             except Exception as e:
                 return str(e)
@@ -5640,7 +5640,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out2, err2 = await asyncio.wait_for(proc2.communicate(), timeout=15)
                 result = (out2 + err2).decode(errors="replace").strip()
             return result[:2000] or "(no output)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"Command '{shlex.join(cmd_list)}' timed out"
         except Exception as e:
             return _tool_err("ao_command", e)
@@ -5743,7 +5743,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 p.write_text(content, encoding=enc)
             await asyncio.wait_for(loop.run_in_executor(None, _write), timeout=10.0)
             return f"Written {len(content)} chars to {fpath}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return _tool_err("write_file", TimeoutError(f"write to {fpath} timed out after 10s"))
         except Exception as e:
             return _tool_err("write_file", e)
@@ -7232,15 +7232,13 @@ async def _llm_stream_anthropic(user_text: str):
                 args = json.loads(tb["input"] or "{}")
             except Exception:
                 args = {}
+            tb["parsed_args"] = args
             assistant_content.append({"type": "tool_use", "id": tb["id"], "name": tb["name"], "input": args})
         msgs.append({"role": "assistant", "content": assistant_content})
 
         tool_results = []
         for tb in tool_use_blocks:
-            try:
-                args = json.loads(tb["input"] or "{}")
-            except Exception:
-                args = {}
+            args = tb.get("parsed_args", {})
             await set_state("thinking")
             result = await exec_tool(tb["name"], args)
             await broadcast_action(tb["name"], args, result)
@@ -7595,7 +7593,7 @@ async def speak(text_gen):
 
                 await asyncio.wait_for(loop.run_in_executor(None, _sapi), timeout=30.0)
                 return True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("[tts] pyttsx3 timeout after 30s")
                 return False
             except asyncio.CancelledError:
