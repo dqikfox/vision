@@ -1389,7 +1389,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODALS ═══ -->
 <div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')" role="button" tabindex="0" aria-label="Close screenshot viewer">✕</div>
+  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')" role="button" tabindex="0" aria-label="Close screenshot viewer" onkeydown="if(event.key === 'Enter' || event.key === ' ') document.getElementById('screenshotModal').classList.remove('open')">✕</div>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
