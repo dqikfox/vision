@@ -747,8 +747,8 @@ def write_log(event: str, detail: str) -> None:
                 f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
             )
             LOG_FILE.rename(rotated)
-    except OSError:
-        pass
+    except OSError as e:
+        print(f"Failed to rotate log file: {e}", file=sys.stderr)
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(f"{ts} | {event.upper():<10} | {detail}\n")
 
