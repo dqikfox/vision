@@ -1235,8 +1235,8 @@ class Memory:
             try:
                 data = json.loads(MEMORY_FILE.read_text(encoding="utf-8"))
                 return self._normalize(data)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[memory] Failed to load {MEMORY_FILE}: {e}")
         return Memory._default(None)  # type: ignore[no-untyped-call]
 
     def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
