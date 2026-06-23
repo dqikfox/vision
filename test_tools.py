@@ -19,7 +19,7 @@ async def recv_until(ws, types, timeout=60):
             results.append(msg)
             if t in types:
                 return results
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
     return results
 
@@ -30,7 +30,7 @@ async def drain_ws(ws, quiet_timeout=0.2, max_wait=1.0):
     while asyncio.get_running_loop().time() < deadline:
         try:
             await asyncio.wait_for(ws.recv(), timeout=quiet_timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return
 
 
@@ -41,7 +41,7 @@ async def recv_action(ws, expected_action, timeout=30):
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
             msg = json.loads(raw)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
         if msg.get("type") == "action" and msg.get("action") == expected_action:
             return msg
@@ -136,7 +136,7 @@ async def main():
                 elif t == "transcript" and m.get("role") == "assistant":
                     got_reply = True
                     print(f"  AI REPLY: {m['text'][:250]}")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("  ...still waiting...")
         if not got_tool:
             print("  FAIL - model did not call screenshot")
@@ -177,7 +177,7 @@ async def main():
                         print(f"  AI REPLY: {m['text'][:250]}")
                     elif t == "error":
                         print(f"  ERROR: {m.get('message', '')[:250]}")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     print("  ...waiting...")
             if not got_tool:
                 print("  FAIL - model did not call browser tool")
@@ -201,7 +201,7 @@ async def main():
             while asyncio.get_running_loop().time() < deadline and list_files_action is None:
                 try:
                     raw = await asyncio.wait_for(ws_files.recv(), 5)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     print("  ...waiting for list_files...")
                     continue
                 m = json.loads(raw)

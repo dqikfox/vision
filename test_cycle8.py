@@ -10,11 +10,9 @@ import asyncio
 import json
 import threading
 import types
-from pathlib import Path
 from unittest import mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers

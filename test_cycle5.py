@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
 import types
 import unittest.mock as mock
 from pathlib import Path
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Module import helper

@@ -164,7 +164,7 @@ def main() -> int:
     route_paths = extract_route_paths(src)
     provider_names = extract_provider_names(src)
 
-    print(f"Vision Doc Consistency Check")
+    print("Vision Doc Consistency Check")
     print(f"  App file : {APP_FILE.name}")
     print(f"  Tools    : {len(tool_names)} found")
     print(f"  Routes   : {len(route_paths)} found")
@@ -207,7 +207,7 @@ def main() -> int:
         print()
         return 1
     else:
-        print(f"✅ No drift detected")
+        print("✅ No drift detected")
         print(f"   {len(tool_names)} tools, {len(route_paths)} routes, {len(provider_names)} providers — all consistent")
         return 0
 

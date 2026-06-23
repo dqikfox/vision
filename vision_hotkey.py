@@ -8,9 +8,15 @@ Ctrl+Alt+Q  → quit this daemon
 Run once at startup; it stays in the system tray area.
 """
 
-import os, sys, subprocess, time, threading
-import win32gui, win32con, win32process
+import os
+import subprocess
+import sys
+import threading
+
 import keyboard
+import win32con
+import win32gui
+import win32process
 
 OVERLAY_SCRIPT = r"C:\Users\msiul\.copilot\voice_overlay.py"
 _overlay_pid = None

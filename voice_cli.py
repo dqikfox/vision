@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 VISION Voice CLI Bridge  v2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -14,15 +13,21 @@ Hotkeys  (global — work even when terminal is not focused):
   ESC           Quit
 """
 
-import sys, os, time, threading, queue, re
+import os
+import queue
+import re
+import sys
+import threading
+import time
 from pathlib import Path
 
-import numpy as np
-import sounddevice as sd
-import pyperclip
 import keyboard
+import numpy as np
+import pyperclip
 import pyttsx3
-import win32gui, win32con, win32api, win32process
+import sounddevice as sd
+import win32con
+import win32gui
 
 # ── Load .env ──────────────────────────────────────
 _env = Path(__file__).parent / ".env"
@@ -135,7 +140,8 @@ def _tts_worker():
         _tts_queue.task_done()
 
 def _speak_eleven(text: str):
-    import subprocess, tempfile
+    import subprocess
+    import tempfile
     chunks = list(_eleven_client.text_to_speech.convert(
         voice_id=_eleven_voice_id(),
         text=text,

@@ -8,11 +8,9 @@ Covers: _tracked_task lifecycle, _run_preflight validation,
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import types
 import unittest.mock as mock
-from pathlib import Path
 
 import pytest
 

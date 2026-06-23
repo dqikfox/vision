@@ -8,7 +8,6 @@ Covers: confirmation flow (required/expired/accept/cancel/conflict),
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 import sys
 import time
@@ -16,7 +15,6 @@ import types
 import unittest.mock as mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Module import helper

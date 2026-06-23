@@ -10,20 +10,18 @@ Covers: ao_* shell injection guards, set_api_key/set_wake_word locking,
 import asyncio
 import json
 import shlex
-import threading
 import types
-from pathlib import Path
 from unittest import mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _app_module():
-    import importlib, sys
+    import importlib
+    import sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),

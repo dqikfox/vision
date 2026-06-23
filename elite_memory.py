@@ -11,7 +11,6 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -33,7 +32,7 @@ class ContextOptimizer:
 
     def __init__(self, max_tokens: int = 8000):
         self.max_tokens = max_tokens
-        self.messages: List[Message] = []
+        self.messages: list[Message] = []
         self.total_tokens = 0
 
     def add_message(self, role: str, content: str, tokens: int = 0) -> None:
@@ -63,7 +62,7 @@ class ContextOptimizer:
             self.messages.pop(idx)
             self.total_tokens -= msg.tokens
 
-    def get_context(self) -> List[dict]:
+    def get_context(self) -> list[dict]:
         """Return optimized context for LLM."""
         return [
             {
@@ -83,13 +82,13 @@ class ConversationSummarizer:
 
     def __init__(self, threshold_messages: int = 20):
         self.threshold = threshold_messages
-        self.summaries: List[str] = []
+        self.summaries: list[str] = []
 
     async def maybe_summarize(
         self,
-        messages: List[Message],
+        messages: list[Message],
         summarize_fn,  # async callable returning summary
-    ) -> Optional[str]:
+    ) -> str | None:
         """Trigger summarization if messages exceed threshold."""
         if len(messages) < self.threshold:
             return None
@@ -114,7 +113,7 @@ class SemanticMemoryIndex:
 
     def __init__(self):
         # keyword → [(msg_idx, relevance), ...]
-        self.index: dict[str, List[tuple[int, float]]] = {}
+        self.index: dict[str, list[tuple[int, float]]] = {}
 
     def index_message(self, idx: int, content: str) -> None:
         """Index message by keywords."""
@@ -125,7 +124,7 @@ class SemanticMemoryIndex:
                     self.index[word] = []
                 self.index[word].append((idx, 1.0))
 
-    def search(self, query: str, top_k: int = 3) -> List[int]:
+    def search(self, query: str, top_k: int = 3) -> list[int]:
         """Find most relevant messages by keyword overlap."""
         query_words = set(query.lower().split())
         scores: dict[int, float] = {}
@@ -144,7 +143,7 @@ class SemanticMemoryIndex:
 class EliteMemory:
     """Enhanced memory with context optimization + semantic search."""
 
-    def __init__(self, memory_file: Optional[Path] = None):
+    def __init__(self, memory_file: Path | None = None):
         self.context_opt = ContextOptimizer(max_tokens=8000)
         self.summarizer = ConversationSummarizer()
         self.search_index = SemanticMemoryIndex()
@@ -159,18 +158,18 @@ class EliteMemory:
         idx = len(self.context_opt.messages) - 1
         self.search_index.index_message(idx, content)
 
-    async def maybe_summarize(self, summarize_fn) -> Optional[str]:
+    async def maybe_summarize(self, summarize_fn) -> str | None:
         """Auto-summarize if needed."""
         return await self.summarizer.maybe_summarize(
             self.context_opt.messages,
             summarize_fn,
         )
 
-    def get_context(self) -> List[dict]:
+    def get_context(self) -> list[dict]:
         """Get optimized context for LLM."""
         return self.context_opt.get_context()
 
-    def search(self, query: str) -> List[str]:
+    def search(self, query: str) -> list[str]:
         """Semantic search in conversation."""
         indices = self.search_index.search(query)
         return [
@@ -186,7 +185,7 @@ class EliteMemory:
         self.facts[category].append(fact)
         self.save()
 
-    def get_facts(self, category: str) -> List[str]:
+    def get_facts(self, category: str) -> list[str]:
         """Retrieve facts by category."""
         return self.facts.get(category, [])
 
