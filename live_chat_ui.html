@@ -760,7 +760,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.05);border:1px solid rgba(29,78,216,.1);margin-bottom:5px;
   font-size:11px;color:var(--tx2);line-height:1.5;
 }
-.fact-chip .rm{cursor:pointer;color:var(--dim);font-size:10px;flex-shrink:0;margin-left:auto}
+.fact-chip .rm{cursor:pointer;color:var(--dim);font-size:10px;flex-shrink:0;margin-left:auto;background:none;border:none;}
 .fact-chip .rm:hover{color:var(--r)}
 
 /* ═══════ RIGHT PANEL TABS ═══════ */
@@ -1097,7 +1097,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div id="factList" style="max-height:90px;overflow-y:auto"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…"/>
-        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
+        <button onclick="addFact()" aria-label="Add memory fact" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
       </div>
     </div>
   </div>
@@ -1373,7 +1373,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="Open ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
@@ -1389,7 +1389,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODALS ═══ -->
 <div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+  <button class="modal-close" aria-label="Close screenshot viewer" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
@@ -1397,7 +1397,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button aria-label="Close model picker" onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
@@ -1407,7 +1407,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2522,7 +2522,7 @@ function renderMemory(mem) {
   const fl = document.getElementById('factList');
   if (!fl) return;
   fl.innerHTML = (mem.facts||[]).map((f,i) =>
-    `<div class="fact-chip">${escHtml(f)}<span class="rm" onclick="delFact(${i})">✕</span></div>`
+    `<div class="fact-chip">${escHtml(f)}<button aria-label="Delete fact" class="rm" onclick="delFact(${i})">✕</button></div>`
   ).join('') || '<div style="color:var(--dim);font-size:11px;padding:4px">No facts stored yet.</div>';
 }
 function addFact() {
