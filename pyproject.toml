@@ -28,7 +28,7 @@ dependencies = [
     "sounddevice>=0.4,<1.0",
     "pillow>=10,<12",
     "psutil>=5.9,<7.0",
-    "pynvml>=12.5,<13",
+    "pynvml>=11.4.1",
 ]
 
 [project.optional-dependencies]
