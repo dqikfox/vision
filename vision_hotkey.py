@@ -8,9 +8,16 @@ Ctrl+Alt+Q  → quit this daemon
 Run once at startup; it stays in the system tray area.
 """
 
-import os, sys, subprocess, time, threading
-import win32gui, win32con, win32process
+import logging
+import os
+import subprocess
+import sys
+import threading
+
 import keyboard
+import win32con
+import win32gui
+import win32process
 
 OVERLAY_SCRIPT = r"C:\Users\msiul\.copilot\voice_overlay.py"
 _overlay_pid = None
@@ -20,9 +27,11 @@ _lock = threading.Lock()
 def _find_overlay_hwnd() -> int | None:
     """Return the HWND of the running overlay window, or None."""
     results = []
+
     def cb(h, _):
         if win32gui.IsWindowVisible(h) and "VISION Voice" in win32gui.GetWindowText(h):
             results.append(h)
+
     win32gui.EnumWindows(cb, None)
     return results[0] if results else None
 
@@ -36,10 +45,11 @@ def _overlay_running() -> bool:
         handle = win32process.OpenProcess(0x0400, False, _overlay_pid)  # PROCESS_QUERY_INFO
         if handle:
             import win32api
+
             code = win32api.GetExitCodeProcess(handle)
             return code == 259  # STILL_ACTIVE
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"Error checking overlay process: {e}")
     return False
 
 
@@ -62,8 +72,7 @@ def launch_or_focus():
             pythonw = sys.executable
 
         proc = subprocess.Popen(
-            [pythonw, OVERLAY_SCRIPT],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            [pythonw, OVERLAY_SCRIPT], creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
         )
         _overlay_pid = proc.pid
         print(f"[VISION] Launched overlay PID {_overlay_pid}")
