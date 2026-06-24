@@ -43,7 +43,7 @@ playwright>=1.44.0
 
 # Windows-specific
 pywin32>=306
-pyttsx3>=2.90
+pyttsx3>=2.99
 
 # Optional: local Whisper STT fallback
 # faster-whisper>=1.0.0
