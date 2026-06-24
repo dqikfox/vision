@@ -27,7 +27,7 @@ mcp[cli]>=1.0.0
 
 # Web / search
 ddgs>=6.0
-markdownify>=0.11.6
+markdownify>=1.2.2
 
 # Utilities
 pillow>=10.0
