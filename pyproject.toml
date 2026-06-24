@@ -26,7 +26,7 @@ dependencies = [
     "pyautogui>=0.9,<1.0",
     "pytesseract>=0.3,<1.0",
     "sounddevice>=0.4,<1.0",
-    "pillow>=10,<12",
+    "pillow>=10,<13",
     "psutil>=5.9,<7.0",
     "pynvml>=12.5,<13",
 ]
