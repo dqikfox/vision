@@ -1,0 +1,3 @@
+## 2024-06-25 - Missing ARIA Labels on Icon-Only and Modal Close Buttons
+**Learning:** Found a pattern where several icon-only buttons (like "Take screenshot", "Open Agent Panel", "Close model picker", etc.) relied only on visual icons or `title` attributes instead of proper `aria-label`s. Also, some clickable close actions in modals were using `<div>` elements instead of `<button>` elements, which caused them to lack keyboard focusability and semantic meaning.
+**Action:** Always ensure that icon-only interactive elements use `<button>` tags with descriptive `aria-label` attributes. When implementing modals, use proper `<button>` elements for close actions.
