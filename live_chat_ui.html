@@ -1349,7 +1349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Take screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1373,7 +1373,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="Open ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
