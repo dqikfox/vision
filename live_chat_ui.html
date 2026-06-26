@@ -1097,7 +1097,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div id="factList" style="max-height:90px;overflow-y:auto"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…"/>
-        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
+        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px" aria-label="Add memory fact">+</button>
       </div>
     </div>
   </div>
@@ -1349,7 +1349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Take screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1389,7 +1389,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODALS ═══ -->
 <div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+  <button class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')" aria-label="Close screenshot preview">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
@@ -1397,7 +1397,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px" aria-label="Close model picker">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
@@ -1407,7 +1407,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" onclick="closeSystemMap()" aria-label="Close system map">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
