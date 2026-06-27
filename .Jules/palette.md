@@ -1,0 +1,3 @@
+## 2025-05-18 - Semantic Modals & Keyboard Dismissal
+**Learning:** Custom UI overlays and modals in this application often lack standard semantic attributes (`role="dialog"`, `aria-modal="true"`) and miss `Escape` key dismissal. Users relying on keyboards or screen readers can get trapped in modals or fail to realize they are in a dialog context. Close buttons must also be proper `<button>` elements with `aria-label`s instead of clickable `<div>`s.
+**Action:** When building or updating modals, always include `role="dialog"`, `aria-modal="true"`, use `<button>` tags with `aria-label` for closing, and add global `Escape` key handlers to close active overlays.
