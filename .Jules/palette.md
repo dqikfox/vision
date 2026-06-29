@@ -1,0 +1,3 @@
+## 2024-05-24 - Modals and Overlays Accessibility
+**Learning:** Custom UI overlays like image viewers and pickers are often missed by screen readers or keyboard users if they lack semantic attributes (`role="dialog"`, `aria-modal="true"`) or `Escape` key dismissal. A common pattern in this app is to use simple divs with `.open` classes for toggling modals.
+**Action:** When implementing new custom modals, ensure they use `role="dialog"`, `aria-modal="true"`, explicit button elements for close actions, and a global event listener allowing `Escape` to close them, matching the newly established pattern.
