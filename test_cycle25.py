@@ -65,9 +65,7 @@ def test_confirmation_snapshot_before_await():
     assert lock_pos != -1
     assert pop_pos != -1
     assert exec_pos != -1
-    assert pop_pos < exec_pos, (
-        "Confirmation must be popped (under lock) before exec_tool is awaited"
-    )
+    assert pop_pos < exec_pos, "Confirmation must be popped (under lock) before exec_tool is awaited"
 
 
 def test_confirmation_no_bare_pop_outside_lock():
@@ -110,9 +108,7 @@ def test_speak_eleven_cleanup_logs_oserror():
     finally_block = re.search(r"finally:(.*)", body, re.DOTALL)
     assert finally_block is not None, "_speak_eleven must have a finally block"
     cleanup = finally_block.group(1)[:300]
-    assert "except Exception: pass" not in cleanup, (
-        "_speak_eleven finally must not silently swallow unlink errors"
-    )
+    assert "except Exception: pass" not in cleanup, "_speak_eleven finally must not silently swallow unlink errors"
     assert "OSError" in cleanup or "status(" in cleanup or "print(" in cleanup, (
         "_speak_eleven must log temp file cleanup failures"
     )
@@ -128,9 +124,7 @@ def test_speak_eleven_cleanup_not_bare_except():
     assert fn is not None
     body = fn.group()
     # The bare 'except Exception: pass' pattern must be gone
-    assert "except Exception: pass" not in body, (
-        "_speak_eleven must not use bare 'except Exception: pass' for cleanup"
-    )
+    assert "except Exception: pass" not in body, "_speak_eleven must not use bare 'except Exception: pass' for cleanup"
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +141,7 @@ def test_clip_watcher_logs_exceptions():
     )
     assert fn is not None, "_clip_watcher not found in voice_cli.py"
     body = fn.group()
-    assert "except Exception: pass" not in body, (
-        "_clip_watcher must not silently swallow clipboard exceptions"
-    )
+    assert "except Exception: pass" not in body, "_clip_watcher must not silently swallow clipboard exceptions"
     assert "except Exception as" in body or "except Exception as e" in body, (
         "_clip_watcher must capture the exception variable to log it"
     )
@@ -165,6 +157,4 @@ def test_clip_watcher_error_message_informative():
     assert fn is not None
     body = fn.group()
     # Should include a status/print call with the error
-    assert "status(" in body or "print(" in body, (
-        "_clip_watcher exception handler must output the error for debugging"
-    )
+    assert "status(" in body or "print(" in body, "_clip_watcher exception handler must output the error for debugging"

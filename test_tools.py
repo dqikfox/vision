@@ -1,4 +1,5 @@
 """Quick tool interaction test for Vision operator."""
+
 import asyncio
 import json
 
@@ -62,17 +63,13 @@ async def main():
     async with websockets.connect(URI) as ws:
         # Init
         init = json.loads(await asyncio.wait_for(ws.recv(), 10))
-        print(
-            f"[INIT] provider={init.get('provider')} model={init.get('model')}"
-        )
+        print(f"[INIT] provider={init.get('provider')} model={init.get('model')}")
         await prepare_session(ws)
 
         # ── Test 1: Direct screenshot ──────────────────────────────────────────
         print("\n[TEST 1] Direct screenshot tool")
         await drain_ws(ws)
-        await ws.send(
-            json.dumps({"type": "execute_tool", "tool": "screenshot", "args": {}})
-        )
+        await ws.send(json.dumps({"type": "execute_tool", "tool": "screenshot", "args": {}}))
         msgs = await recv_until(ws, {"screenshot", "action"}, timeout=20)
         screenshot_ok = False
         for m in msgs:
@@ -127,9 +124,7 @@ async def main():
                     print(f"  state -> {m['state']}")
                 elif t == "action" and m.get("action") in {"screenshot", "read_screen"}:
                     got_tool = True
-                    print(
-                        f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}"
-                    )
+                    print(f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}")
                 elif t == "screenshot":
                     got_tool = True
                     print(f"  SCREENSHOT sent to UI ({len(m['data'])} b64 chars)")
@@ -152,11 +147,7 @@ async def main():
             init_browser = json.loads(await asyncio.wait_for(ws_browser.recv(), 10))
             print(f"  isolated session provider={init_browser.get('provider')} model={init_browser.get('model')}")
             await prepare_session(ws_browser, mode="operator")
-            await ws_browser.send(
-                json.dumps(
-                    {"type": "input", "text": "open google.com in the browser"}
-                )
-            )
+            await ws_browser.send(json.dumps({"type": "input", "text": "open google.com in the browser"}))
             got_tool = False
             got_reply = False
             deadline = asyncio.get_running_loop().time() + 60
@@ -169,9 +160,7 @@ async def main():
                         print(f"  state -> {m['state']}")
                     elif t == "action" and m.get("action") in {"browser_open", "run_command"}:
                         got_tool = True
-                        print(
-                            f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}"
-                        )
+                        print(f"  TOOL CALLED: {m['action']} -> {str(m['result'])[:80]}")
                     elif t == "transcript" and m.get("role") == "assistant":
                         got_reply = True
                         print(f"  AI REPLY: {m['text'][:250]}")
@@ -192,9 +181,7 @@ async def main():
             await asyncio.wait_for(ws_files.recv(), 10)
             await prepare_session(ws_files)
             await ws_files.send(
-                json.dumps(
-                    {"type": "execute_tool", "tool": "list_files", "args": {}}
-                )
+                json.dumps({"type": "execute_tool", "tool": "list_files", "args": {}})
             )  # no path → server resolves via winreg
             list_files_action = None
             deadline = asyncio.get_running_loop().time() + 20
@@ -217,6 +204,7 @@ async def main():
                 print("  FAIL - no list_files action received")
 
         print("\n=== All tests complete ===")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

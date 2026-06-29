@@ -20,6 +20,7 @@ import pytest
 # Helpers to import module without starting the full server
 # ---------------------------------------------------------------------------
 
+
 def _import_app_module():
     """Return live_chat_app module, skipping network/device init side-effects."""
     if "live_chat_app" in sys.modules:
@@ -35,6 +36,7 @@ def _import_app_module():
     }
     with mock.patch.dict(sys.modules, stubs):
         import importlib
+
         app = importlib.import_module("live_chat_app")
     return app
 
@@ -42,6 +44,7 @@ def _import_app_module():
 # ---------------------------------------------------------------------------
 # _tracked_task
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_tracked_task_adds_to_set():
@@ -93,16 +96,17 @@ async def test_tracked_task_exception_does_not_propagate():
 # Memory._normalize type coercion
 # ---------------------------------------------------------------------------
 
+
 def test_memory_normalize_coerces_types():
     app = _import_app_module()
     mem = app.Memory.__new__(app.Memory)
 
     raw = {
-        "user_name": 42,           # should become "42"
-        "user_preferences": "bad", # should become {}
+        "user_name": 42,  # should become "42"
+        "user_preferences": "bad",  # should become {}
         "interaction_count": "7",  # should become 7
-        "facts": None,             # should become []
-        "recent_topics": "x",      # should become []
+        "facts": None,  # should become []
+        "recent_topics": "x",  # should become []
     }
     normalized = mem._normalize(raw)
     assert isinstance(normalized["user_name"], str)
@@ -115,6 +119,7 @@ def test_memory_normalize_coerces_types():
 # ---------------------------------------------------------------------------
 # execute_python audit logging
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_execute_python_writes_audit_log(tmp_path, monkeypatch):
@@ -139,6 +144,7 @@ async def test_execute_python_writes_audit_log(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # _run_preflight — smoke: at least returns a dict with expected keys
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_preflight_returns_dict():

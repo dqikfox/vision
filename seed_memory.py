@@ -3,6 +3,7 @@ seed_memory.py — Pre-seed the MCP memory server with key facts about this envi
 Run once: python seed_memory.py
 The memory MCP server must be running (it starts automatically via mcp-config.json).
 """
+
 import json
 import subprocess
 import sys
@@ -20,7 +21,7 @@ ENTITIES = [
             "65+ operator tools for desktop control, OCR, browser, files, shell",
             "Architecture: Perception -> Brain -> Action (3-layer pipeline)",
             "Memory stored in memory.json, logs in chat_events.log",
-        ]
+        ],
     },
     {
         "name": "api_keys_status",
@@ -39,7 +40,7 @@ ENTITIES = [
             "INVALID/EXPIRED: GITHUB_TOKEN original (401 bad credentials)",
             "INVALID: GOOGLE_API_KEY (reported as leaked by Google)",
             "INVALID: OPENAI_ADMIN_KEY (401)",
-        ]
+        ],
     },
     {
         "name": "system_environment",
@@ -54,7 +55,7 @@ ENTITIES = [
             "Intel Wi-Fi 6E AX211, IP 192.168.0.202, gateway 192.168.0.1",
             "64GB RAM, NVMe 512GB (C:), HDD 500GB (D:), Samsung T7 1TB (F:)",
             "NVIDIA GPU present (pynvml available)",
-        ]
+        ],
     },
     {
         "name": "vision_providers",
@@ -67,7 +68,7 @@ ENTITIES = [
             "GitHub Models: cloud via Azure inference API",
             "Anthropic: native SDK, claude-sonnet/opus",
             "Fallback order: github -> groq -> gemini -> deepseek -> openai -> mistral -> anthropic -> xai",
-        ]
+        ],
     },
     {
         "name": "vision_voice_pipeline",
@@ -78,7 +79,7 @@ ENTITIES = [
             "VAD: RMS_THRESH=500, START_FRAMES=3, END_FRAMES=20, BARGE_RMS=1100",
             "DO NOT change VAD thresholds without explicit instruction",
             "ElevenLabs agent ID: agent_01jz2wq70mfetr2b7nchrhew1t",
-        ]
+        ],
     },
     {
         "name": "coding_conventions",
@@ -93,7 +94,7 @@ ENTITIES = [
             "broadcast() must use list(clients) snapshot to avoid RuntimeError",
             "APITimeoutError must come before APIConnectionError in except clauses",
             "PIL.Image.LANCZOS -> PIL.Image.Resampling.LANCZOS (Pillow 10+)",
-        ]
+        ],
     },
     {
         "name": "ultron_project",
@@ -104,7 +105,7 @@ ENTITIES = [
             "Core modules: ai_brain.py, file_manager.py, system_control.py, vision_system.py",
             "Integration plan exists but not yet merged into Vision",
             "ULTRON AIBrain is a wrapper around OpenAI — Vision already does this natively",
-        ]
+        ],
     },
 ]
 

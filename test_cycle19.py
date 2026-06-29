@@ -42,12 +42,8 @@ def test_automation_command_no_shell_true():
     body = fn.group()
     # Remove comments before checking — the comment text may contain 'shell=True'
     body_no_comments = re.sub(r"#[^\n]*", "", body)
-    assert "shell=True" not in body_no_comments, (
-        "Automation 'command' action must not use shell=True (injection risk)"
-    )
-    assert "shell=False" in body_no_comments, (
-        "Automation 'command' action must explicitly set shell=False"
-    )
+    assert "shell=True" not in body_no_comments, "Automation 'command' action must not use shell=True (injection risk)"
+    assert "shell=False" in body_no_comments, "Automation 'command' action must explicitly set shell=False"
 
 
 def test_automation_command_uses_shlex():
@@ -80,14 +76,10 @@ def test_find_files_validates_path():
     )
     assert block is not None, "find_files handler not found"
     body = block.group()
-    assert "_validate_tool_path(" in body, (
-        "find_files must call _validate_tool_path() to prevent path traversal"
-    )
+    assert "_validate_tool_path(" in body, "find_files must call _validate_tool_path() to prevent path traversal"
     validate_pos = body.find("_validate_tool_path(")
     walk_pos = body.find("os.walk(")
-    assert validate_pos < walk_pos, (
-        "_validate_tool_path() must be called BEFORE os.walk()"
-    )
+    assert validate_pos < walk_pos, "_validate_tool_path() must be called BEFORE os.walk()"
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +97,9 @@ def test_browser_scroll_whitelists_direction():
     )
     assert block is not None, "browser_scroll handler not found"
     body = block.group()
-    assert '"up"' in body and '"down"' in body, (
-        "browser_scroll must whitelist 'up' and 'down' directions"
-    )
+    assert '"up"' in body and '"down"' in body, "browser_scroll must whitelist 'up' and 'down' directions"
     # Should return an error for invalid directions
-    assert "direction not in" in body or 'direction must be' in body, (
+    assert "direction not in" in body or "direction must be" in body, (
         "browser_scroll must validate direction and return an error for invalid values"
     )
 
@@ -156,9 +146,7 @@ def test_browser_eval_blocks_document_write():
     )
     assert block is not None
     body = block.group()
-    assert "document.write" in body or r"document\.write" in body, (
-        "browser_eval must block document.write"
-    )
+    assert "document.write" in body or r"document\.write" in body, "browser_eval must block document.write"
 
 
 def test_browser_eval_blocks_inner_html():
@@ -203,16 +191,15 @@ def test_rag_index_localhost_guard():
     assert ep is not None, "/api/rag/index endpoint not found"
     body = ep.group()
     assert "403" in body, "/api/rag/index must return 403 for non-localhost clients"
-    assert "127.0.0.1" in body or "localhost" in body, (
-        "/api/rag/index must check client IP against localhost values"
-    )
+    assert "127.0.0.1" in body or "localhost" in body, "/api/rag/index must check client IP against localhost values"
 
 
 def test_rag_index_takes_request_param():
     """POST /api/rag/index must accept Request to read client host."""
     src = _read(APP)
-    assert "async def api_rag_index(payload: dict[str, Any], request: Request)" in src or \
-           "async def api_rag_index(" in src, "/api/rag/index must accept Request param"
+    assert (
+        "async def api_rag_index(payload: dict[str, Any], request: Request)" in src or "async def api_rag_index(" in src
+    ), "/api/rag/index must accept Request param"
     block = re.search(r"async def api_rag_index\(([^)]*)\)", src)
     assert block is not None
     assert "Request" in block.group(), "/api/rag/index must accept Request param"
@@ -262,6 +249,4 @@ def test_ci_bandit_uses_severity_filter():
     # Check for -ll flag in the bandit run command
     bandit_block = re.search(r"bandit.*?(?=\n\n|\Z)", src, re.DOTALL)
     assert bandit_block is not None, "bandit step not found in quality.yml"
-    assert "-ll" in src, (
-        "bandit must use -ll flag to only fail on HIGH severity findings"
-    )
+    assert "-ll" in src, "bandit must use -ll flag to only fail on HIGH severity findings"

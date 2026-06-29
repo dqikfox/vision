@@ -6,6 +6,7 @@ import platform
 import subprocess
 from pathlib import Path
 
+
 def get_env_info():
     return {
         "os": platform.platform(),
@@ -15,6 +16,7 @@ def get_env_info():
         "memory_available": f"{psutil.virtual_memory().available / (1024**3):.2f} GB",
         "disk_free": f"{psutil.disk_usage('.').free / (1024**3):.2f} GB",
     }
+
 
 def check_keys():
     # Load .env file manually if python-dotenv isn't installed
@@ -27,16 +29,33 @@ def check_keys():
                 os.environ[k.strip()] = v.strip()
 
     # Elite check: don't log the values, just presence
-    keys = ["OPENAI_API_KEY", "GITHUB_TOKEN", "ELEVENLABS_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY"]
+    keys = [
+        "OPENAI_API_KEY",
+        "GITHUB_TOKEN",
+        "ELEVENLABS_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GROQ_API_KEY",
+    ]
     status = {}
     for key in keys:
         status[key] = "SET" if os.environ.get(key) else "MISSING"
     return status
 
+
 def check_dependencies():
     core_packages = [
-        "fastapi", "uvicorn", "websockets", "sounddevice", "numpy", 
-        "scipy", "pyautogui", "pytesseract", "elevenlabs", "openai"
+        "fastapi",
+        "uvicorn",
+        "websockets",
+        "sounddevice",
+        "numpy",
+        "scipy",
+        "pyautogui",
+        "pytesseract",
+        "elevenlabs",
+        "openai",
     ]
     missing = []
     for pkg in core_packages:
@@ -44,11 +63,9 @@ def check_dependencies():
             __import__(pkg)
         except ImportError:
             missing.append(pkg)
-    
-    return {
-        "status": "HEALTHY" if not missing else "DEGRADED",
-        "missing": missing
-    }
+
+    return {"status": "HEALTHY" if not missing else "DEGRADED", "missing": missing}
+
 
 def main():
     try:
@@ -63,18 +80,19 @@ def main():
         "keys": check_keys(),
         "dependencies": check_dependencies(),
     }
-    
+
     # Calculate EHI (Environment Health Index)
     score = 100
     if report["dependencies"]["status"] == "DEGRADED":
         score -= 50
     missing_keys = [k for k, v in report["keys"].items() if v == "MISSING"]
     score -= len(missing_keys) * 10
-    
+
     report["ehi_score"] = max(0, score)
     report["status"] = "ELITE" if report["ehi_score"] >= 90 else "DEGRADED"
 
     print(json.dumps(report, indent=2))
+
 
 if __name__ == "__main__":
     main()

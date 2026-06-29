@@ -23,6 +23,7 @@ import pytest
 # Module import helper
 # ---------------------------------------------------------------------------
 
+
 def _app():
     if "live_chat_app" in sys.modules:
         return sys.modules["live_chat_app"]
@@ -42,6 +43,7 @@ def _app():
 # write_log() — rotation
 # ---------------------------------------------------------------------------
 
+
 def test_write_log_rotates_at_100mb(tmp_path, monkeypatch):
     app = _app()
     log = tmp_path / "chat_events.log"
@@ -58,8 +60,10 @@ def test_write_log_rotates_at_100mb(tmp_path, monkeypatch):
             # Return a mock stat_result with large st_size
             class _S:
                 st_size = 101_000_000
+
                 def __getattr__(self, n):
                     return getattr(s, n)
+
             return _S()
         return s
 
@@ -85,13 +89,13 @@ def test_write_log_creates_file(tmp_path, monkeypatch):
 # Memory.save() — atomic write
 # ---------------------------------------------------------------------------
 
+
 def test_memory_save_atomic_creates_file(tmp_path, monkeypatch):
     app = _app()
     mem_file = tmp_path / "memory.json"
     monkeypatch.setattr(app, "MEMORY_FILE", mem_file)
     mem = app.Memory.__new__(app.Memory)
-    mem.data = {"user_name": "test", "facts": [], "user_preferences": {},
-                "interaction_count": 0, "recent_topics": []}
+    mem.data = {"user_name": "test", "facts": [], "user_preferences": {}, "interaction_count": 0, "recent_topics": []}
     mem.save()
     assert mem_file.exists()
     loaded = json.loads(mem_file.read_text(encoding="utf-8"))
@@ -104,8 +108,13 @@ def test_memory_save_no_partial_write(tmp_path, monkeypatch):
     mem_file = tmp_path / "memory.json"
     monkeypatch.setattr(app, "MEMORY_FILE", mem_file)
     mem = app.Memory.__new__(app.Memory)
-    mem.data = {"user_name": "atomic", "facts": ["a"] * 100,
-                "user_preferences": {}, "interaction_count": 5, "recent_topics": []}
+    mem.data = {
+        "user_name": "atomic",
+        "facts": ["a"] * 100,
+        "user_preferences": {},
+        "interaction_count": 5,
+        "recent_topics": [],
+    }
     mem.save()
     # Must parse cleanly
     result = json.loads(mem_file.read_text(encoding="utf-8"))
@@ -115,6 +124,7 @@ def test_memory_save_no_partial_write(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Health endpoint — new fields
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_health_includes_new_fields():
@@ -145,6 +155,7 @@ async def test_health_background_tasks_is_int():
 # ---------------------------------------------------------------------------
 # execute_python — result audit log
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_execute_python_logs_result_entry(monkeypatch):
