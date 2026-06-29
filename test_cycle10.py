@@ -21,8 +21,10 @@ import httpx
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _app_module():
     import importlib, sys
+
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -41,6 +43,7 @@ def _app_module():
 # ---------------------------------------------------------------------------
 # Finding 2 + 5 — Provider/model validation
 # ---------------------------------------------------------------------------
+
 
 class TestProviderModelValidation:
     @pytest.mark.asyncio
@@ -101,6 +104,7 @@ class TestProviderModelValidation:
 # Finding 3 — broadcast() exception logging
 # ---------------------------------------------------------------------------
 
+
 class TestBroadcastExceptionLogging:
     @pytest.mark.asyncio
     async def test_failed_send_is_logged(self):
@@ -148,6 +152,7 @@ class TestBroadcastExceptionLogging:
 # Finding 4 — _tool_err() info-disclosure prevention
 # ---------------------------------------------------------------------------
 
+
 class TestToolErrSanitisation:
     def test_permission_error_sanitised(self):
         app = _app_module()
@@ -189,10 +194,12 @@ class TestToolErrSanitisation:
 # Finding 6 — SQLite connection timeout
 # ---------------------------------------------------------------------------
 
+
 class TestSQLiteConnectionTimeout:
     def test_connect_has_timeout(self, tmp_path):
         """_connect() must use a timeout to avoid hanging on lock contention."""
         from vision_rag import VisionRAGManager
+
         mgr = VisionRAGManager(source_root=tmp_path / "src", db_path=tmp_path / "rag.db")
         (tmp_path / "src").mkdir()
 
@@ -210,13 +217,15 @@ class TestSQLiteConnectionTimeout:
                 pass
 
         timeouts = [c.get("timeout") for c in conn_calls]
-        assert any(t is not None and t > 0 for t in timeouts), \
+        assert any(t is not None and t > 0 for t in timeouts), (
             f"Expected timeout in connect() calls but got: {conn_calls}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Finding 9 — window_resize / window_move bounds
 # ---------------------------------------------------------------------------
+
 
 class TestWindowBounds:
     @pytest.mark.asyncio

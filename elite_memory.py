@@ -20,9 +20,7 @@ class Message:
 
     role: str  # "user", "assistant", "system"
     content: str
-    timestamp: float = field(
-        default_factory=lambda: datetime.now().timestamp()
-    )
+    timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
     tokens: int = 0
     relevance_score: float = 1.0
     is_summary: bool = False
@@ -51,10 +49,7 @@ class ContextOptimizer:
         """Remove least relevant messages to fit token budget."""
         while self.total_tokens > self.max_tokens and len(self.messages) > 1:
             # Keep system prompts, remove oldest non-critical
-            candidates = [
-                (i, m) for i, m in enumerate(self.messages)
-                if m.role != "system"
-            ]
+            candidates = [(i, m) for i, m in enumerate(self.messages) if m.role != "system"]
             if not candidates:
                 break
 
@@ -98,9 +93,7 @@ class ConversationSummarizer:
         cutoff = int(len(messages) * 0.7)
         to_summarize = messages[:cutoff]
 
-        conversation_text = "\n".join([
-            f"{m.role}: {m.content}" for m in to_summarize
-        ])
+        conversation_text = "\n".join([f"{m.role}: {m.content}" for m in to_summarize])
 
         summary = await summarize_fn(conversation_text)
         self.summaries.append(summary)
@@ -135,10 +128,7 @@ class SemanticMemoryIndex:
                 for idx, _ in self.index[word]:
                     scores[idx] = scores.get(idx, 0) + 1.0
 
-        return [
-            idx for idx, _
-            in sorted(scores.items(), key=lambda x: -x[1])[:top_k]
-        ]
+        return [idx for idx, _ in sorted(scores.items(), key=lambda x: -x[1])[:top_k]]
 
 
 class EliteMemory:
@@ -173,11 +163,7 @@ class EliteMemory:
     def search(self, query: str) -> List[str]:
         """Semantic search in conversation."""
         indices = self.search_index.search(query)
-        return [
-            self.context_opt.messages[i].content
-            for i in indices
-            if i < len(self.context_opt.messages)
-        ]
+        return [self.context_opt.messages[i].content for i in indices if i < len(self.context_opt.messages)]
 
     def add_fact(self, category: str, fact: str) -> None:
         """Store semantic fact."""

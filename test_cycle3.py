@@ -22,6 +22,7 @@ import pytest
 # Module import helper
 # ---------------------------------------------------------------------------
 
+
 def _app():
     if "live_chat_app" in sys.modules:
         return sys.modules["live_chat_app"]
@@ -40,6 +41,7 @@ def _app():
 # ---------------------------------------------------------------------------
 # Confirmation flow tests
 # ---------------------------------------------------------------------------
+
 
 def _reset_confirmation(app):
     app._pending_tool_confirmation = None
@@ -112,6 +114,7 @@ def test_confirmation_conflict_returns_existing_prompt():
 # kb_search — BM25 score included in output
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_kb_search_includes_score_in_output(monkeypatch):
     app = _app()
@@ -131,9 +134,7 @@ async def test_kb_search_includes_score_in_output(monkeypatch):
     monkeypatch.setattr(app._rag_manager, "search", lambda **_kw: fake_result)
 
     output = await app.exec_tool("kb_search", {"query": "intro", "limit": "1"})
-    assert "4.271" in output or "score" in output.lower(), (
-        f"Expected score in output, got: {output!r}"
-    )
+    assert "4.271" in output or "score" in output.lower(), f"Expected score in output, got: {output!r}"
 
 
 @pytest.mark.asyncio
@@ -154,6 +155,7 @@ async def test_kb_search_no_results_returns_friendly_message(monkeypatch):
 # ---------------------------------------------------------------------------
 # File I/O handlers — async wiring (executor smoke test)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_read_file_returns_content(tmp_path):
@@ -186,6 +188,7 @@ async def test_list_files_returns_entries(tmp_path):
 # ---------------------------------------------------------------------------
 # Clipboard handlers — async wiring (mock pyperclip)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_clipboard_calls_pyperclip_paste(monkeypatch):

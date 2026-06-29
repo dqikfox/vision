@@ -22,9 +22,11 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_rag(tmp_path: Path):
     """Create a VisionRAGManager with a temp source root and db path."""
     from vision_rag import VisionRAGManager
+
     source = tmp_path / "src"
     source.mkdir()
     return VisionRAGManager(source_root=source, db_path=tmp_path / "rag.db")
@@ -33,6 +35,7 @@ def _make_rag(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # VisionRAGManager — incremental indexing
 # ---------------------------------------------------------------------------
+
 
 class TestRAGIncremental:
     def test_schema_has_file_hash_column(self, tmp_path):
@@ -84,7 +87,9 @@ class TestRAGIncremental:
         first = mgr.build_index()
 
         # Force mtime change so hash differs
-        import time; time.sleep(0.05)
+        import time
+
+        time.sleep(0.05)
         f.write_text("version two completely different content " * 80, encoding="utf-8")
 
         second = mgr.build_index()
@@ -115,6 +120,7 @@ class TestRAGIncremental:
 # ---------------------------------------------------------------------------
 # Tool argument bounds — live_chat_app.exec_tool
 # ---------------------------------------------------------------------------
+
 
 def _app_module():
     """Import live_chat_app with heavy optional deps stubbed out."""

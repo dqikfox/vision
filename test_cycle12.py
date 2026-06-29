@@ -11,6 +11,7 @@ Covers:
 - vision_rag build_index explicit conn.close() in finally
 - live_chat_ui escHtml used in pickerBody error
 """
+
 from __future__ import annotations
 
 import importlib
@@ -30,6 +31,7 @@ ROOT = Path(__file__).parent
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_source(name: str, path: Path) -> types.ModuleType:
     """Import a module from an absolute path without executing package __init__."""
     spec = importlib.util.spec_from_file_location(name, path)
@@ -41,6 +43,7 @@ def _load_source(name: str, path: Path) -> types.ModuleType:
 # ---------------------------------------------------------------------------
 # 1. _oai_client_cache LRU eviction
 # ---------------------------------------------------------------------------
+
 
 class TestOaiClientCacheLRU(unittest.TestCase):
     """get_oai_client() evicts oldest entry when cache exceeds _OAI_CACHE_MAX."""
@@ -73,11 +76,12 @@ class TestOaiClientCacheLRU(unittest.TestCase):
 # 2. _run_automation_routine TimeoutExpired handler
 # ---------------------------------------------------------------------------
 
+
 class TestAutomationTimeoutHandler(unittest.TestCase):
     def test_timeout_handler_present(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
         self.assertIn("except subprocess.TimeoutExpired:", src)
-        self.assertIn("write_log(\"automation_timeout\"", src)
+        self.assertIn('write_log("automation_timeout"', src)
         self.assertIn('"exit_code": -1', src)
 
     def test_timeout_payload_shape(self):
@@ -93,6 +97,7 @@ class TestAutomationTimeoutHandler(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. /api/rag/index 60s minimum interval
 # ---------------------------------------------------------------------------
+
 
 class TestRagMinInterval(unittest.TestCase):
     def test_rag_last_build_times_declared(self):
@@ -116,6 +121,7 @@ class TestRagMinInterval(unittest.TestCase):
 # 4. voice_cli._tts_worker queue.Empty continue
 # ---------------------------------------------------------------------------
 
+
 class TestTTSWorkerQueueTimeout(unittest.TestCase):
     def test_queue_get_has_timeout(self):
         src = (ROOT / "voice_cli.py").read_text(encoding="utf-8")
@@ -136,6 +142,7 @@ class TestTTSWorkerQueueTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 5. voice_cli._speak_eleven temp file cleanup on subprocess failure
 # ---------------------------------------------------------------------------
+
 
 class TestSpeakElevenTempCleanup(unittest.TestCase):
     def test_finally_block_present(self):
@@ -165,6 +172,7 @@ class TestSpeakElevenTempCleanup(unittest.TestCase):
 # 6. vision_mcp_server httpx.Timeout with connect deadline
 # ---------------------------------------------------------------------------
 
+
 class TestMCPHttpxTimeout(unittest.TestCase):
     def test_granular_timeout_used(self):
         src = (ROOT / "vision_mcp_server.py").read_text(encoding="utf-8")
@@ -175,6 +183,7 @@ class TestMCPHttpxTimeout(unittest.TestCase):
         src = (ROOT / "vision_mcp_server.py").read_text(encoding="utf-8")
         # Should not have plain  timeout=VISION_MCP_TIMEOUT  as a standalone arg
         import re
+
         scalar_pat = re.compile(r"timeout=VISION_MCP_TIMEOUT[^)]")
         self.assertIsNone(scalar_pat.search(src), "Scalar timeout still present")
 
@@ -182,6 +191,7 @@ class TestMCPHttpxTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 7. quality.yml pytest step has no continue-on-error
 # ---------------------------------------------------------------------------
+
 
 class TestQualityYmlTests(unittest.TestCase):
     def test_pytest_step_no_continue_on_error(self):
@@ -203,6 +213,7 @@ class TestQualityYmlTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 8. vision_rag build_index conn.close() in finally
 # ---------------------------------------------------------------------------
+
 
 class TestRagBuildIndexConnClose(unittest.TestCase):
     def test_explicit_try_finally_pattern(self):
@@ -239,6 +250,7 @@ class TestRagBuildIndexConnClose(unittest.TestCase):
 # 9. live_chat_ui escHtml used in pickerBody error
 # ---------------------------------------------------------------------------
 
+
 class TestPickerBodyXSSFix(unittest.TestCase):
     def test_escHtml_used_in_error_display(self):
         src = (ROOT / "live_chat_ui.html").read_text(encoding="utf-8")
@@ -248,6 +260,7 @@ class TestPickerBodyXSSFix(unittest.TestCase):
         """Bare e.message without escaping should not appear in innerHTML."""
         src = (ROOT / "live_chat_ui.html").read_text(encoding="utf-8")
         import re
+
         # Pattern: innerHTML template literal containing ${e.message} without escHtml
         bare = re.compile(r"innerHTML\s*=.*\$\{e\.message\}", re.DOTALL)
         self.assertIsNone(bare.search(src), "Bare e.message still in innerHTML")

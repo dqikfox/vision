@@ -19,6 +19,7 @@ import pytest
 # Module import helper
 # ---------------------------------------------------------------------------
 
+
 def _app():
     if "live_chat_app" in sys.modules:
         return sys.modules["live_chat_app"]
@@ -38,13 +39,12 @@ def _app():
 # browser_open — SSRF validation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_browser_open_rejects_file_scheme():
     app = _app()
     result = await app.exec_tool("browser_open", {"url": "file:///etc/passwd"})
-    assert "error" in result.lower() or "only http" in result.lower(), (
-        f"file:// should be blocked, got: {result!r}"
-    )
+    assert "error" in result.lower() or "only http" in result.lower(), f"file:// should be blocked, got: {result!r}"
 
 
 @pytest.mark.asyncio
@@ -91,6 +91,7 @@ async def test_browser_open_allows_https(monkeypatch):
 # execute_python — large output guard
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_execute_python_truncates_large_output():
     """Code that prints a lot should have output capped at 4000 chars."""
@@ -112,6 +113,7 @@ async def test_execute_python_respects_timeout():
 # /api/export/trace — trace export endpoint
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_export_trace_returns_404_when_no_log(tmp_path, monkeypatch):
     app = _app()
@@ -132,6 +134,7 @@ async def test_export_trace_returns_file_when_log_exists(tmp_path, monkeypatch):
     resp = await app.api_export_trace()
     # FileResponse — check media_type and path
     from fastapi.responses import FileResponse
+
     assert isinstance(resp, FileResponse)
     assert "text" in resp.media_type
 
@@ -140,10 +143,12 @@ async def test_export_trace_returns_file_when_log_exists(tmp_path, monkeypatch):
 # voice_cli — bare except cleanup (import-level smoke test)
 # ---------------------------------------------------------------------------
 
+
 def test_voice_cli_imports_without_syntax_error():
     """voice_cli.py should parse correctly after bare-except cleanup."""
     import ast
     from pathlib import Path
+
     src = Path(__file__).with_name("voice_cli.py").read_text(encoding="utf-8")
     tree = ast.parse(src)  # raises SyntaxError if broken
     # Check no bare 'except:' nodes remain (they have no exception type)

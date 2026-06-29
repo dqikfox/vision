@@ -6,6 +6,7 @@ Covers:
 - _ensure_schema() ALTER TABLE column-name whitelist
 - /api/command-center/* localhost-only guard
 """
+
 from __future__ import annotations
 
 import unittest
@@ -17,6 +18,7 @@ ROOT = Path(__file__).parent
 # ---------------------------------------------------------------------------
 # 1. screenshot_ep() 10s timeout
 # ---------------------------------------------------------------------------
+
 
 class TestScreenshotTimeout(unittest.TestCase):
     def test_wait_for_wraps_executor(self):
@@ -49,6 +51,7 @@ class TestScreenshotTimeout(unittest.TestCase):
 # 2. fetch_url granular httpx.Timeout
 # ---------------------------------------------------------------------------
 
+
 class TestFetchUrlGranularTimeout(unittest.TestCase):
     def test_granular_timeout_object_used(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
@@ -71,6 +74,7 @@ class TestFetchUrlGranularTimeout(unittest.TestCase):
     def test_no_bare_scalar_timeout(self):
         """Old scalar timeout=timeout_secs must be gone from fetch_url."""
         import re
+
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
         idx = src.index('elif name == "fetch_url":')
         snippet = src[idx : idx + 600]
@@ -82,6 +86,7 @@ class TestFetchUrlGranularTimeout(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. _ensure_schema() column-name whitelist
 # ---------------------------------------------------------------------------
+
 
 class TestEnsureSchemaWhitelist(unittest.TestCase):
     def test_whitelist_dict_declared(self):
@@ -102,19 +107,19 @@ class TestEnsureSchemaWhitelist(unittest.TestCase):
         _ALLOWED_MIGRATION_COLS = {"file_mtime": "INTEGER", "file_hash": "TEXT"}
         test_cases = [
             ("file_mtime", "INTEGER", False),  # valid → no raise
-            ("file_hash", "TEXT", False),       # valid → no raise
-            ("evil_col", "TEXT", True),          # invalid → raise
-            ("file_mtime", "BLOB", True),        # wrong type → raise
+            ("file_hash", "TEXT", False),  # valid → no raise
+            ("evil_col", "TEXT", True),  # invalid → raise
+            ("file_mtime", "BLOB", True),  # wrong type → raise
         ]
         for col, typedef, should_raise in test_cases:
             should_fail = col not in _ALLOWED_MIGRATION_COLS or _ALLOWED_MIGRATION_COLS[col] != typedef
-            self.assertEqual(should_fail, should_raise,
-                             f"Whitelist check for ({col!r}, {typedef!r}) gave wrong result")
+            self.assertEqual(should_fail, should_raise, f"Whitelist check for ({col!r}, {typedef!r}) gave wrong result")
 
 
 # ---------------------------------------------------------------------------
 # 4. /api/command-center/* localhost-only guard
 # ---------------------------------------------------------------------------
+
 
 class TestCommandCenterLocalhostGuard(unittest.TestCase):
     def _get_routine_snippet(self, src: str) -> str:

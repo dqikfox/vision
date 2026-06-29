@@ -82,9 +82,7 @@ def test_ollama_cli_list_no_duplicate_except():
     assert try_block is not None, "try block calling _list_via_cli not found"
     body = try_block.group()
     except_count = body.count("except Exception")
-    assert except_count == 1, (
-        f"Expected exactly 1 'except Exception' block, found {except_count}"
-    )
+    assert except_count == 1, f"Expected exactly 1 'except Exception' block, found {except_count}"
 
 
 def test_ollama_cli_no_bare_except_after_named():
@@ -96,9 +94,7 @@ def test_ollama_cli_no_bare_except_after_named():
         src,
         re.DOTALL,
     )
-    assert dead_pattern is None, (
-        "Found unreachable 'except Exception: return []' block after named except handler"
-    )
+    assert dead_pattern is None, "Found unreachable 'except Exception: return []' block after named except handler"
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +132,7 @@ def test_activate_provider_returns_early_on_unknown():
     lock_pos = body.find("_global_state_lock")
     assert providers_check_pos != -1, "PROVIDERS membership check not found"
     assert lock_pos != -1, "_global_state_lock block not found"
-    assert providers_check_pos < lock_pos, (
-        "Provider validation must occur before acquiring _global_state_lock"
-    )
+    assert providers_check_pos < lock_pos, "Provider validation must occur before acquiring _global_state_lock"
 
 
 def test_activate_provider_logs_unknown():
@@ -151,6 +145,4 @@ def test_activate_provider_logs_unknown():
     )
     assert fn is not None
     body = fn.group()
-    assert "write_log" in body or "print(" in body, (
-        "_activate_provider() must log unknown provider names"
-    )
+    assert "write_log" in body or "print(" in body, "_activate_provider() must log unknown provider names"
