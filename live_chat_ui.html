@@ -1096,8 +1096,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div class="section-label">MEMORY</div>
       <div id="factList" style="max-height:90px;overflow-y:auto"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…"/>
-        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
+        <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…" aria-label="Add a fact to remember"/>
+        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px" aria-label="Save fact">+</button>
       </div>
     </div>
   </div>
@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <button class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')" aria-label="Close screenshot viewer">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" onclick="if(event.target===this)closePicker()" role="dialog" aria-modal="true" aria-label="Model selection">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px" aria-label="Close model selection">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()" role="dialog" aria-modal="true" aria-label="System architecture map">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" onclick="closeSystemMap()" aria-label="Close system map">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -1498,6 +1498,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="toast"></div>
 
 <script>
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const screenshotModal = document.getElementById('screenshotModal');
+    if (screenshotModal && screenshotModal.classList.contains('open')) screenshotModal.classList.remove('open');
+    const pickerModal = document.getElementById('pickerModal');
+    if (pickerModal && pickerModal.classList.contains('open')) closePicker();
+    const systemMapModal = document.getElementById('systemMapModal');
+    if (systemMapModal && systemMapModal.classList.contains('open')) closeSystemMap();
+  }
+});
+
 /* ═══════════════════════════════════════
    CONFIG
 ═══════════════════════════════════════ */
