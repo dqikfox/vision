@@ -689,24 +689,28 @@ class CuriosityEngine:
                 topic = await asyncio.wait_for(self._queue.get(), timeout=30.0)
             except TimeoutError:
                 continue
-            if self._llm_fn is None:
-                continue
+
             try:
-                prompt = (
-                    f"You are a self-improving AI. Provide a concise, factual 2-3 sentence "
-                    f"summary about the following topic that will help you answer future "
-                    f"questions more accurately:\n\nTopic: {topic}"
-                )
-                fact = await self._llm_fn(prompt, 150)
-                if fact and len(fact.strip()) > 20:
-                    self.store.add(
-                        text=f"[auto-researched] {topic}: {fact.strip()}",
-                        source="observation",
-                        importance=0.6,
+                if self._llm_fn is None:
+                    continue
+                try:
+                    prompt = (
+                        f"You are a self-improving AI. Provide a concise, factual 2-3 sentence "
+                        f"summary about the following topic that will help you answer future "
+                        f"questions more accurately:\n\nTopic: {topic}"
                     )
-                    logger.debug("CuriosityEngine filled gap: %s", topic[:60])
-            except Exception as exc:
-                logger.debug("CuriosityEngine error: %s", exc)
+                    fact = await self._llm_fn(prompt, 150)
+                    if fact and len(fact.strip()) > 20:
+                        self.store.add(
+                            text=f"[auto-researched] {topic}: {fact.strip()}",
+                            source="observation",
+                            importance=0.6,
+                        )
+                        logger.debug("CuriosityEngine filled gap: %s", topic[:60])
+                except Exception as exc:
+                    logger.debug("CuriosityEngine error: %s", exc)
+            finally:
+                self._queue.task_done()
 
     def stop(self) -> None:
         self._running = False
