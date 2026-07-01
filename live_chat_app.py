@@ -38,7 +38,10 @@ from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 import httpx
 import numpy as np
