@@ -1,0 +1,3 @@
+## 2023-11-20 - Custom Modal Accessibility Anti-patterns
+**Learning:** Found a recurring issue where custom-built modals lacked foundational semantic attributes (`role="dialog"`, `aria-modal="true"`), used non-semantic close buttons (`<div>` instead of `<button>`) without explicit `aria-label`s, and did not support keyboard dismissal via the `Escape` key. This made them inaccessible to screen readers and keyboard users.
+**Action:** Applied semantic attributes to modal containers, converted close triggers to semantic buttons with aria-labels, and implemented a global Escape key event listener for dismissal. When building or reviewing custom overlays, always verify they adhere to standard dialog accessibility patterns.
