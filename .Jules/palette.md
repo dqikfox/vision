@@ -1,0 +1,3 @@
+## 2024-05-24 - Custom Modal Accessibility & Semantics
+**Learning:** Custom UI overlays without native `<dialog>` tags require manual semantic reinforcement (like `role="dialog"` and `aria-modal="true"`) to prevent screen readers from leaking out to background content. They also require manual `Escape` key listeners to fulfill standard keyboard dismissal expectations. Missing aria-labels on icon-only buttons (like the Screenshot close button and input bar camera icon) is a common accessibility trap in this project's micro-UX.
+**Action:** When creating or auditing custom modals, ensure `role="dialog"`, `aria-modal="true"`, explicit close button `aria-label`s, and global `Escape` key event listeners are implemented by default.
