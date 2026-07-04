@@ -620,6 +620,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.08);border:1px solid rgba(29,78,216,.2);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
   color:var(--tx2);transition:all .2s;
+  padding:0;outline:none;
 }
 .modal-close:hover{background:rgba(239,68,68,.2);color:var(--r);border-color:var(--r)}
 
@@ -2760,9 +2761,15 @@ buildKeysList();
 // Add Escape key handler for modals
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    document.getElementById('screenshotModal').classList.remove('open');
-    closePicker();
-    closeSystemMap();
+    if (document.getElementById('screenshotModal').classList.contains('open')) {
+      document.getElementById('screenshotModal').classList.remove('open');
+    }
+    if (document.getElementById('pickerModal').classList.contains('open')) {
+      closePicker();
+    }
+    if (document.getElementById('systemMapModal').classList.contains('open')) {
+      closeSystemMap();
+    }
   }
 });
 </script>
