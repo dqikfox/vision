@@ -620,9 +620,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.08);border:1px solid rgba(29,78,216,.2);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
   color:var(--tx2);transition:all .2s;
-  padding:0;outline:none;
+  padding:0;
 }
 .modal-close:hover{background:rgba(239,68,68,.2);color:var(--r);border-color:var(--r)}
+.modal-close:focus-visible{outline:2px solid var(--p2);outline-offset:2px}
 
 /* ═══════ MODEL PICKER MODAL ═══════ */
 #pickerModal{
