@@ -132,7 +132,7 @@ def _speak_blocking(text: str):
 
 def transcribe_wav(wav_path: str) -> str:
     try:
-        from elevenlabs.client import ElevenLabs
+        from elevenlabs import ElevenLabs
 
         client = ElevenLabs(api_key=API_KEY)
         with open(wav_path, "rb") as f:
