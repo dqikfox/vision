@@ -1,0 +1,3 @@
+## 2024-05-18 - Modal Accessibility Enhancements
+**Learning:** In custom modal implementations, simple div overlays lack native screen reader support and keyboard navigational aids. Adding semantic attributes (`role="dialog"`, `aria-modal="true"`) and `Escape` key dismissal transforms a div-based modal into a standard, predictable, and accessible dialog experience.
+**Action:** When creating custom modals, consistently implement `role="dialog"`, `aria-modal="true"`, explicit `aria-label`s on close controls (using `<button>` tags), and `Escape` key dismissal bindings.

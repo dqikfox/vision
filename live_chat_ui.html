@@ -620,8 +620,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.08);border:1px solid rgba(29,78,216,.2);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
   color:var(--tx2);transition:all .2s;
+  padding:0;
 }
 .modal-close:hover{background:rgba(239,68,68,.2);color:var(--r);border-color:var(--r)}
+.modal-close:focus-visible{outline:2px solid var(--p2);outline-offset:2px}
 
 /* ═══════ MODEL PICKER MODAL ═══════ */
 #pickerModal{
@@ -1388,26 +1390,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot Viewer" onclick="if(event.target===this)this.classList.remove('open')">
+  <button class="modal-close" aria-label="Close screenshot viewer" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Select Model" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button aria-label="Close model picker" onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System Map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2756,6 +2758,21 @@ function toast(msg, type) {
 ═══════════════════════════════════════ */
 updateModelBadge();
 buildKeysList();
+
+// Add Escape key handler for modals
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('screenshotModal').classList.contains('open')) {
+      document.getElementById('screenshotModal').classList.remove('open');
+    }
+    if (document.getElementById('pickerModal').classList.contains('open')) {
+      closePicker();
+    }
+    if (document.getElementById('systemMapModal').classList.contains('open')) {
+      closeSystemMap();
+    }
+  }
+});
 </script>
 </body>
 </html>
