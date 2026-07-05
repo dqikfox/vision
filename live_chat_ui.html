@@ -1097,7 +1097,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div id="factList" style="max-height:90px;overflow-y:auto"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…"/>
-        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
+        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px" aria-label="Add fact">+</button>
       </div>
     </div>
   </div>
@@ -1349,7 +1349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Take screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1373,7 +1373,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="Open ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot view" onclick="if(event.target===this)this.classList.remove('open')">
+  <button class="modal-close" aria-label="Close screenshot" onclick="document.getElementById('screenshotModal').classList.remove('open')" style="background:none;border:none;">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Model picker" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px" aria-label="Close model picker">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System architecture map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" onclick="closeSystemMap()" aria-label="Close system map">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2248,6 +2248,23 @@ function escHtml(t) {
 ═══════════════════════════════════════ */
 document.getElementById('textInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const screenshotModal = document.getElementById('screenshotModal');
+    if (screenshotModal && screenshotModal.classList.contains('open')) {
+      screenshotModal.classList.remove('open');
+    }
+    const pickerModal = document.getElementById('pickerModal');
+    if (pickerModal && pickerModal.classList.contains('open')) {
+      closePicker();
+    }
+    const systemMapModal = document.getElementById('systemMapModal');
+    if (systemMapModal && systemMapModal.classList.contains('open')) {
+      closeSystemMap();
+    }
+  }
 });
 function sendText() {
   const inp = document.getElementById('textInput');
