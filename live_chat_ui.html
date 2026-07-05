@@ -2246,6 +2246,15 @@ function escHtml(t) {
 /* ═══════════════════════════════════════
    INPUT
 ═══════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('pickerModal').classList.contains('open')) closePicker();
+    else if (document.getElementById('systemMapModal').classList.contains('open')) closeSystemMap();
+    else if (document.getElementById('screenshotModal').classList.contains('open')) {
+      document.getElementById('screenshotModal').classList.remove('open');
+    }
+  }
+});
 document.getElementById('textInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
 });
