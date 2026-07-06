@@ -57,6 +57,7 @@ jobs:
         with:
           name: pip-audit-results-py${{ matrix.python-version }}
           path: pip-audit.json
+          if-no-files-found: ignore
 
       - name: Upload bandit results
         if: always()
@@ -64,6 +65,7 @@ jobs:
         with:
           name: bandit-results-py${{ matrix.python-version }}
           path: bandit.json
+          if-no-files-found: ignore
 
   tests:
     name: Unit & Integration Tests
@@ -101,6 +103,7 @@ jobs:
         with:
           name: test-results-py${{ matrix.python-version }}
           path: junit.xml
+          if-no-files-found: ignore
 
   security:
     name: Security Vulnerability Scan
