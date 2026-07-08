@@ -1,0 +1,3 @@
+## 2024-05-24 - Esc Key Dismissal & Modal A11y
+**Learning:** Custom UI modal implementations without native `<dialog>` tags often lack crucial accessibility basics like `role="dialog"`, `aria-modal="true"`, semantic close `<button>`s, and keyboard dismissal (Escape key). Users rely heavily on keyboard shortcuts to quickly back out of full-screen overlays (like the system map or screenshot viewer).
+**Action:** Enforce semantic standardizing for all `.modal` or overlay class patterns: explicitly assign `role="dialog"`, convert `div` close icons to `<button>` with resets and `aria-label`s, and ensure a global or document-level listener handles Escape-to-close behavior across all overlay variants.
