@@ -25,11 +25,10 @@ import sys
 import tempfile
 import threading
 import time
-import traceback
 import warnings
 import webbrowser
 from collections import deque
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -63,6 +62,8 @@ except ImportError:
 from scipy.io import wavfile  # type: ignore[import-untyped]
 
 from elite_brain import get_brain
+from elite_goals import get_goal_manager
+from elite_world import get_world_model
 from hive_tools.context_mapper import DEFAULT_OUTPUT as CONTEXT_BRAIN_FILE
 from hive_tools.context_mapper import build_context_brain
 from vision_rag import VisionRAGManager
@@ -104,11 +105,13 @@ except ImportError:
 BASE = Path(__file__).parent
 UI_FILE = BASE / "live_chat_ui.html"
 COMMAND_CENTER_FILE = BASE / "vision_command_center.html"
+DASHBOARD_FILE = BASE / "vision_executive_dashboard.html"
 COMMAND_CENTER_CONFIG_FILE = BASE / "vision_command_center_config.json"
 AUTOMATION_STATE_FILE = BASE / "vision_automation_state.json"
 LOG_FILE = BASE / "chat_events.log"
 MEMORY_FILE = BASE / "memory.json"
 PORT = 8765
+
 
 def _settings_dir() -> Path:
     """Return a user-writable directory for persisted runtime settings."""
@@ -397,7 +400,7 @@ PROVIDERS = {
         "label": "Google Gemini",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "api_key": _load_key("gemini", "GEMINI_API_KEY"),
-        "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"],
+        "models": ["gemini-3.5-pro", "gemini-3.5-flash", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro", "gemini-1.5-flash"],
     },
     "xai": {
         "label": "xAI Grok",
@@ -411,6 +414,9 @@ PROVIDERS = {
 
 current_provider = "ollama"
 current_model = "gpt-oss:20b"
+selected_model_provider: str | None = None
+selected_model_name: str | None = None
+allow_model_auto_switching: bool = False
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -445,7 +451,7 @@ _mic_hold_until: float = 0.0
 
 
 @contextlib.contextmanager
-def _session_context(target: WebSocket | None) -> dict[str, Any]:
+def _session_context(target: WebSocket | None) -> Iterator[None]:
     """Bind the current task to a websocket/session-local history when present."""
     target_token = _session_target_var.set(target)
     history_token = _session_history_var.set(_session_histories.setdefault(target, []) if target else None)
@@ -528,7 +534,6 @@ def _set_session_speak_task(target: WebSocket | None, task: asyncio.Task[None] |
 
 def _set_request_lane_busy(target: WebSocket | None, busy: bool) -> None:
     """Track request-lane occupancy per session while keeping a global voice gate."""
-    global _input_busy
     key = _request_target_key(target)
     if busy:
         _active_request_targets.add(key)
@@ -536,6 +541,7 @@ def _set_request_lane_busy(target: WebSocket | None, busy: bool) -> None:
         _active_request_targets.discard(key)
     if target is not None:
         _session_input_busy[target] = busy
+    global _input_busy
     _input_busy = bool(_active_request_targets)
 
 
@@ -576,7 +582,6 @@ async def _cancel_all_speak_tasks() -> None:
 
 def _request_lane_busy(target: WebSocket | None = None) -> bool:
     """Return True only when the relevant request lane is genuinely occupied."""
-    global _input_busy
     if target is None:
         if _input_busy and runtime_state in {"idle", "listening", "muted"} and not _any_speak_active():
             _set_request_lane_busy(None, False)
@@ -598,6 +603,7 @@ last_stt_provider: str = ""  # last STT provider that succeeded
 last_tts_provider: str = ""  # last TTS provider that succeeded
 tts_rate: int = 175  # pyttsx3 words-per-minute
 tts_voice_idx: int = 0  # 0=first/David, 1=second/Zira; 100+ = OneCore neural
+tts_voice_id: str = VOICE_ID  # ElevenLabs voice ID for cloud TTS
 _onecore_voices: dict[int, str] = {}  # populated by api_voices(); index → display name
 _elevenlabs_auth_failed: bool = False
 
@@ -618,9 +624,9 @@ def _quarantine_bad_settings_file(path: Path) -> None:
     bad_file = path.with_name(f"{path.stem}.bad-{timestamp}{path.suffix}")
     try:
         path.rename(bad_file)
-        print(f"[settings] Renamed corrupt settings file to {bad_file}")
+        print(f"[settings] Renamed corrupt settings file to {bad_file} - live_chat_app.py:627")
     except Exception as e:
-        print(f"[settings] Failed to rename corrupt settings file {path}: {e}")
+        print(f"[settings] Failed to rename corrupt settings file {path}: {e} - live_chat_app.py:629")
 
 
 def _get_str_setting(
@@ -639,9 +645,37 @@ def _get_str_setting(
         return current
     normalized = value.strip().lower()
     if allowed and normalized not in allowed:
-        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r} - live_chat_app.py:648")
         return current
     return normalized if allowed else value
+
+
+def _get_optional_str_setting(data: dict[str, Any], path: Path, key: str, current: str | None) -> str | None:
+    value = data.get(key, current)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        print(
+            f"[settings] Ignoring invalid {key} in {path}: "
+            f"expected string, got {type(value).__name__}"
+        )
+        return current
+    normalized = value.strip()
+    return normalized or None
+
+
+def _get_bool_setting(data: dict[str, Any], path: Path, key: str, current: bool) -> bool:
+    value = data.get(key, current)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    print(f"[settings] Ignoring invalid {key} in {path}: {value!r} - live_chat_app.py:677")
+    return current
 
 
 def _get_int_setting(
@@ -655,28 +689,30 @@ def _get_int_setting(
     try:
         parsed = int(value)
     except (TypeError, ValueError):
-        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r} - live_chat_app.py:692")
         return current
     if minimum is not None and parsed < minimum:
-        print(f"[settings] Ignoring invalid {key} in {path}: {value!r}")
+        print(f"[settings] Ignoring invalid {key} in {path}: {value!r} - live_chat_app.py:695")
         return current
     return parsed
 
+
 def _load_settings() -> None:
     """Load persisted voice/STT/TTS settings from settings.json into globals."""
-    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
+    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx, tts_voice_id
+    global selected_model_provider, selected_model_name, allow_model_auto_switching
     path = _settings_read_path()
     if path is None:
         return
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        print(f"[settings] Failed to parse {path}: {e}")
+        print(f"[settings] Failed to parse {path}: {e} - live_chat_app.py:710")
         _quarantine_bad_settings_file(path)
         return
 
     if not isinstance(data, dict):
-        print(f"[settings] Ignoring invalid settings root in {path}: expected object")
+        print(f"[settings] Ignoring invalid settings root in {path}: expected object - live_chat_app.py:715")
         _quarantine_bad_settings_file(path)
         return
 
@@ -696,6 +732,17 @@ def _load_settings() -> None:
     )
     tts_rate = _get_int_setting(data, path, "tts_rate", tts_rate)
     tts_voice_idx = _get_int_setting(data, path, "tts_voice_idx", tts_voice_idx, minimum=0)
+    tts_voice_id = _get_optional_str_setting(data, path, "tts_voice_id", tts_voice_id) or VOICE_ID
+    selected_model_provider = _get_optional_str_setting(data, path, "selected_model_provider", selected_model_provider)
+    if selected_model_provider:
+        selected_model_provider = selected_model_provider.lower()
+    selected_model_name = _get_optional_str_setting(data, path, "selected_model_name", selected_model_name)
+    allow_model_auto_switching = _get_bool_setting(
+        data,
+        path,
+        "allow_model_auto_switching",
+        allow_model_auto_switching,
+    )
 
 
 def _save_settings() -> None:
@@ -709,17 +756,65 @@ def _save_settings() -> None:
                     "preferred_tts": preferred_tts,
                     "tts_rate": tts_rate,
                     "tts_voice_idx": tts_voice_idx,
+                    "tts_voice_id": tts_voice_id,
+                    "selected_model_provider": selected_model_provider,
+                    "selected_model_name": selected_model_name,
+                    "allow_model_auto_switching": allow_model_auto_switching,
                 },
                 indent=2,
             ),
             encoding="utf-8",
         )
     except Exception as e:
-        print(f"[settings] Failed to save {SETTINGS_FILE}: {e}")
+        print(f"[settings] Failed to save {SETTINGS_FILE}: {e} - live_chat_app.py:769")
 
 
 # Load persisted settings immediately at import time so all handlers see them
 _load_settings()
+
+
+def _model_auto_switching_enabled() -> bool:
+    """Return whether provider/model failover is allowed to change selection automatically."""
+    return allow_model_auto_switching
+
+
+def _active_elevenlabs_voice_id() -> str:
+    """Return the selected ElevenLabs voice ID or the default fallback voice."""
+    selected_voice_id = str(tts_voice_id or "").strip()
+    return selected_voice_id or VOICE_ID
+
+
+def _restore_saved_model_selection() -> bool:
+    """Restore the last manual model selection without rewriting it at startup."""
+    global current_provider, current_model
+    provider = str(selected_model_provider or "").strip().lower()
+    model = str(selected_model_name or "").strip()
+    if not provider or not model or provider not in PROVIDERS:
+        return False
+    current_provider = provider
+    current_model = model
+    return True
+
+
+async def _set_manual_model_selection(provider: str, model: str, *, clear_histories: bool) -> None:
+    """Apply and persist a manual model selection from the UI or API."""
+    global current_provider, current_model, _ollama_failover_active
+    global selected_model_provider, selected_model_name
+    next_provider = str(provider or current_provider).strip().lower()
+    next_model = str(model or current_model).strip()
+    if not next_provider or not next_model:
+        return
+    current_provider = next_provider
+    current_model = next_model
+    _ollama_failover_active = False
+    _provider_failure_until.pop(next_provider, None)
+    if clear_histories:
+        _clear_all_histories()
+    selected_model_provider = current_provider
+    selected_model_name = current_model
+    await asyncio.to_thread(_save_settings)
+    write_log("model", f"{current_provider}/{current_model}")
+    await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
 
 # ── ElevenLabs Conversational Agent state ─────────────────────────────────────
 AGENT_ID = "agent_7201kmxc5trte9tarb626ed8dgt1"
@@ -752,6 +847,7 @@ async def _broadcast_voice_settings_update() -> None:
             "preferred_tts": preferred_tts,
             "tts_rate": tts_rate,
             "tts_voice_idx": tts_voice_idx,
+            "tts_voice_id": tts_voice_id,
         }
     )
 
@@ -1182,15 +1278,16 @@ def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -
 class Memory:
     """Persistent JSON-backed long-term memory."""
 
-    _default = lambda _: {
-        "user": {"name": None, "preferences": []},
-        "facts": [],
-        "context_summary": "",
-        "voice": {"continuous_listening": False, "wake_word": False},
-        "session_count": 0,
-        "last_session": None,
-        "task_history": [],
-    }
+    def _default(self) -> dict[str, Any]:
+        return {
+            "user": {"name": None, "preferences": []},
+            "facts": [],
+            "context_summary": "",
+            "voice": {"continuous_listening": False, "wake_word": False},
+            "session_count": 0,
+            "last_session": None,
+            "task_history": [],
+        }
 
     def __init__(self) -> None:
         self.data = self._load()
@@ -1205,7 +1302,7 @@ class Memory:
                 return self._normalize(data)
             except Exception:
                 pass
-        return Memory._default(None)  # type: ignore[no-untyped-call]
+        return self._default()
 
     def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         data.setdefault("user", {"name": None, "preferences": []})
@@ -1683,7 +1780,8 @@ def _no_provider_message() -> str:
 
 async def _maybe_restore_ollama_provider() -> None:
     """Return to local Ollama after an automatic failover once the cooldown expires."""
-    global _ollama_failover_active
+    if not _model_auto_switching_enabled():
+        return
     if current_provider == "ollama" or not _ollama_failover_active:
         return
     if time.time() < _provider_failure_until.get("ollama", 0.0):
@@ -1841,7 +1939,8 @@ def _with_absolute_paths(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _load_context_brain(*, persist: bool) -> dict[str, Any]:
     """Load or regenerate the context brain, optionally persisting the artifact."""
     if CONTEXT_BRAIN_FILE.exists() and not persist:
-        return json.loads(CONTEXT_BRAIN_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(CONTEXT_BRAIN_FILE.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
 
     brain = build_context_brain()
     if persist or not CONTEXT_BRAIN_FILE.exists():
@@ -2378,6 +2477,11 @@ async def command_center() -> FileResponse:
     return FileResponse(COMMAND_CENTER_FILE)
 
 
+@app.get("/dashboard")
+async def dashboard() -> FileResponse:
+    return FileResponse(DASHBOARD_FILE)
+
+
 @app.get("/api/command-center")
 async def api_command_center() -> JSONResponse:
     loop = asyncio.get_running_loop()
@@ -2435,6 +2539,7 @@ async def api_models() -> JSONResponse:
         {
             "current_provider": current_provider,
             "current_model": current_model,
+            "auto_model_switching": _model_auto_switching_enabled(),
             "providers": {
                 k: {
                     "label": v["label"],
@@ -2449,13 +2554,11 @@ async def api_models() -> JSONResponse:
 
 @app.post("/api/model")
 async def api_set_model(payload: dict[str, Any]) -> JSONResponse:
-    global current_provider, current_model, _ollama_failover_active
-    current_provider = payload.get("provider", current_provider)
-    current_model = payload.get("model", current_model)
-    _ollama_failover_active = False
-    _clear_all_histories()
-    write_log("model", f"{current_provider}/{current_model}")
-    await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
+    await _set_manual_model_selection(
+        str(payload.get("provider", current_provider)),
+        str(payload.get("model", current_model)),
+        clear_histories=True,
+    )
     return JSONResponse({"ok": True})
 
 
@@ -2579,10 +2682,10 @@ async def api_rag_export_training(payload: dict[str, Any]) -> JSONResponse:
 
 
 @app.get("/screenshot")
-async def screenshot_ep():
+async def screenshot_ep() -> JSONResponse:
     loop = asyncio.get_running_loop()
 
-    def _snap():
+    def _snap() -> tuple[str, str]:
         img = pyautogui.screenshot()
         buf_hq = io.BytesIO()
         img.save(buf_hq, format="JPEG", quality=85)
@@ -2601,7 +2704,7 @@ async def screenshot_ep():
 
 
 @app.post("/api/tool/execute")
-async def tool_execute(request: Request):
+async def tool_execute(request: Request) -> JSONResponse:
     data = await request.json()
     name = data.get("name", "")
     params = data.get("parameters", {})
@@ -2627,7 +2730,7 @@ _AO_EVENT_ICONS = {
 
 
 @app.post("/webhook/agent-orchestrator")
-async def agent_orchestrator_webhook(request: Request):
+async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     """
     Receives Agent Orchestrator (Composio) notifications via the 'openclaw' notifier.
     Broadcasts them to all connected UI clients and optionally speaks them.
@@ -2670,24 +2773,23 @@ async def agent_orchestrator_webhook(request: Request):
     _spoken_events = {"ci-failed", "agent-stuck", "approved", "changes-requested", "agent-done"}
     if event in _spoken_events and not muted:
         spoken = f"{title} in {project}" if project else title
-        asyncio.create_task(speak(spoken[:120]))
+        asyncio.create_task(speak(spoken[:120]))  # type: ignore[arg-type]
 
     return JSONResponse({"ok": True, "received": event})
 
 
 @app.get("/api/voices")
-async def api_voices():
-    """List all available TTS voices: pyttsx3 SAPI + Windows OneCore neural."""
-    global _onecore_voices
+async def api_voices() -> JSONResponse:
+    """List provider-scoped TTS voices for local Windows and ElevenLabs."""
     import winreg
 
-    voices: list[dict] = []
+    local_voices: list[dict[str, Any]] = []
     try:
-        import pyttsx3
+        import pyttsx3  # type: ignore[import-untyped]
 
         eng = pyttsx3.init()
         for i, v in enumerate(eng.getProperty("voices") or []):
-            voices.append({"id": v.id, "name": v.name, "index": i, "type": "sapi"})
+            local_voices.append({"id": v.id, "name": v.name, "index": i, "type": "sapi"})
         eng.stop()
     except Exception:
         pass
@@ -2726,7 +2828,7 @@ async def api_voices():
                                     voice_n = parts[3].rstrip("MFmf")  # remove gender suffix
                                     locale_code = locale_str[2:].upper()  # US, AU
                                     display_name = f"⚡ {voice_n} ({locale_code})"
-                            voices.append(
+                            local_voices.append(
                                 {
                                     "id": token_key,  # registry key name for win32com matching
                                     "name": display_name,
@@ -2741,11 +2843,51 @@ async def api_voices():
                         break
         except Exception:
             pass
-    return JSONResponse({"voices": voices})
+    elevenlabs_voices: list[dict[str, Any]] = []
+    elevenlabs_available = False
+    if not _elevenlabs_auth_failed:
+        api_11 = _load_key("elevenlabs", "ELEVENLABS_API_KEY")
+        if api_11:
+            try:
+                client = ElevenLabs(api_key=api_11)
+                response = client.voices.get_all()
+                voice_items = getattr(response, "voices", []) or []
+                elevenlabs_voices = [
+                    {
+                        "id": str(getattr(voice, "voice_id", "") or ""),
+                        "name": str(getattr(voice, "name", "") or f"Voice {index + 1}"),
+                        "index": index,
+                        "type": "elevenlabs",
+                    }
+                    for index, voice in enumerate(voice_items)
+                    if getattr(voice, "voice_id", None)
+                ]
+                elevenlabs_available = bool(elevenlabs_voices)
+            except Exception as e:
+                if _is_invalid_elevenlabs_auth(str(e)):
+                    await _handle_invalid_elevenlabs_auth(str(e))
+
+    return JSONResponse(
+        {
+            "voices": local_voices,
+            "providers": {
+                "local": {
+                    "label": "Windows Local Voices",
+                    "available": bool(local_voices),
+                    "voices": local_voices,
+                },
+                "elevenlabs": {
+                    "label": "ElevenLabs",
+                    "available": elevenlabs_available,
+                    "voices": elevenlabs_voices,
+                },
+            },
+        }
+    )
 
 
 @app.post("/api/el-agent/start")
-async def api_el_agent_start():
+async def api_el_agent_start() -> JSONResponse:
     if _el_active:
         message = "ConvAI agent already running."
         await _broadcast_el_agent_status("already_running", message)
@@ -2760,13 +2902,13 @@ async def api_el_agent_start():
 
 
 @app.post("/api/el-agent/stop")
-async def api_el_agent_stop():
+async def api_el_agent_stop() -> JSONResponse:
     asyncio.create_task(_stop_el_agent())
     return JSONResponse({"ok": True})
 
 
 @app.post("/api/wake-word")
-async def api_wake_word(body: dict):
+async def api_wake_word(body: dict) -> JSONResponse:
     global wake_word_active
     wake_word_active = bool(body.get("enabled", False))
     memory.set_voice_flags(wake_word=wake_word_active)
@@ -2775,9 +2917,9 @@ async def api_wake_word(body: dict):
 
 @app.websocket("/ws")
 async def ws_ep(websocket: WebSocket):
-    global muted, mode, current_provider, current_model, _ollama_failover_active
+    global muted, mode
     global _elevenlabs_auth_failed
-    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx
+    global preferred_stt, preferred_tts, tts_rate, tts_voice_idx, tts_voice_id
     global wake_word_active, continuous_listening
     await websocket.accept()
     clients.add(websocket)
@@ -2789,6 +2931,7 @@ async def ws_ep(websocket: WebSocket):
                 "type": "init",
                 "provider": current_provider,
                 "model": current_model,
+                "auto_model_switching": _model_auto_switching_enabled(),
                 "mode": mode,
                 "state": runtime_state,
                 "memory": memory.get_all(),
@@ -2800,6 +2943,7 @@ async def ws_ep(websocket: WebSocket):
                     "preferred_tts": preferred_tts,
                     "tts_rate": tts_rate,
                     "tts_voice_idx": tts_voice_idx,
+                    "tts_voice_id": tts_voice_id,
                 },
             }
         )
@@ -2872,12 +3016,11 @@ async def ws_ep(websocket: WebSocket):
                         _set_request_lane_busy(websocket, True)
                         asyncio.create_task(_run_tool(tool_name, tool_args))
             elif t == "set_model":
-                current_provider = msg.get("provider", current_provider)
-                current_model = msg.get("model", current_model)
-                _ollama_failover_active = False
-                _clear_all_histories()
-                write_log("model", f"{current_provider}/{current_model}")
-                await broadcast({"type": "model_changed", "provider": current_provider, "model": current_model})
+                await _set_manual_model_selection(
+                    str(msg.get("provider", current_provider)),
+                    str(msg.get("model", current_model)),
+                    clear_histories=True,
+                )
             elif t == "set_mute":
                 muted = msg.get("muted", False)
                 write_log("mute", str(muted))
@@ -2947,6 +3090,7 @@ async def ws_ep(websocket: WebSocket):
                                 "preferred_tts": preferred_tts,
                                 "tts_rate": tts_rate,
                                 "tts_voice_idx": tts_voice_idx,
+                                "tts_voice_id": tts_voice_id,
                             },
                         }
                     )
@@ -2980,7 +3124,12 @@ async def ws_ep(websocket: WebSocket):
                 preferred_tts = msg.get("preferred_tts", preferred_tts)
                 tts_rate = int(msg.get("tts_rate", tts_rate))
                 tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
-                write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
+                next_voice_id = str(msg.get("tts_voice_id", tts_voice_id)).strip()
+                tts_voice_id = next_voice_id or tts_voice_id or VOICE_ID
+                write_log(
+                    "voice",
+                    f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx} voice_id={tts_voice_id}",
+                )
                 await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
             elif t == "el_agent_start":
@@ -3068,6 +3217,98 @@ async def broadcast_volume(lvl: float) -> None:
     await broadcast({"type": "volume", "level": round(min(lvl, 1.0), 3)})
 
 
+async def broadcast_goals_and_world() -> None:
+    """Broadcast current active goals tree and world model state to all clients."""
+    try:
+        gm = get_goal_manager()
+        wm = get_world_model()
+
+        # 1. Build and broadcast goals update
+        plans_by_goal = {}
+        for plan in gm.planner.plans.values():
+            plans_by_goal[plan.goal_uid] = [
+                {
+                    "uid": step.uid,
+                    "description": step.description,
+                    "tool": step.tool,
+                    "tool_args": step.tool_args,
+                    "status": step.status.name,
+                    "result": step.result,
+                    "duration_ms": step.duration_ms,
+                }
+                for step in plan.steps
+            ]
+
+        def serialize_goal_tree(goal_uid):
+            if goal_uid not in gm.graph.goals:
+                return {}
+            goal = gm.graph.goals[goal_uid]
+            return {
+                "uid": goal.uid,
+                "description": goal.description,
+                "status": goal.status.name,
+                "priority": goal.priority.name,
+                "deadline": goal.deadline,
+                "created_at": goal.created_at,
+                "subgoals": [serialize_goal_tree(uid) for uid in goal.subgoal_uids],
+                "steps": plans_by_goal.get(goal.uid, []),
+            }
+
+        root_goals = [g for g in gm.graph.goals.values() if g.parent_uid is None]
+        root_goals = sorted(root_goals, key=lambda g: g.created_at, reverse=True)
+        goals_data = [serialize_goal_tree(g.uid) for g in root_goals]
+
+        await broadcast({
+            "type": "goals_update",
+            "status": gm.get_status(),
+            "goals": goals_data,
+        })
+
+        # 2. Build and broadcast world model update
+        entities_data = [
+            {
+                "uid": e.uid,
+                "name": e.name,
+                "type": e.entity_type.name,
+                "state": e.state.name,
+                "last_seen": e.last_seen,
+            }
+            for e in wm.registry.entities.values()
+        ]
+        entities_data = sorted(entities_data, key=lambda x: x["last_seen"], reverse=True)[:50]
+
+        observations_data = [
+            {
+                "uid": o.uid,
+                "timestamp": o.timestamp,
+                "source": o.source,
+                "content": o.content,
+            }
+            for o in wm.buffer.get_recent(25)
+        ]
+
+        predictions_data = [
+            {
+                "uid": p.uid,
+                "description": p.description,
+                "confidence": p.confidence,
+                "fulfilled": p.fulfilled,
+            }
+            for p in wm.predictions.predictions.values()
+        ]
+        predictions_data = sorted(predictions_data, key=lambda x: x["uid"], reverse=True)[:10]
+
+        await broadcast({
+            "type": "world_update",
+            "status": wm.get_status(),
+            "entities": entities_data,
+            "observations": observations_data,
+            "predictions": predictions_data,
+        })
+    except Exception as e:
+        write_log("elite_error", f"Failed to broadcast goals & world: {e}")
+
+
 async def _wait_for_quiet_input(max_wait: float = 1.2) -> None:
     """Delay TTS briefly while the microphone is actively receiving speech."""
     loop = asyncio.get_running_loop()
@@ -3144,7 +3385,7 @@ _faster_whisper_model = None  # lazy-loaded once
 
 
 async def transcribe(frames: list[np.ndarray]) -> str:
-    global _stt_failure_until, _stt_groq_failure_until, _faster_whisper_model, _elevenlabs_auth_failed
+    global _stt_failure_until
 
     # If all providers recently failed, skip until cooldown expires
     if time.time() < _stt_failure_until:
@@ -3210,7 +3451,6 @@ async def transcribe(frames: list[np.ndarray]) -> str:
             return None
 
     async def _try_local():
-        # Must use global keyword here because we assign to _faster_whisper_model
         global _faster_whisper_model
         try:
             from faster_whisper import WhisperModel  # type: ignore
@@ -3352,7 +3592,6 @@ async def get_browser_page():
         if _pw_lock is None:
             _pw_lock = asyncio.Lock()
         async with _pw_lock:
-            last_error: Exception | None = None
             for attempt in range(2):
                 try:
                     if _pw_browser is None:
@@ -3368,8 +3607,7 @@ async def get_browser_page():
                         pages = _pw_browser.pages
                         _pw_page = pages[0] if pages else await _pw_browser.new_page()
                     return _pw_page
-                except Exception as e:
-                    last_error = e
+                except Exception:
                     if attempt == 0:
                         await _reset_browser_page_state()
                         continue
@@ -4564,11 +4802,21 @@ async def exec_tool(name: str, args: dict, *, confirmed: bool = False) -> str:
     t0 = time.monotonic()
     last_err: Exception | None = None
     max_attempts = 3 if name in _RETRYABLE_TOOLS else 1
+    result = None
     for attempt in range(max_attempts):
         try:
             result = await _exec_tool_impl(name, args)
             # Store timing so broadcast_action callers can retrieve it
             _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
+
+            # Record success observation in World Model
+            try:
+                wm = get_world_model()
+                await wm.observe(f"Executed tool '{name}' with args {args}. Result: {result}", "tool_result")
+                asyncio.create_task(broadcast_goals_and_world())
+            except Exception:
+                pass
+
             return result
         except Exception as exc:
             last_err = exc
@@ -4577,8 +4825,18 @@ async def exec_tool(name: str, args: dict, *, confirmed: bool = False) -> str:
                 await asyncio.sleep(0.5 * (attempt + 1))
 
     _tool_last_elapsed_ms[name] = (time.monotonic() - t0) * 1000
+
+    # Record failure observation in World Model
+    err_msg = _tool_err(name, last_err) if last_err else f"{name} failed with unknown error"
+    try:
+        wm = get_world_model()
+        await wm.observe(f"Failed to execute tool '{name}' with args {args}. Error: {err_msg}", "tool_result")
+        asyncio.create_task(broadcast_goals_and_world())
+    except Exception:
+        pass
+
     # Provide the last error back to the LLM to help it self-correct
-    return _tool_err(name, last_err) if last_err else f"{name} failed with unknown error"
+    return err_msg
 
 
 async def _exec_tool_impl(name: str, args: dict) -> str:
@@ -5657,7 +5915,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
         def _hex_to_rgb(h: str):
             try:
-                return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
+                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
             except Exception:
                 return None
 
@@ -5833,7 +6091,7 @@ async def _llm_prompt_tools(oai, system: str, full_so_far: str):
             )
             reply = resp.choices[0].message.content or ""
         except Exception as e:
-            print(f"[llm/prompttools] {e} - live_chat_app.py:4191")
+            print(f"[llm/prompttools] {e} - live_chat_app.py:6094")
             err = f"Error: {str(e)[:120]}"
             yield err
             return
@@ -5941,7 +6199,7 @@ async def _execute_computer_action(action) -> dict:
 
     elif action_type == "scroll":
         x, y = int(action.x), int(action.y)
-        dx = getattr(action, "scroll_x", 0) or getattr(action, "delta_x", 0)
+        dx = getattr(action, "scroll_x", 0) or getattr(action, "delta_x", 0)  # noqa: F841
         dy = getattr(action, "scroll_y", 0) or getattr(action, "delta_y", 0)
         if dy:
             await loop.run_in_executor(None, lambda: pyautogui.scroll(int(dy), x=x, y=y))
@@ -6245,7 +6503,7 @@ async def _llm_stream_ollama(user_text: str):
         except OllamaResponseError as e:
             # Native tool calling not supported — fall back to prompt-based
             if "tool" in str(e.error).lower() or "function" in str(e.error).lower():
-                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:4603")
+                print(f"[llm/ollama] tool error → prompt fallback: {e.error} - live_chat_app.py:6506")
                 oai = get_oai_client()
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -6254,7 +6512,7 @@ async def _llm_stream_ollama(user_text: str):
             yield f"Ollama error: {e.error}"
             break
         except Exception as e:
-            print(f"[llm/ollama] {e} - live_chat_app.py:4612")
+            print(f"[llm/ollama] {e} - live_chat_app.py:6515")
             yield f"Error: {str(e)[:120]}"
             break
 
@@ -6420,12 +6678,12 @@ async def _llm_stream_openai(user_text: str):
 
         except openai.RateLimitError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:4779")
+            print(f"[llm/openai] rate_limit request_id={rid} - live_chat_app.py:6681")
             yield "Rate limit reached — please wait a moment."
             break
         except openai.APIStatusError as e:
             rid = getattr(e, "request_id", None)
-            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]}")
+            print(f"[llm/openai] status={e.status_code} request_id={rid} {str(e.message)[:100]} - live_chat_app.py:6686")
             yield f"API error {e.status_code}: {str(e.message)[:100]}"
             break
         except openai.APITimeoutError:  # subclass of APIConnectionError — must come first
@@ -6436,7 +6694,7 @@ async def _llm_stream_openai(user_text: str):
             break
         except Exception as e:
             err_s = str(e)
-            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:4797")
+            print(f"[llm/openai] {err_s[:120]} - live_chat_app.py:6697")
             if any(k in err_s.lower() for k in ("tool", "function", "schema", "unsupported")):
                 async for c in _llm_prompt_tools(oai, system, full):
                     full += c
@@ -6861,7 +7119,8 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
     global _ollama_failover_active
     _append_history({"role": "user", "content": user_text})
     await _compress_history_if_needed()
-    await _maybe_restore_ollama_provider()
+    if _model_auto_switching_enabled():
+        await _maybe_restore_ollama_provider()
 
     full_response = []
 
@@ -6892,13 +7151,17 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
 
         if errored:
             _provider_failure_until["ollama"] = time.time() + 120.0
-            fallback_provider = _choose_fallback_provider()
-            if fallback_provider:
-                _ollama_failover_active = True
-                print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:5255")
-                await _activate_provider(fallback_provider)
-            elif first_error:
-                yield _no_provider_message()
+            if _model_auto_switching_enabled():
+                fallback_provider = _choose_fallback_provider()
+                if fallback_provider:
+                    _ollama_failover_active = True
+                    print(f"[llm] Ollama failed  cascading to {fallback_provider} - live_chat_app.py:7158")
+                    await _activate_provider(fallback_provider)
+                else:
+                    yield first_error or _no_provider_message()
+                    return
+            else:
+                yield first_error or _no_provider_message()
                 return
         else:
             asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
@@ -6932,12 +7195,15 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
             return
 
         _provider_failure_until[active_provider] = time.time() + 300.0
+        if not _model_auto_switching_enabled():
+            yield first_error or _no_provider_message()
+            return
         fallback_provider = _choose_fallback_provider(attempted_providers)
         if not fallback_provider:
-            yield _no_provider_message()
+            yield first_error or _no_provider_message()
             return
 
-        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:5297")
+        print(f"[llm] {active_provider} failed  cascading to {fallback_provider} - live_chat_app.py:7206")
         await _activate_provider(fallback_provider)
 
 
@@ -6947,7 +7213,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
 async def speak(text_gen):
     """Stream LLM tokens to ElevenLabs in real-time for minimal latency."""
     loop = asyncio.get_running_loop()
-    global last_tts_provider, _response_lock, _elevenlabs_auth_failed
+    global last_tts_provider
     collected: list[str] = []
     playback_duration = 0.0
 
@@ -6973,14 +7239,14 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] pyttsx3: {e} - live_chat_app.py:5333")
+                print(f"[tts] pyttsx3: {e} - live_chat_app.py:7242")
                 return False
 
         async def _win32_tts(text: str) -> bool:
             """Speak using a Windows OneCore neural voice via win32com SAPI."""
             token_key = _onecore_voices.get(tts_voice_idx, "")
             if not token_key:
-                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:5340")
+                print(f"[tts] win32: no token for voice index {tts_voice_idx} - live_chat_app.py:7249")
                 return False
             try:
 
@@ -7009,7 +7275,7 @@ async def speak(text_gen):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[tts] win32 onecore: {e} - live_chat_app.py:5369")
+                print(f"[tts] win32 onecore: {e} - live_chat_app.py:7278")
                 return False
 
         async def _fallback_tts(text: str) -> bool:
@@ -7068,7 +7334,7 @@ async def speak(text_gen):
                             if idx < 0:
                                 break
                             sentence = buf[: idx + 1].strip()
-                            buf = buf[idx + 1 :]
+                            buf = buf[idx + 1:]
                             if sentence:
                                 await sentence_q.put(sentence)
                     if buf.strip():
@@ -7100,8 +7366,6 @@ async def speak(text_gen):
                 eleven_failure_reason = ""
 
                 async def _patched_eleven() -> bool:
-                    nonlocal eleven_gen_started
-                    nonlocal eleven_gen_done
                     nonlocal eleven_failure_reason
                     nonlocal playback_duration
                     if _elevenlabs_auth_failed:
@@ -7111,8 +7375,9 @@ async def speak(text_gen):
                         return False
                     # auto_mode=true disables internal buffering schedules — ElevenLabs
                     # processes each sentence/phrase immediately for lower latency.
+                    voice_id = _active_elevenlabs_voice_id()
                     uri = (
-                        f"wss://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream-input"
+                        f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
                         f"?model_id={TTS_MODEL}&output_format=pcm_{SR}&auto_mode=true"
                     )
                     try:
@@ -7157,7 +7422,7 @@ async def speak(text_gen):
                                         if idx < 0:
                                             break
                                         sentence = buf[: idx + 1].strip()
-                                        buf = buf[idx + 1 :]
+                                        buf = buf[idx + 1:]
                                         if sentence:
                                             await _wait_for_quiet_input()
                                             await ws.send(json.dumps({"text": sentence + " "}))
@@ -7192,12 +7457,12 @@ async def speak(text_gen):
                                     except json.JSONDecodeError as e:
                                         if not eleven_failure_reason:
                                             eleven_failure_reason = f"bad TTS payload: {e.msg}"
-                                        print(f"[tts] decode: {e.msg} - live_chat_app.py:_recv")
+                                        print(f"[tts] decode: {e.msg}  _recv - live_chat_app.py:7460")
                                         break
                                     except (ValueError, binascii.Error, sd.PortAudioError) as e:
                                         if not eleven_failure_reason:
                                             eleven_failure_reason = str(e)[:80]
-                                        print(f"[tts] audio output: {str(e)[:80]} - live_chat_app.py:_recv")
+                                        print(f"[tts] audio output: {str(e)[:80]}  _recv - live_chat_app.py:7465")
                                         break
 
                             try:
@@ -7231,13 +7496,13 @@ async def speak(text_gen):
                                 playback_duration += max(audio_finished_at - audio_started_at, 0.0)
                             return got_audio
                     except asyncio.CancelledError:
-                        print("[tts] bargein - live_chat_app.py:5573")
+                        print("[tts] bargein - live_chat_app.py:7499")
                         raise
                     except Exception as e:
                         eleven_failure_reason = str(e)[:80]
                         if _is_invalid_elevenlabs_auth(eleven_failure_reason):
                             await _handle_invalid_elevenlabs_auth(eleven_failure_reason)
-                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:5579")
+                        print(f"[tts] ElevenLabs stream: {str(e)[:80]} - live_chat_app.py:7505")
                         return False
 
                 success = await _patched_eleven()
@@ -7285,39 +7550,60 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 # Voice input path calls add_transcript("user") directly in voice_loop.
                 await _cancel_task(_session_speak_task(target))
 
-                pending_expired = _pending_tool_confirmation_expired()
-                if pending_expired:
-                    _pop_pending_tool_confirmation()
+                # Record observation in World Model
+                try:
+                    await get_world_model().observe(text, "user_input")
+                    asyncio.create_task(broadcast_goals_and_world())
+                except Exception:
+                    pass
 
-                if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                # Check for goal: or task: prefix
+                lower_text = text.lower().strip()
+                if lower_text.startswith("goal:") or lower_text.startswith("task:"):
+                    description = text[5:].strip() if lower_text.startswith("goal:") else text[6:].strip()
                     await set_state("thinking")
-                    gen = _single_text_stream("The pending action expired. Please request it again if you still want it.")
-                elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
-                    await set_state("thinking")
-                    if _is_confirmation_no(text):
-                        _pop_pending_tool_confirmation()
-                        gen = _single_text_stream("Cancelled the pending action.")
-                    else:
-                        pending = _pop_pending_tool_confirmation()
-                        tool_name = str(pending.get("name", "")) if pending else ""
-                        tool_args = dict(pending.get("args", {})) if pending else {}
-                        if tool_name:
-                            result = await exec_tool(tool_name, tool_args, confirmed=True)
-                            await broadcast_action(tool_name, tool_args, result)
-                            gen = _single_text_stream(_direct_tool_reply(tool_name, result, None))
-                        else:
-                            gen = _single_text_stream("There was no pending action to confirm.")
+                    try:
+                        goal = await get_goal_manager().create_goal(description, priority="MEDIUM")
+                        asyncio.create_task(broadcast_goals_and_world())
+                        gen = _single_text_stream(
+                            f"Initializing goal: '{description}'. Decomposing into hierarchical task networks and initiating execution loop."
+                        )
+                    except Exception as e:
+                        gen = _single_text_stream(f"Failed to create goal: {e}")
                 else:
-                    memory.add_task(text)
-                    await set_state("thinking")
-                    direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
-                    if direct_tool:
-                        tool_name, tool_args, success_reply = direct_tool
-                        result = await exec_tool(tool_name, tool_args)
-                        await broadcast_action(tool_name, tool_args, result)
-                        gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
+                    pending_expired = _pending_tool_confirmation_expired()
+                    if pending_expired:
+                        _pop_pending_tool_confirmation()
+
+                    if pending_expired and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                        await set_state("thinking")
+                        gen = _single_text_stream("The pending action expired. Please request it again if you still want it.")
+                    elif _pending_tool_confirmation and (_is_confirmation_yes(text) or _is_confirmation_no(text)):
+                        await set_state("thinking")
+                        if _is_confirmation_no(text):
+                            _pop_pending_tool_confirmation()
+                            gen = _single_text_stream("Cancelled the pending action.")
+                        else:
+                            pending = _pop_pending_tool_confirmation()
+                            tool_name = str(pending.get("name", "")) if pending else ""
+                            tool_args = dict(pending.get("args", {})) if pending else {}
+                            if tool_name:
+                                result = await exec_tool(tool_name, tool_args, confirmed=True)
+                                await broadcast_action(tool_name, tool_args, result)
+                                gen = _single_text_stream(_direct_tool_reply(tool_name, result, None))
+                            else:
+                                gen = _single_text_stream("There was no pending action to confirm.")
                     else:
-                        gen = llm_stream(text)
+                        memory.add_task(text)
+                        await set_state("thinking")
+                        direct_tool = _direct_operator_tool_request(text) if mode == "operator" else None
+                        if direct_tool:
+                            tool_name, tool_args, success_reply = direct_tool
+                            result = await exec_tool(tool_name, tool_args)
+                            await broadcast_action(tool_name, tool_args, result)
+                            gen = _single_text_stream(_direct_tool_reply(tool_name, result, success_reply))
+                        else:
+                            gen = llm_stream(text)
                 current_speak_task = asyncio.create_task(speak(gen))
                 _set_session_speak_task(target, current_speak_task)
                 await current_speak_task
@@ -7364,7 +7650,7 @@ async def voice_loop() -> None:
         await set_state(start_state)
         if start_state == "listening":
             winsound.Beep(880, 120)
-        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:5691")
+        print(f"[operator] Ready  {current_provider}/{current_model} - live_chat_app.py:7653")
         while True:
             try:
                 frame = await audio_q.get()
@@ -7419,7 +7705,7 @@ async def voice_loop() -> None:
                     try:
                         text = await transcribe(data)
                     except Exception as e:
-                        print(f"[stt] transcribe error: {e} - live_chat_app.py:5746")
+                        print(f"[stt] transcribe error: {e} - live_chat_app.py:7708")
                         _voice_capture_active = False
                         await set_state("listening" if (continuous_listening or wake_word_active) else "idle")
                         await broadcast({"type": "transcript", "role": "system", "text": f"[STT error: {e}]"})
@@ -7431,7 +7717,7 @@ async def voice_loop() -> None:
                         await set_state("listening")
                         vad.reset()
                         continue
-                    print(f"[operator] 🎙 {text} - live_chat_app.py:5758")
+                    print(f"[operator] 🎙 {text} - live_chat_app.py:7720")
                     # ── Wake-word gate ──────────────────────────────────────
                     if wake_word_active:
                         txt_lo = text.lower().strip()
@@ -7482,7 +7768,7 @@ async def voice_loop() -> None:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:5809")
+                print(f"[voice_loop] error: {e}  continuing - live_chat_app.py:7771")
                 await asyncio.sleep(0.5)
 
 
@@ -7587,7 +7873,7 @@ _EL_TOOL_NAMES = [
 
 
 async def _start_el_agent() -> None:
-    global _el_conv, _el_thread, _el_active
+    global _el_conv, _el_thread
     if _el_active:
         await _broadcast_el_agent_status("already_running", "ConvAI agent already running.")
         return
@@ -7654,7 +7940,7 @@ async def _start_el_agent() -> None:
 
 
 async def _stop_el_agent() -> None:
-    global _el_conv, _el_active
+    global _el_active
     if _el_conv and _el_active:
         try:
             _el_conv.end_session()
@@ -7680,13 +7966,14 @@ async def startup():
     _active_request_targets.clear()
     _input_busy = False
     if not API_11:
-        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:5985")
+        print("WARNING: ELEVENLABS_API_KEY not set  voice STT/TTS will use fallbacks - live_chat_app.py:7969")
+    restored_saved_model = _restore_saved_model_selection()
     ollama_models = await fetch_ollama_models()
     PROVIDERS["ollama"]["models"] = ollama_models
-    if ollama_models:
+    if not restored_saved_model and ollama_models:
         current_provider = "ollama"
         current_model = _provider_default_model("ollama")
-    elif current_provider == "ollama":
+    elif not restored_saved_model and current_provider == "ollama" and _model_auto_switching_enabled():
         fallback_provider = _choose_fallback_provider()
         if fallback_provider:
             _ollama_failover_active = True
@@ -7697,6 +7984,45 @@ async def startup():
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
+    # AGI Upgrades wiring
+    try:
+        gm = get_goal_manager()
+        wm = get_world_model()
+
+        async def htn_tool_executor(name: str, args: dict) -> str:
+            result = await exec_tool(name, args, confirmed=True)
+            try:
+                await get_world_model().observe(f"Executed tool '{name}' with args {args}. Result: {result}", "tool_result")
+                asyncio.create_task(broadcast_goals_and_world())
+            except Exception:
+                pass
+            return result
+
+        gm.set_llm(_fast_completion)
+        gm.set_tool_executor(htn_tool_executor)
+        gm.start_autonomous_loop()
+
+        wm.set_llm(_fast_completion)
+        wm.start_background_updates()
+
+        async def _dashboard_broadcaster():
+            while True:
+                try:
+                    await broadcast_goals_and_world()
+                except Exception:
+                    pass
+                await asyncio.sleep(5.0)
+
+        asyncio.create_task(_dashboard_broadcaster())
+        print("[elite] AGI modules wired and background loops started - live_chat_app.py:8017")
+    except Exception as e:
+        print(f"[elite] failed to wire AGI modules: {e} - live_chat_app.py:8019")
+    try:
+        from elite_api import register_elite_endpoints
+        await register_elite_endpoints(app)
+    except Exception as e:
+        print(f"[elite] failed to register endpoints: {e} - live_chat_app.py:8024")
+
     async def _voice_supervisor():
         while True:
             try:
@@ -7704,7 +8030,7 @@ async def startup():
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:6007")
+                print(f"[voice] crashed ({e}), restarting in 2s… - live_chat_app.py:8033")
                 await broadcast({"type": "state", "state": "idle"})
                 await asyncio.sleep(2)
 
@@ -7716,7 +8042,8 @@ async def startup():
             await _maybe_restore_ollama_provider()
 
     asyncio.create_task(_voice_supervisor())
-    asyncio.create_task(_restore_ollama_after_startup())
+    if _model_auto_switching_enabled():
+        asyncio.create_task(_restore_ollama_after_startup())
 
     try:
         asyncio.create_task(_open_ui_browser())
@@ -7759,10 +8086,11 @@ async def _prewarm_playwright():
     try:
         await asyncio.sleep(3)  # let server fully initialise first
         await get_browser_page()
-        print("[playwright] browser prewarmed ✓ - live_chat_app.py:6062")
+        print("[playwright] browser prewarmed ✓ - live_chat_app.py:8089")
     except Exception as e:
-        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:6064")
+        print(f"[playwright] prewarm skipped: {e} - live_chat_app.py:8091")
 
 
 if __name__ == "__main__":
     uvicorn.run("live_chat_app:app", host="0.0.0.0", port=PORT, log_level="warning")
+    uvicorn.run("live_chat_app:app", host="0.0.0.0", port=PORT, log_level="warning", loop="uvloop")

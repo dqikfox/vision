@@ -6,19 +6,21 @@ Custom instruction files allow you to provide **file-specific guidance** to GitH
 
 ---
 
-## ✅ Enable the Feature (Visual Studio 2022)
+## ✅ Enable the Feature (VS Code)
 
-1. Open **Visual Studio 2022**
-2. Go to **Tools > Options**
-3. Navigate to **GitHub > Copilot > Copilot Chat**
-4. Check: **"Enable custom instructions to be loaded from .github/instructions/*.instructions.md files and added to requests"**
-5. Click **OK**
+1. Open **VS Code**
+2. Open **Settings**
+3. Search for **Code Generation: Use Instruction Files**
+4. Ensure `github.copilot.chat.codeGeneration.useInstructionFiles` is enabled
+5. Reload the window if you changed the setting
+
+For always-on repo context, prefer `.github/copilot-instructions.md`. Use `.github/instructions/*.instructions.md` for path-specific guidance.
 
 ---
 
 ## 📁 Vision Project Instructions
 
-We've created **6 targeted instruction files** for the Vision project:
+We've created **7 targeted instruction files** for the Vision project:
 
 ### 1. `python-backend.instructions.md`
 **Applies to**: `vision_*.py` files
@@ -90,11 +92,19 @@ We've created **6 targeted instruction files** for the Vision project:
 - LLM integration
 - Performance optimization
 
+### 7. `secondary-workspaces.instructions.md`
+**Applies to**: `azure-search-openai-demo/**`, `Archon.worktrees/**`, `data/curated/**`
+
+**Teaches Copilot**:
+- These folders are not the default Vision runtime context
+- Their docs and examples should not override repo-root Vision guidance
+- Repo-wide answers should route back to `DOCUMENTATION_INDEX.md`, `README.md`, `setup.md`, and `architecture.md`
+
 ---
 
 ## 🎯 How It Works
 
-When you open a file in Visual Studio, Copilot:
+When you open a file in VS Code, Copilot:
 
 1. **Checks file path** against all instruction files' `applyTo` patterns
 2. **Loads matching instructions** automatically

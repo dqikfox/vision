@@ -14,6 +14,8 @@ When context is missing or the task is broad, read in this order:
 4. `architecture.md`
 5. the nearest authoritative file for the area you are changing
 
+Do **not** treat nested sample apps, archived worktrees, or stale scaffold docs as the default repo context. In particular, ignore `azure-search-openai-demo\`, AWS SAM sample content, and curated snapshot folders unless the task explicitly targets them.
+
 ## Source of Truth
 
 - **Backend:** `live_chat_app.py`
@@ -33,6 +35,7 @@ Do **not** drift to alternate entry points or duplicate systems when one of the 
 - Keep docs aligned when runtime behavior, startup flow, MCP wiring, skills, agents, or validation commands change.
 - Use existing validation surfaces rather than inventing new ones.
 - For debugging or maintenance, check logs before guessing: `chat_events.log` and `vision_error.log`.
+- If top-level docs and nested sample content disagree, trust `DOCUMENTATION_INDEX.md`, `setup.md`, `architecture.md`, and the source-of-truth files over the sample content.
 
 ## Runtime Validation Surfaces
 

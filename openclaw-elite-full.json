@@ -25,12 +25,6 @@
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
       "description": "Structured multi-step reasoning for complex problems"
     },
-    "brave-search": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-      "env": { "BRAVE_API_KEY": "${BRAVE_API_KEY}" },
-      "description": "Web search via Brave Search API"
-    },
     "fetch": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-fetch"],
@@ -40,16 +34,6 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sqlite", "C:/project/vision/data/openclaw-elite.db"],
       "description": "SQLite database for persistent storage"
-    },
-    "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "USE_ENV_POSTGRES_URL"],
-      "description": "PostgreSQL database access (if available)"
-    },
-    "redis": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-redis"],
-      "description": "Redis cache and data store"
     },
     "puppeteer": {
       "command": "npx",
@@ -67,8 +51,8 @@
       "description": "Search, fetch, and filesystem tools combined"
     },
     "vision-local": {
-      "command": "node",
-      "args": ["C:/project/vision/vision_mcp_server.js"],
+      "command": "python",
+      "args": ["C:/project/vision/vision_mcp_server.py"],
       "description": "Vision MCP server for local AI tools"
     }
   },
@@ -97,15 +81,9 @@
       "mcp__memory__delete_entities",
       "mcp__memory__delete_observations",
       "mcp__sequential-thinking__sequentialthinking",
-      "mcp__brave-search__brave_web_search",
-      "mcp__brave-search__brave_local_search",
       "mcp__fetch__fetch_url",
       "mcp__sqlite__query",
       "mcp__sqlite__execute",
-      "mcp__postgres__query",
-      "mcp__redis__get",
-      "mcp__redis__set",
-      "mcp__redis__delete",
       "mcp__puppeteer__puppeteer_navigate",
       "mcp__puppeteer__puppeteer_screenshot",
       "mcp__puppeteer__puppeteer_click",
@@ -176,7 +154,6 @@
       "Kubectl": { "enabled": true },
       "AWS": { "enabled": true },
       "GCloud": { "enabled": true },
-      "Azure": { "enabled": true },
       "SendEmail": { "enabled": true },
       "Browser": { "enabled": true }
     },

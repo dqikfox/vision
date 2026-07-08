@@ -258,6 +258,31 @@ class GoalGraph:
             parent.status = GoalStatus.FAILED
             parent.outcome = "One or more subgoals failed"
 
+    def update_temporal_priorities(self) -> None:
+        """Scan pending goals and escalate priority if deadlines are near."""
+        now = time.time()
+        updated = False
+        for goal in self.goals.values():
+            if goal.status == GoalStatus.PENDING and goal.deadline:
+                time_remaining = goal.deadline - now
+                if time_remaining <= 0:
+                    goal.status = GoalStatus.FAILED
+                    goal.outcome = "Failed: Missed deadline"
+                    logger.warning(f"Goal {goal.uid} failed: deadline passed")
+                    updated = True
+                elif time_remaining <= 300: # 5 minutes
+                    if goal.priority.value < GoalPriority.CRITICAL.value:
+                        goal.priority = GoalPriority.CRITICAL
+                        logger.info(f"Escalated priority of goal {goal.uid} to CRITICAL (deadline in {time_remaining:.0f}s)")
+                        updated = True
+                elif time_remaining <= 1800: # 30 minutes
+                    if goal.priority.value < GoalPriority.HIGH.value:
+                        goal.priority = GoalPriority.HIGH
+                        logger.info(f"Escalated priority of goal {goal.uid} to HIGH (deadline in {time_remaining:.0f}s)")
+                        updated = True
+        if updated:
+            self.save()
+
 
 class PlanEngine:
     """
@@ -278,15 +303,19 @@ class PlanEngine:
         """Wire in tool execution function."""
         self._tool_executor = fn
 
-    async def generate_plan(self, goal: Goal) -> Plan | None:
-        """Generate a plan to achieve the goal using LLM."""
+    async def generate_plan(self, goal: Goal, use_htn: bool = True) -> Plan | None:
+        """Generate a plan to achieve the goal using LLM, with optional HTN decomposition."""
         if self._llm_fn is None:
             return None
 
-        prompt = self._build_planning_prompt(goal)
         try:
-            response = await self._llm_fn(prompt, max_tokens=800)
-            steps = self._parse_plan_steps(response, goal.uid)
+            if use_htn:
+                steps = await self.htn_decompose(goal)
+            else:
+                prompt = self._build_planning_prompt(goal)
+                response = await self._llm_fn(prompt, max_tokens=800)
+                steps = self._parse_plan_steps(response, goal.uid)
+
             if steps:
                 plan = Plan(
                     uid=f"plan_{int(time.time() * 1000)}",
@@ -299,6 +328,85 @@ class PlanEngine:
         except Exception as exc:
             logger.error("Plan generation failed: %s", exc)
         return None
+
+    async def htn_decompose(self, goal: Goal) -> list[PlanStep]:
+        """Decompose a compound goal into a network of sub-tasks using HTN planning."""
+        if self._llm_fn is None:
+            return []
+
+        prompt = self._build_htn_prompt(goal)
+        try:
+            response = await self._llm_fn(prompt, max_tokens=1000)
+            json_str = response.strip()
+            if "```" in json_str:
+                import re
+                match = re.search(r"```(?:json)?\s*(.*?)\s*```", json_str, re.DOTALL | re.IGNORECASE)
+                if match:
+                    json_str = match.group(1)
+            
+            data = json.loads(json_str)
+            steps = []
+            if isinstance(data, list):
+                for item in data:
+                    uid = item.get("uid") or f"step_{goal.uid}_{len(steps)+1}"
+                    steps.append(PlanStep(
+                        uid=uid,
+                        description=item.get("description", ""),
+                        tool=item.get("tool"),
+                        tool_args=item.get("tool_args") or {},
+                        depends_on=item.get("depends_on") or [],
+                    ))
+                logger.info(f"HTN decomposed goal {goal.uid} into {len(steps)} steps")
+                return steps
+        except Exception as exc:
+            logger.warning(f"HTN decomposition failed: {exc}, falling back to standard planner")
+        
+        # Fallback to standard linear planner
+        prompt = self._build_planning_prompt(goal)
+        response = await self._llm_fn(prompt, max_tokens=800)
+        return self._parse_plan_steps(response, goal.uid)
+
+    def _build_htn_prompt(self, goal: Goal) -> str:
+        """Build the HTN planning prompt for the LLM."""
+        tools_str = ", ".join(goal.required_tools) if goal.required_tools else "any available tools"
+        criteria_str = (
+            "\n".join(f"- {c}" for c in goal.completion_criteria) if goal.completion_criteria else "- Goal is achieved"
+        )
+        return f"""You are an HTN (Hierarchical Task Network) planner.
+Decompose the following high-level compound task into a network of sub-tasks and primitive operators.
+
+High-Level Goal: {goal.description}
+Completion Criteria:
+{criteria_str}
+
+Available Tools (Primitive Operators): {tools_str}
+
+Decompose this compound task recursively. For each step in the decomposition, specify:
+1. Step UID (e.g., step_1, step_2)
+2. Description of the task/action
+3. Tool to use (if primitive, e.g. "screenshot", "run_command", or null if compound/no tool)
+4. Dependencies (list of step UIDs that MUST be completed before this step can run)
+
+Output the plan in raw JSON format matching this schema:
+[
+  {{
+    "uid": "step_1",
+    "description": "Analyze screen state",
+    "tool": "screenshot",
+    "tool_args": {{}},
+    "depends_on": []
+  }},
+  {{
+    "uid": "step_2",
+    "description": "Formulate next keyboard inputs",
+    "tool": null,
+    "tool_args": {{}},
+    "depends_on": ["step_1"]
+  }}
+]
+
+Provide ONLY the valid JSON array and nothing else.
+JSON Plan:"""
 
     def _build_planning_prompt(self, goal: Goal) -> str:
         """Build prompt for plan generation."""
@@ -586,6 +694,9 @@ Sub-goals:"""
         """Background loop for autonomous goal pursuit."""
         while self._running:
             try:
+                # Temporal Reasoning
+                self.graph.update_temporal_priorities()
+
                 # Check for pending goals
                 pending = self.graph.get_pending_goals()
                 active = self.graph.get_active_goals()

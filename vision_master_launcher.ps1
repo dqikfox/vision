@@ -20,6 +20,7 @@ $REPO_DIR = $PSScriptRoot
 $VISION_LAUNCHER = Join-Path $REPO_DIR "launch_vision.ps1"
 $UI_URL = "http://localhost:8765"
 $COMMAND_CENTER_URL = "$UI_URL/command-center"
+$DASHBOARD_URL = "$UI_URL/dashboard"
 $HEALTH_URL = "$UI_URL/api/health"
 $DOCTOR_URL = "$UI_URL/api/command-center/doctor"
 $MODELS_URL = "$UI_URL/api/models"
@@ -211,6 +212,7 @@ hdr "STEP 4 - Monitoring UIs"
 if (-not $SkipBrowser) {
     Open-Ui -Url $UI_URL
     Open-Ui -Url $COMMAND_CENTER_URL
+    Open-Ui -Url $DASHBOARD_URL
 } else {
     dot "Browser launch skipped by -SkipBrowser"
 }

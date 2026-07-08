@@ -6,6 +6,8 @@
 
 ## Start Here
 
+Use the Vision root docs below as the default context. Do **not** start from nested sample apps, archived worktrees, or curated snapshots unless the task explicitly targets them.
+
 | Goal | Read First | Then |
 |---|---|---|
 | Understand the project | `README.md` | `architecture.md` |
@@ -53,7 +55,7 @@
 |---|---|---|
 | `CLAUDE.md` | Claude Desktop operating manual for maintaining, enhancing, upgrading, and debugging Vision | Start here when Claude is the active assistant |
 | `.github/copilot-instructions.md` | Always-on repo guidance for Copilot | Before changing behavior or conventions |
-| `.vscode/copilot-instructions.md` | Workspace-scoped Copilot instruction mirror for VS Code | If Copilot in VS Code feels generic or under-aware |
+| `.vscode/copilot-instructions.md` | Workspace mirror of the main Copilot guidance | Human reference in VS Code; `.github/copilot-instructions.md` remains authoritative |
 | `C:\project\skills` | Shared local skill repo for reusable cross-project workflows | When a general skill may already exist outside Vision |
 | `HIVE.md` | Agent swarm and customization overview | Understanding agent/skill layout |
 | `.github/agents/vision-maintainer.agent.md` | Runtime/debug/code-change specialist | Backend and protocol work |
@@ -119,8 +121,6 @@ Current important MCP surfaces include:
 - `github`
 - `filesystem`
 - `lmstudio-rag`
-- `fetch`
-- `git`
 - `memory`
 - `sequential-thinking`
 - `puppeteer`

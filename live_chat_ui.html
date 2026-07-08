@@ -2617,6 +2617,7 @@ function handleMsg(msg) {
     case 'init':
       currentProvider = msg.provider || '';
       currentModel    = msg.model    || '';
+      autoModelSwitching = msg.auto_model_switching !== undefined ? Boolean(msg.auto_model_switching) : autoModelSwitching;
       currentMode     = msg.mode || currentMode;
       updateModelBadge();
       refreshModelSelectors();
@@ -3182,6 +3183,7 @@ function launchApp(app) {
 ═══════════════════════════════════════ */
 let continuousEnabled = false;
 let modelCatalog = {};
+let autoModelSwitching = false;
 const MODEL_PROVIDER_ORDER = ['ollama','openai','github','anthropic','deepseek','groq','mistral','gemini','xai','nvidia'];
 
 function updateActiveCoreDisplay() {
@@ -3255,7 +3257,7 @@ function updateRunningModelStatus() {
   }
   if (noteEl) {
     noteEl.textContent = currentProvider && currentModel
-      ? `Running now: ${providerLabel(currentProvider)} / ${currentModel}${modelCount ? ` • ${modelCount} models available for this provider` : ''}`
+      ? `Running now: ${providerLabel(currentProvider)} / ${currentModel}${modelCount ? ` • ${modelCount} models available for this provider` : ''}${autoModelSwitching ? ' • automatic failover enabled' : ' • manual lock active'}`
       : 'No active model is currently selected.';
   }
   updateHeroDeck();
@@ -3344,6 +3346,7 @@ async function refreshModelSelectors() {
     const data = await response.json();
     currentProvider = data.current_provider || currentProvider;
     currentModel = data.current_model || currentModel;
+    autoModelSwitching = data.auto_model_switching !== undefined ? Boolean(data.auto_model_switching) : autoModelSwitching;
     modelCatalog = data.providers || {};
     renderProviderSelect();
     syncModelSelectorsToCurrent();

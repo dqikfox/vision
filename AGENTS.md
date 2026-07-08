@@ -286,3 +286,279 @@ graph LR
 All designs above ensure agents work in a modular, auditable way, aligned with Vision’s codebase.
 
 **Sources:** This guide adapts best-practice templates for AGENTS.md and SKILL.md【66†L303-L312】【61†L116-L124】, OpenClaw/Claude agent conventions【61†L71-L74】【61†L154-L163】, and Vision’s own docs (README and setup instructions)【24†L268-L276】【32†L849-L852】. Unspecified details (e.g. multi-user policy) are noted as requiring project-specific decisions. All cited sources are primary documentation of agent methods.
+
+## Imported Claude Cowork project instructions
+
+# CLAUDE.md — Vision instructions for Claude Desktop
+
+Use this file as the operating manual for Claude Desktop when working in the Vision repository.
+
+## Mission
+
+Vision is a Windows-first accessibility operator: voice-first computer control, local and cloud model routing,
+real-time WebSocket UX, tool execution, RAG, command-center diagnostics, and MCP integration.
+
+Your job is to **maintain, enhance, upgrade, debug, and document the real system** without drifting from the
+actual codebase.
+
+## Behavior Contract
+
+1. **Do the work instead of repeating the request.**
+   - If the user asks for a fix, doc update, refactor, runtime check, or feature, inspect the repo and act.
+   - Do not bounce back with generic "What would you like me to do first?" if the intent is already clear.
+2. **Be direct and concise.**
+   - Lead with the result, then the key facts.
+   - Avoid filler, repeated restatements, and generic capability speeches.
+3. **For non-trivial work, follow this loop:**
+   - inspect relevant files
+   - state a short plan
+   - make the change
+   - run the closest existing validation
+   - summarize result, changed files, and any remaining blockers
+4. **Ask only when the decision changes behavior materially.**
+   - If a reasonable default exists, choose it and continue.
+5. **Prefer the repo's existing patterns over invention.**
+   - Reuse helpers, endpoints, conventions, and test surfaces already in the project.
+
+## Read Order
+
+When starting fresh, load these in order:
+
+1. `CLAUDE.md`
+2. `README.md`
+3. `setup.md`
+4. `architecture.md`
+5. `DOCUMENTATION_INDEX.md`
+6. `.github/copilot-instructions.md`
+7. `AGENTS.md`
+
+Then read the nearest authoritative file for the area you are changing.
+
+## Source of Truth
+
+- **Backend source of truth:** `live_chat_app.py`
+- **Primary UI:** `live_chat_ui.html`
+- **Command Center UI:** `vision_command_center.html`
+- **Runtime/config helpers:** `vision_runtime.py`
+- **Local MCP bridge:** `vision_mcp_server.py`
+- **RAG runtime:** `vision_rag.py`, `vision_rag_integration.py`
+- **Launcher path:** `vision_master_launcher.ps1` -> `launch_vision.ps1`
+- **Workspace MCP config:** `.vscode/mcp.json`
+
+Important: do **not** create or switch to alternate UI files when the primary path is `live_chat_ui.html`.
+
+## Project Facts Claude Should Preserve
+
+1. New ElevenLabs / operator tools must wire through **all three** surfaces:
+   - `TOOLS`
+   - `exec_tool`
+   - `_EL_TOOL_NAMES`
+2. `broadcast()` must iterate over `list(clients)`, not the live set directly.
+3. Voice thresholds are calibrated. Do not change them without explicit instruction:
+   - `RMS_THRESH=500`
+   - `START_FRAMES=3`
+   - `END_FRAMES=20`
+   - `BARGE_RMS=1100`
+4. Use `PIL.Image.Resampling.LANCZOS`, not deprecated `PIL.Image.LANCZOS`.
+5. Catch `APITimeoutError` before `APIConnectionError`.
+6. Use `asyncio.get_running_loop()`, not `get_event_loop()`.
+7. Python formatting is Ruff-style with a 120-char line length.
+8. Never hardcode secrets; read from env vars or existing config layers.
+
+## Environment and Startup
+
+Use Python 3.11+ (repo minimum) and align with the current Windows-first runtime.
+
+### Install
+
+```powershell
+python -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
+```
+
+### Start Vision
+
+Preferred launcher:
+
+```powershell
+.\vision_master_launcher.ps1
+```
+
+Direct backend start:
+
+```powershell
+python live_chat_app.py
+```
+
+### Core runtime expectations
+
+- Vision serves on `http://localhost:8765`
+- WebSocket connects at `ws://localhost:8765/ws`
+- Ollama is typically expected on `http://localhost:11434`
+- Command Center is served at `http://localhost:8765/command-center`
+
+## Health Checks Claude Should Run
+
+For runtime/debug tasks, prefer these checks:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:8765/api/health
+Invoke-RestMethod -Uri http://localhost:8765/api/models
+```
+
+Also verify:
+
+- `GET /`
+- WebSocket `init` payload from `ws://localhost:8765/ws`
+- `POST /api/tool/execute`
+- `GET /api/command-center/doctor`
+- `GET /api/rag/status` when RAG is in scope
+
+## Validation Commands
+
+Use the repo's existing validation entrypoints instead of inventing new ones.
+
+### Runtime / integration
+
+```powershell
+python test_tools.py
+python test_vision.py
+python vision_test_suite.py
+```
+
+### Targeted pytest
+
+```powershell
+python -m pytest -q
+```
+
+Use targeted pytest files when you are fixing a focused regression.
+
+## Claude Desktop Workflow by Task Type
+
+### 1. Maintain / Repair
+
+Use this for startup failures, broken endpoints, missing models, bad UI state, MCP failures, or regressions.
+
+1. Read the nearest relevant files first.
+2. Reproduce the failure.
+3. Identify whether the issue is:
+   - runtime configuration
+   - code regression
+   - missing dependency
+   - broken MCP wiring
+   - stale documentation
+4. Fix the root cause, not just a symptom.
+5. Add or update a regression test when code changed.
+6. Re-run the narrowest relevant validation, then broader smoke tests if the change affects the runtime.
+
+### 2. Enhance / Add Features
+
+1. Reuse existing patterns in `live_chat_app.py`, `vision_runtime.py`, and the current UI.
+2. Keep changes small and coherent.
+3. Update documentation when behavior changes.
+4. Add tests for new behavior.
+5. Preserve accessibility-first workflows.
+
+### 3. Upgrade / Modernize
+
+Use this for dependency upgrades, provider upgrades, MCP improvements, model routing changes, or launcher refreshes.
+
+1. Inspect current implementation and current docs.
+2. Prefer reversible changes.
+3. Keep provider names, endpoints, and runtime expectations aligned across code and docs.
+4. After upgrade work, run:
+   - focused regression tests
+   - `python test_tools.py`
+   - `python test_vision.py` when runtime behavior changed
+
+### 4. Debug / Investigate
+
+Always inspect logs before guessing:
+
+- `chat_events.log`
+- `vision_error.log`
+- runtime stdout/stderr from launchers or the backend process
+
+Check whether the issue is in:
+
+- perception/voice input
+- provider routing
+- WebSocket protocol
+- tool execution
+- RAG
+- MCP
+- launcher/startup
+- UI state
+
+### 5. RAG Work
+
+When working on RAG:
+
+- inspect `vision_rag.py` and `vision_rag_integration.py`
+- verify `GET /api/rag/status`
+- if needed, build or rebuild the local index through the existing API path
+- verify search/export behavior instead of assuming the index is present
+
+### 6. MCP Work
+
+When working on MCP:
+
+- treat `.vscode/mcp.json` as the source of truth for workspace MCP servers
+- inspect `vision_mcp_server.py` for the repo-local bridge
+- inspect `launch_lmstudio_rag_mcp.py` for the LM Studio filesystem MCP path
+- prefer repairing broken MCP launch/config over inventing new MCP definitions
+
+## Documentation Responsibilities
+
+When runtime behavior, startup flow, skills, agents, MCP wiring, or validation commands change:
+
+- update the nearest authoritative doc
+- update `DOCUMENTATION_INDEX.md` if the surface should be discoverable
+- avoid creating redundant docs when an existing one should be updated instead
+
+## Safety and Approval Rules
+
+1. Never print or commit secrets from `.env`, tokens, API keys, or personal data.
+2. Treat `memory.json`, `chat_events.log`, `.rag`, and local caches as sensitive.
+3. Do not use destructive git commands such as `git reset --hard` or revert unrelated user changes.
+4. Before destructive file deletion, ask.
+5. Before deploying, changing credentials, or making broad irreversible infra changes, ask.
+
+## Good Response Pattern
+
+When working through Claude Desktop, use this structure instead of repeating yourself:
+
+```markdown
+**Task**: one-line goal
+**Plan**: short execution plan
+**Files**: files read or changed
+**Checks**: commands or validations run
+**Outcome**: what worked, what failed, and the current state
+**Blockers**: only if something still prevents completion
+```
+
+## Claude Desktop + MCP Notes
+
+If Claude Desktop has filesystem, shell, browser, or GitHub MCP access, use those tools directly.
+
+If it does **not** have the needed tool access:
+
+- say exactly what is missing
+- ask for the minimal file or command output needed
+- avoid generic back-and-forth
+
+## Expected Healthy Outcomes
+
+For the core local Vision stack, healthy usually means:
+
+- backend starts without import/runtime crashes
+- `/api/health` reports healthy overall
+- `/api/models` lists providers/models
+- WebSocket sends the expected `init` event
+- `python test_tools.py` passes
+- `python test_vision.py` passes for live integration
+- `python vision_test_suite.py` passes for broader runtime validation
+
+Optional integrations such as Pinecone or Phantom may still report degraded/offline status if their external
+services are unavailable; that is different from missing routes or failed startup registration.

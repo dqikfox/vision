@@ -1,0 +1,2252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VISION // EXECUTIVE CONSOLE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Share+Tech+Mono&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #030712;
+            --bg-glass: rgba(10, 15, 30, 0.7);
+            --border-glow: rgba(0, 240, 255, 0.25);
+            --border-glow-active: rgba(0, 240, 255, 0.6);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --cyan: #06b6d4;
+            --cyan-glow: rgba(6, 182, 212, 0.4);
+            --emerald: #10b981;
+            --emerald-glow: rgba(16, 185, 129, 0.3);
+            --amber: #f59e0b;
+            --amber-glow: rgba(245, 158, 11, 0.3);
+            --rose: #f43f5e;
+            --rose-glow: rgba(244, 63, 94, 0.4);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --font-ui: 'Orbitron', sans-serif;
+            --font-mono: 'Share Tech Mono', monospace;
+            --font-sans: 'Inter', sans-serif;
+        }
+
+        .high-contrast {
+            --bg-deep: #000000;
+            --bg-glass: rgba(0, 0, 0, 0.95);
+            --border-glow: #00ffff;
+            --border-glow-active: #00ffff;
+            --primary: #ffff00;
+            --cyan: #00ffff;
+            --emerald: #00ff00;
+            --amber: #ffff00;
+            --rose: #ff0000;
+            --text-main: #ffffff;
+            --text-muted: #dddddd;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--cyan) transparent;
+        }
+
+        *::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        *::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        *::-webkit-scrollbar-thumb {
+            background: var(--cyan);
+            border-radius: 4px;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 45%),
+                repeating-linear-gradient(to bottom, rgba(0,0,0,0.15) 0, rgba(0,0,0,0.15) 1px, transparent 1px, transparent 3px);
+        }
+
+        /* Side Navigation */
+        .sidebar {
+            width: 280px;
+            border-right: 1px solid var(--border-glow);
+            background: rgba(4, 6, 15, 0.9);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+            z-index: 10;
+        }
+
+        .brand {
+            font-family: var(--font-ui);
+            font-weight: 900;
+            font-size: 20px;
+            letter-spacing: 0.15em;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 32px;
+            text-shadow: 0 0 10px var(--cyan-glow);
+        }
+
+        .brand span {
+            color: var(--cyan);
+        }
+
+        .nav-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-grow: 1;
+        }
+
+        .nav-item button {
+            width: 100%;
+            padding: 12px 16px;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 600;
+            text-align: left;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-item button:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(6, 182, 212, 0.1);
+        }
+
+        .nav-item.active button {
+            color: var(--cyan);
+            background: rgba(6, 182, 212, 0.08);
+            border-color: var(--border-glow);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.15);
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .system-status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: var(--font-ui);
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--emerald);
+            box-shadow: 0 0 10px var(--emerald-glow);
+            animation: pulse 1.8s infinite;
+        }
+
+        .status-dot.degraded {
+            background-color: var(--amber);
+            box-shadow: 0 0 10px var(--amber-glow);
+        }
+
+        .status-dot.offline {
+            background-color: var(--rose);
+            box-shadow: 0 0 10px var(--rose-glow);
+        }
+
+        /* Main Workspace */
+        .workspace {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .topbar {
+            height: 70px;
+            border-bottom: 1px solid var(--border-glow);
+            background: rgba(5, 8, 20, 0.6);
+            backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            z-index: 9;
+        }
+
+        .topbar-title {
+            font-family: var(--font-ui);
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .controls-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .selector-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        select, input, button.btn-action {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-glow);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        select:focus, input:focus {
+            border-color: var(--cyan);
+            box-shadow: 0 0 8px var(--cyan-glow);
+        }
+
+        button.btn-action {
+            background: var(--primary);
+            border-color: var(--primary);
+            font-family: var(--font-ui);
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 8px 16px;
+            border-radius: 6px;
+        }
+
+        button.btn-action:hover {
+            box-shadow: 0 0 12px var(--primary-glow);
+            filter: brightness(1.15);
+        }
+
+        button.btn-action.btn-secondary {
+            background: transparent;
+            border-color: var(--border-glow);
+            color: var(--cyan);
+        }
+
+        button.btn-action.btn-secondary:hover {
+            background: rgba(6, 182, 212, 0.05);
+            box-shadow: 0 0 10px var(--cyan-glow);
+        }
+
+        /* Panel Container Grid */
+        .content-panel {
+            flex-grow: 1;
+            padding: 32px;
+            overflow-y: auto;
+            display: none;
+            height: calc(100vh - 70px);
+        }
+
+        .content-panel.active {
+            display: block;
+        }
+
+        .grid-dashboard {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .grid-full {
+            grid-column: span 3;
+        }
+
+        .grid-two-thirds {
+            grid-column: span 2;
+        }
+
+        /* High Tech Glass Cards */
+        .card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glow);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(16px);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--cyan), var(--primary), transparent);
+            opacity: 0.7;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 12px;
+        }
+
+        .card-title {
+            font-family: var(--font-ui);
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--cyan);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Metrics Gauges */
+        .metric-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 13px;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--cyan), var(--primary));
+            box-shadow: 0 0 8px var(--cyan-glow);
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Voice VU Visualizer */
+        .vu-container {
+            height: 60px;
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .vu-bar {
+            flex-grow: 1;
+            height: 5%;
+            background: var(--cyan);
+            box-shadow: 0 0 6px var(--cyan-glow);
+            border-radius: 2px;
+            transition: height 0.08s ease;
+        }
+
+        .vu-bar.amber {
+            background: var(--amber);
+            box-shadow: 0 0 6px var(--amber-glow);
+        }
+
+        .vu-bar.rose {
+            background: var(--rose);
+            box-shadow: 0 0 6px var(--rose-glow);
+        }
+
+        /* scrolling logs console */
+        .console-log {
+            background: rgba(2, 4, 10, 0.85);
+            border: 1px solid var(--border-glow);
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 16px;
+            height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .console-line {
+            display: flex;
+            gap: 8px;
+            border-left: 2px solid transparent;
+            padding-left: 6px;
+        }
+
+        .console-line.type-state { border-color: var(--primary); color: #cbd5e1; }
+        .console-line.type-transcript-user { border-color: var(--cyan); color: #a5f3fc; }
+        .console-line.type-transcript-ai { border-color: var(--emerald); color: #a7f3d0; }
+        .console-line.type-action { border-color: var(--amber); color: #fde68a; }
+        .console-line.type-error { border-color: var(--rose); color: #fecaca; }
+        .console-line.type-system { border-color: var(--text-muted); color: var(--text-muted); }
+
+        .console-timestamp {
+            color: var(--text-muted);
+            opacity: 0.6;
+        }
+
+        .console-tag {
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 10px;
+        }
+
+        .console-text {
+            word-break: break-all;
+        }
+
+        /* Timing benchmark metrics */
+        .timing-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .timing-tile {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .timing-val {
+            font-family: var(--font-mono);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--cyan);
+            margin-bottom: 4px;
+        }
+
+        .timing-lbl {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+
+        /* Doctor checklist */
+        .doctor-checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .doctor-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            border-left: 3px solid transparent;
+        }
+
+        .doctor-item.ok {
+            border-left-color: var(--emerald);
+        }
+
+        .doctor-item.fail {
+            border-left-color: var(--rose);
+        }
+
+        .doctor-name-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .doctor-name {
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .doctor-detail {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .doctor-indicator {
+            font-family: var(--font-ui);
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .doctor-indicator.ok {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--emerald);
+        }
+
+        .doctor-indicator.fail {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--rose);
+        }
+
+        /* Brain Memory list & Facts */
+        .fact-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .fact-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 12px;
+            line-height: 1.5;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            transition: background 0.2s;
+        }
+
+        .fact-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .fact-delete-btn {
+            background: transparent;
+            border: none;
+            color: var(--rose);
+            cursor: pointer;
+            opacity: 0.6;
+            padding: 2px;
+            font-family: var(--font-ui);
+            font-weight: 800;
+        }
+
+        .fact-delete-btn:hover {
+            opacity: 1;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-row input {
+            flex-grow: 1;
+        }
+
+        /* RAG center results */
+        .rag-results {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .rag-doc {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rag-doc-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--cyan);
+            text-decoration: none;
+        }
+
+        .rag-doc-title:hover {
+            text-decoration: underline;
+        }
+
+        .rag-doc-snippet {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            font-family: var(--font-sans);
+        }
+
+        /* Adaptive thinking panel */
+        .thinking-panel {
+            background: rgba(99, 102, 241, 0.04);
+            border: 1px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            padding: 14px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: #c084fc;
+            max-height: 140px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .thinking-panel.active {
+            display: block;
+        }
+
+        /* Key Performance timers list */
+        .analytics-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-align: left;
+        }
+
+        .analytics-table th, .analytics-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .analytics-table th {
+            color: var(--cyan);
+            font-family: var(--font-ui);
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.92); }
+        }
+
+        /* Utility Switch button */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .3s;
+            border-radius: 20px;
+            border: 1px solid var(--border-glow);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-main);
+            transition: .3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--cyan);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        /* Active Goals and Subtasks Styles */
+        .goal-card {
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.01);
+            padding: 14px;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-family: var(--font-mono);
+            transition: all 0.3s ease;
+        }
+        .goal-card:hover {
+            border-color: rgba(6, 182, 212, 0.2);
+            background: rgba(6, 182, 212, 0.02);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.05);
+        }
+        .goal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .goal-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .goal-bullet {
+            color: var(--cyan);
+            font-size: 14px;
+        }
+        .goal-title {
+            font-size: 13px;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+        .goal-meta {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .goal-priority-badge {
+            font-size: 9px;
+            padding: 1px 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+        .goal-status-badge {
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .status-badge-pending {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: var(--amber);
+        }
+        .status-badge-active {
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.5);
+            color: var(--cyan);
+            animation: pulse-border 1.5s infinite alternate;
+        }
+        .status-badge-completed {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: var(--emerald);
+        }
+        .status-badge-failed {
+            background: rgba(244, 63, 94, 0.15);
+            border: 1px solid rgba(244, 63, 94, 0.5);
+            color: var(--rose);
+        }
+        .status-badge-blocked {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: #ef4444;
+        }
+        .goal-body {
+            margin-left: 20px;
+            padding-left: 12px;
+            border-left: 1px dashed rgba(255, 255, 255, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .step-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            padding: 4px 6px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 3px;
+        }
+        .step-desc-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .step-checkbox {
+            color: var(--text-muted);
+        }
+        .step-checkbox.completed {
+            color: var(--emerald);
+        }
+        .step-checkbox.active {
+            color: var(--cyan);
+            animation: blink-indicator 1s infinite alternate;
+        }
+        .step-checkbox.failed {
+            color: var(--rose);
+        }
+        .step-tool {
+            color: var(--cyan);
+            background: rgba(6, 182, 212, 0.05);
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-size: 9px;
+            margin-left: 4px;
+        }
+
+        /* World Model Styles */
+        .wm-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 6px;
+        }
+        .wm-prediction-card {
+            border-left: 2px solid var(--amber);
+        }
+        .wm-prediction-card.fulfilled {
+            border-left-color: var(--emerald);
+        }
+        .wm-prediction-card.failed {
+            border-left-color: var(--rose);
+        }
+        .wm-entity-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+        }
+        .wm-entity-type {
+            font-size: 9px;
+            color: var(--cyan);
+            background: rgba(6, 182, 212, 0.05);
+            padding: 1px 4px;
+            border-radius: 2px;
+            text-transform: uppercase;
+        }
+        .wm-observation-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .wm-obs-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: var(--text-muted);
+        }
+        
+        @keyframes pulse-border {
+            from { border-color: rgba(6, 182, 212, 0.3); }
+            to { border-color: rgba(6, 182, 212, 0.8); }
+        }
+        @keyframes blink-indicator {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR NAVIGATION -->
+    <div class="sidebar">
+        <div class="brand">
+            VISION <span>EXEC</span>
+        </div>
+        <ul class="nav-list">
+            <li class="nav-item active" data-tab="tab-system">
+                <button>
+                    ⬡ COMMAND CENTER
+                </button>
+            </li>
+            <li class="nav-item" data-tab="tab-agent">
+                <button>
+                    ⬡ LIVE OPERATOR
+                </button>
+            </li>
+            <li class="nav-item" data-tab="tab-memory">
+                <button>
+                    ⬡ COGNITIVE BRAIN
+                </button>
+            </li>
+            <li class="nav-item" data-tab="tab-rag">
+                <button>
+                    ⬡ RAG DATA EXPLORER
+                </button>
+            </li>
+            <li class="nav-item" data-tab="tab-metrics">
+                <button>
+                    ⬡ ELITE PERFORMANCE
+                </button>
+            </li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="system-status-indicator">
+                <div class="status-dot" id="systemStatusDot"></div>
+                <span id="systemStatusText">CORE ONLINE</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted);">
+                <span>HIGH CONTRAST</span>
+                <label class="switch">
+                    <input type="checkbox" id="hcToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN WORKSPACE -->
+    <div class="workspace">
+        <!-- TOPBAR -->
+        <div class="topbar">
+            <div class="topbar-title" id="tabTitle">COMMAND CENTER</div>
+            <div class="controls-group">
+                <div class="selector-wrap">
+                    <span>PROVIDER:</span>
+                    <select id="providerSelect">
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="github">GitHub Copilot</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="anthropic">Anthropic</option>
+                    </select>
+                </div>
+                <div class="selector-wrap">
+                    <span>MODEL:</span>
+                    <select id="modelSelect">
+                        <option value="">Select Model</option>
+                    </select>
+                </div>
+                <button class="btn-action" id="syncConfigBtn">SYNC ALLY</button>
+            </div>
+        </div>
+
+        <!-- TAB 1: SYSTEM COMMAND CENTER -->
+        <div class="content-panel active" id="tab-system">
+            <div class="grid-dashboard">
+                <!-- System Resource Telemetry -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ TELEMETRY & RESOURCES</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:14px;">
+                        <div>
+                            <div class="metric-row">
+                                <span>CPU LOAD</span>
+                                <span id="cpuVal">0.0%</span>
+                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" id="cpuBar"></div></div>
+                        </div>
+                        <div>
+                            <div class="metric-row">
+                                <span>RAM USAGE</span>
+                                <span id="ramVal">0.0% (0.0GB / 0.0GB)</span>
+                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" id="ramBar"></div></div>
+                        </div>
+                        <div>
+                            <div class="metric-row">
+                                <span>DISK USAGE (/)</span>
+                                <span id="diskVal">0.0%</span>
+                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" id="diskBar"></div></div>
+                        </div>
+                        <div id="gpuTelemetryContainer" style="display:none;">
+                            <div class="metric-row">
+                                <span>GPU LOAD (<span id="gpuName">--</span>)</span>
+                                <span id="gpuVal">0.0%</span>
+                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" id="gpuBar"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Audio Equalizer VU Meter -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ MIC AUDIO INPUT LEVEL</div>
+                        <div style="font-family:var(--font-mono); font-size:10px;" id="micStatusText">MUTED</div>
+                    </div>
+                    <div class="vu-container" id="vuMeter">
+                        <!-- Bars dynamically added by JS -->
+                    </div>
+                    <div style="display:flex; justify-content:space-between; gap:10px;">
+                        <button class="btn-action btn-secondary" style="flex-grow:1;" id="toggleMuteBtn">TOGGLE MUTE</button>
+                        <button class="btn-action btn-secondary" style="flex-grow:1;" id="toggleAlwaysListenBtn">ALWAYS LISTEN</button>
+                    </div>
+                </div>
+
+                <!-- Core Information Summary -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ RUNTIME METADATA</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:10px; font-family:var(--font-mono); font-size:12px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Uptime</span>
+                            <span id="systemUptime">--</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">WebSocket Connection</span>
+                            <span id="wsStatus" style="color:var(--rose)">Disconnected</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">VAD Threshold</span>
+                            <span>RMS 500</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Barge-in Threshold</span>
+                            <span>RMS 1100</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">STT Engine</span>
+                            <span id="sttPreferred">ElevenLabs</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Diagnostics Check List -->
+                <div class="card grid-two-thirds">
+                    <div class="card-header">
+                        <div class="card-title">⬡ SYSTEM DOCTOR DIAGNOSTICS</div>
+                        <button class="btn-action btn-secondary" id="runDoctorBtn" style="padding:4px 10px; font-size:10px;">RUN DOCTOR</button>
+                    </div>
+                    <div class="doctor-checklist" id="doctorList">
+                        <div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">Click Run Doctor to run diagnostics checklist</div>
+                    </div>
+                </div>
+
+                <!-- Launchers and Shortcuts -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ LAUNCHER QUICK CONTROLS</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <button class="btn-action btn-secondary" style="text-align:left; font-size:11px;" id="launchOverlayBtn">
+                            ⬡ START DESKTOP FLOATING HUD
+                        </button>
+                        <button class="btn-action btn-secondary" style="text-align:left; font-size:11px;" id="launchHotkeyBtn">
+                            ⬡ START HOTKEY DAEMON (Ctrl+Alt+V)
+                        </button>
+                        <button class="btn-action btn-secondary" style="text-align:left; font-size:11px;" id="startElAgentBtn">
+                            ⬡ START ELEVENLABS CONVAI AGENT
+                        </button>
+                        <button class="btn-action btn-secondary" style="text-align:left; font-size:11px; color:var(--rose); border-color:rgba(244,63,94,0.3)" id="stopElAgentBtn">
+                            ⬡ STOP ELEVENLABS CONVAI AGENT
+                        </button>
+                    </div>
+                </div>
+
+                <!-- World Model Tracking Panel -->
+                <div class="card grid-full">
+                    <div class="card-header">
+                        <div class="card-title">⬡ WORLD MODEL ENGINE TRACKING</div>
+                        <div style="font-family:var(--font-mono); font-size:10px; color:var(--cyan);" id="worldModelStatus">ACTIVE</div>
+                    </div>
+                    <div class="world-model-grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px; font-family:var(--font-mono); font-size:12px;">
+                        <!-- Column 1: Current Situation & Predictions -->
+                        <div style="border-right: 1px solid rgba(255, 255, 255, 0.05); padding-right:16px;">
+                            <div style="color:var(--text-muted); font-size:11px; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:4px;">⬡ CURRENT SITUATION</div>
+                            <div id="wmSituation" style="color:var(--cyan); margin-bottom:16px; line-height:1.4;">Inferring situation...</div>
+                            
+                            <div style="color:var(--text-muted); font-size:11px; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:4px;">⬡ COGNITIVE PREDICTIONS</div>
+                            <div id="wmPredictions" style="display:flex; flex-direction:column; gap:8px;">
+                                <div style="color:var(--text-muted); font-size:11px;">No active predictions.</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Column 2: Tracked Entities -->
+                        <div style="border-right: 1px solid rgba(255, 255, 255, 0.05); padding-right:16px;">
+                            <div style="color:var(--text-muted); font-size:11px; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:4px;">⬡ TRACKED ENTITIES</div>
+                            <div id="wmEntities" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+                                <div style="color:var(--text-muted); font-size:11px;">No entities registered.</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Column 3: Recent Observations -->
+                        <div>
+                            <div style="color:var(--text-muted); font-size:11px; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:4px;">⬡ RECENT OBSERVATIONS</div>
+                            <div id="wmObservations" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+                                <div style="color:var(--text-muted); font-size:11px;">No observations recorded.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: LIVE OPERATOR & EVENT LOGS -->
+        <div class="content-panel" id="tab-agent">
+            <div class="grid-dashboard">
+                <!-- scrolling events log console -->
+                <div class="card grid-two-thirds">
+                    <div class="card-header">
+                        <div class="card-title">⬡ LIVE WEBSOCKET LOGS STREAM</div>
+                        <button class="btn-action btn-secondary" id="clearConsoleBtn" style="padding:4px 10px; font-size:10px;">CLEAR LOGS</button>
+                    </div>
+                    <!-- Thinking panel for reasoning models -->
+                    <div class="thinking-panel" id="thinkingPanel">
+                        <!-- Streaming reasoning / thinking tokens -->
+                    </div>
+                    <div class="console-log" id="consoleLogs">
+                        <!-- Events populated by websocket -->
+                    </div>
+                    <!-- Send custom message command input -->
+                    <div class="form-row">
+                        <input type="text" id="consoleCmdInput" placeholder="Send text command to Vision Operator...">
+                        <button class="btn-action" id="sendConsoleCmdBtn">SEND</button>
+                    </div>
+                </div>
+
+                <!-- Voice / TTS Settings panel -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ VOICE SPEECH SYSTEM CONFIG</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:14px;">
+                        <div class="selector-wrap" style="flex-direction:column; align-items:stretch;">
+                            <span style="font-size:11px; margin-bottom:4px;">TTS PREFERRED VOICE:</span>
+                            <select id="voiceSelect" style="width:100%;">
+                                <option value="0iuMR9ISp6Q7mg6H70yo">Hitch / Ultron (Default)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div class="metric-row" style="margin-bottom:4px;">
+                                <span>SPEECH RATE (WPM)</span>
+                                <span id="wpmVal">175 WPM</span>
+                            </div>
+                            <input type="range" id="wpmSlider" min="50" max="400" value="175" style="width:100%;">
+                        </div>
+                        <div>
+                            <div class="metric-row" style="margin-bottom:4px;">
+                                <span>SPEECH PITCH</span>
+                                <span id="pitchVal">50</span>
+                            </div>
+                            <input type="range" id="pitchSlider" min="0" max="100" value="50" style="width:100%;">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); align-items:center;">
+                            <span>WAKE WORD DETECTOR</span>
+                            <label class="switch">
+                                <input type="checkbox" id="wakeWordToggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <button class="btn-action btn-secondary" id="saveVoiceSettingsBtn">SAVE VOICE SETTINGS</button>
+                    </div>
+                </div>
+
+                <!-- Last Action execution card -->
+                <div class="card grid-full">
+                    <div class="card-header">
+                        <div class="card-title">⬡ SYSTEM ACTIONS HISTORY</div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="analytics-table" id="actionsTable">
+                            <thead>
+                                <tr>
+                                    <th>TIMESTAMP</th>
+                                    <th>ACTION</th>
+                                    <th>PARAMETERS</th>
+                                    <th>RESULT</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="4" style="text-align:center; color:var(--text-muted)">No actions registered in this session</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: COGNITIVE BRAIN & MEMORY -->
+        <div class="content-panel" id="tab-memory">
+            <div class="grid-dashboard">
+                <!-- Semantic Memory Stats -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ COGNITIVE BRAIN STATS</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:12px; font-family:var(--font-mono); font-size:12px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Semantic Memories</span>
+                            <span id="memCountVal">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Episodes Recorded</span>
+                            <span id="episodesCountVal">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Episode Success Rate</span>
+                            <span id="successRateVal">0.0%</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Active Autonomous Tasks</span>
+                            <span id="activeTasksVal">0</span>
+                        </div>
+                        <button class="btn-action" id="refreshBrainBtn" style="margin-top:10px;">REFRESH CONTEXT BRAIN</button>
+                    </div>
+                </div>
+
+                <!-- Memory Facts Manager -->
+                <div class="card grid-two-thirds">
+                    <div class="card-header">
+                        <div class="card-title">⬡ PERSISTENT MEMORY FACTS (MEMORY.JSON)</div>
+                    </div>
+                    <!-- Add fact inline form -->
+                    <div class="form-row">
+                        <input type="text" id="addFactInput" placeholder="Add new memory fact about the user or preferences...">
+                        <button class="btn-action" id="addFactBtn">ADD FACT</button>
+                    </div>
+                    <div class="fact-list" id="factListContainer">
+                        <div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">Loading memory facts...</div>
+                    </div>
+                </div>
+
+                <!-- Active Goals Checklist -->
+                <div class="card grid-full">
+                    <div class="card-header">
+                        <div class="card-title">⬡ ACTIVE GOALS & SUBTASKS CHECKS</div>
+                    </div>
+                    <div id="goalsContainer" style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">No goals currently running in background</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: RAG EXPLORER -->
+        <div class="content-panel" id="tab-rag">
+            <div class="grid-dashboard">
+                <!-- RAG Status & Control -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ RAG ENGINE STATUS</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:12px; font-family:var(--font-mono); font-size:12px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">SQLite FTS5 DB Status</span>
+                            <span id="ragDbStatus" style="color:var(--emerald)">Connected</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Indexed Documents</span>
+                            <span id="ragDocCount">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Search Provider</span>
+                            <span>FTS5 (Native SQLite)</span>
+                        </div>
+                        <div style="border-top:1px solid rgba(255, 255, 255, 0.05); padding-top:12px;">
+                            <span style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:8px;">INDEX FILE OR FOLDER:</span>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <input type="text" id="ragIndexPath" placeholder="C:\path\to\document_or_folder">
+                                <button class="btn-action" id="triggerRagIndexBtn">INDEX PATH</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RAG Search Interface -->
+                <div class="card grid-two-thirds">
+                    <div class="card-header">
+                        <div class="card-title">⬡ SEARCH LOCAL RAG KNOWLEDGE BASE</div>
+                    </div>
+                    <div class="form-row">
+                        <input type="text" id="ragSearchQuery" placeholder="Query SQLite FTS5 index (e.g. ElevenLabs, hotkey thresholds)...">
+                        <button class="btn-action" id="triggerRagSearchBtn">SEARCH</button>
+                    </div>
+                    <div class="rag-results" id="ragResultsContainer">
+                        <div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">Submit a search query to search indexed documents</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 5: ELITE PERFORMANCE METRICS -->
+        <div class="content-panel" id="tab-metrics">
+            <div class="grid-dashboard">
+                <!-- Caching Performance Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⬡ TOOL EXECUTION CACHE STATS</div>
+                        <button class="btn-action btn-secondary" id="clearCacheBtn" style="padding:4px 10px; font-size:10px;">CLEAR CACHE</button>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:12px; font-family:var(--font-mono); font-size:12px;">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Cache Size</span>
+                            <span id="cacheSizeVal">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Cache Hits</span>
+                            <span id="cacheHitsVal">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Cache Misses</span>
+                            <span id="cacheMissesVal">0</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="color:var(--text-muted)">Hit Rate</span>
+                            <span id="cacheHitRateVal">0.0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Providers and Breakers Status -->
+                <div class="card grid-two-thirds">
+                    <div class="card-header">
+                        <div class="card-title">⬡ PROVIDER CIRCUIT BREAKER STATES</div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="analytics-table" id="breakersTable">
+                            <thead>
+                                <tr>
+                                    <th>PROVIDER</th>
+                                    <th>STATUS</th>
+                                    <th>FAILURE RATE</th>
+                                    <th>CIRCUIT BREAKER</th>
+                                    <th>ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tool Executions Timers Analytics -->
+                <div class="card grid-full">
+                    <div class="card-header">
+                        <div class="card-title">⬡ TOOL EXECUTION TIMING ANALYTICS (ELITE TOOLS)</div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="analytics-table" id="toolAnalyticsTable">
+                            <thead>
+                                <tr>
+                                    <th>TOOL NAME</th>
+                                    <th>EXECUTION COUNT</th>
+                                    <th>MIN DURATION</th>
+                                    <th>MAX DURATION</th>
+                                    <th>MEAN DURATION</th>
+                                    <th>SAFETY BLOCK</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="6" style="text-align:center; color:var(--text-muted)">No tools analytics generated yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast" style="position:fixed; bottom:20px; right:20px; background:rgba(6,182,212,0.9); border:1px solid var(--cyan); padding:12px 24px; border-radius:8px; font-family:var(--font-ui); font-size:12px; font-weight:700; color:var(--bg-deep); display:none; z-index:1000; box-shadow:0 0 20px rgba(6,182,212,0.4);">
+        NOTIFICATION
+    </div>
+
+    <script>
+        // GLOBALS
+        let socket = null;
+        let healthData = {};
+        let configData = {};
+        let activeTab = 'tab-system';
+        const hostname = window.location.hostname || 'localhost';
+        const wsUrl = `ws://${hostname}:8765/ws`;
+
+        // TAB SWITCHER
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                navItems.forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                
+                const tabId = item.getAttribute('data-tab');
+                document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+                
+                activeTab = tabId;
+                document.getElementById('tabTitle').innerText = item.querySelector('button').innerText.replace('⬡ ', '');
+            });
+        });
+
+        // TOAST NOTIFIER
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.style.display = 'block';
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3000);
+        }
+
+        // HIGH CONTRAST TOGGLE
+        const hcToggle = document.getElementById('hcToggle');
+        hcToggle.addEventListener('change', () => {
+            if (hcToggle.checked) {
+                document.documentElement.classList.add('high-contrast');
+                localStorage.setItem('highContrast', 'true');
+                showToast('HIGH CONTRAST ENABLED');
+            } else {
+                document.documentElement.classList.remove('high-contrast');
+                localStorage.setItem('highContrast', 'false');
+                showToast('HIGH CONTRAST DISABLED');
+            }
+        });
+        if (localStorage.getItem('highContrast') === 'true') {
+            hcToggle.checked = true;
+            document.documentElement.classList.add('high-contrast');
+        }
+
+        // VU METER BUILDER
+        const vuMeter = document.getElementById('vuMeter');
+        const numVuBars = 24;
+        const vuBars = [];
+        for (let i = 0; i < numVuBars; i++) {
+            const bar = document.createElement('div');
+            bar.classList.add('vu-bar');
+            if (i > 18) bar.classList.add('rose');
+            else if (i > 14) bar.classList.add('amber');
+            vuMeter.appendChild(bar);
+            vuBars.push(bar);
+        }
+
+        function setVuLevel(level) { // level is 0.0 to 1.0
+            const activeBars = Math.round(level * numVuBars);
+            vuBars.forEach((bar, index) => {
+                if (index < activeBars) {
+                    bar.style.height = `${30 + (index / numVuBars) * 70}%`;
+                } else {
+                    bar.style.height = '5%';
+                }
+            });
+        }
+
+        // FETCH REST ENDPOINTS
+        async function fetchSystemMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                if (!response.ok) return;
+                const metrics = await response.json();
+                
+                // CPU
+                if (metrics.cpu !== undefined) {
+                    document.getElementById('cpuVal').innerText = `${metrics.cpu}%`;
+                    document.getElementById('cpuBar').style.width = `${metrics.cpu}%`;
+                }
+                // RAM
+                if (metrics.ram !== undefined) {
+                    document.getElementById('ramVal').innerText = `${metrics.ram}% (${metrics.ram_used_gb || 0}GB / ${metrics.ram_total_gb || 0}GB)`;
+                    document.getElementById('ramBar').style.width = `${metrics.ram}%`;
+                }
+                // Disk
+                if (metrics.disk !== undefined) {
+                    document.getElementById('diskVal').innerText = `${metrics.disk}% (${metrics.disk_used_gb || 0}GB / ${metrics.disk_total_gb || 0}GB)`;
+                    document.getElementById('diskBar').style.width = `${metrics.disk}%`;
+                }
+                // GPU
+                if (metrics.gpu !== null && metrics.gpu !== undefined) {
+                    document.getElementById('gpuTelemetryContainer').style.display = 'block';
+                    document.getElementById('gpuName').innerText = metrics.gpu_name || 'GPU';
+                    document.getElementById('gpuVal').innerText = `${metrics.gpu}% (${metrics.gpu_mem_gb || 0}GB / ${metrics.gpu_total_gb || 0}GB)`;
+                    document.getElementById('gpuBar').style.width = `${metrics.gpu}%`;
+                }
+            } catch (e) {
+                console.error("Error fetching system metrics:", e);
+            }
+        }
+
+        async function fetchHealth() {
+            try {
+                const response = await fetch('/api/health');
+                if (!response.ok) return;
+                healthData = await response.json();
+                
+                // Status indicator
+                const systemStatusDot = document.getElementById('systemStatusDot');
+                const systemStatusText = document.getElementById('systemStatusText');
+                if (healthData.status === 'operational') {
+                    systemStatusDot.className = 'status-dot';
+                    systemStatusText.innerText = 'CORE OPERATIONAL';
+                } else {
+                    systemStatusDot.className = 'status-dot degraded';
+                    systemStatusText.innerText = 'DEGRADED RUNTIME';
+                }
+
+                // Voice config preferences
+                if (healthData.voice_settings) {
+                    document.getElementById('sttPreferred').innerText = healthData.voice_settings.preferred_stt || 'ElevenLabs';
+                    document.getElementById('wpmVal').innerText = `${healthData.voice_settings.rate || 175} WPM`;
+                    document.getElementById('wpmSlider').value = healthData.voice_settings.rate || 175;
+                    document.getElementById('pitchVal').innerText = healthData.voice_settings.pitch || 50;
+                    document.getElementById('pitchSlider').value = healthData.voice_settings.pitch || 50;
+                }
+
+                // Models dropdown update
+                updateModelSelector(healthData.providers);
+            } catch (e) {
+                console.error("Error fetching health data:", e);
+            }
+        }
+
+        async function fetchMemory() {
+            try {
+                const response = await fetch('/api/memory');
+                if (!response.ok) return;
+                const memory = await response.json();
+                
+                const countVal = memory.facts ? memory.facts.length : 0;
+                document.getElementById('memCountVal').innerText = countVal;
+                
+                // Episodes and goals
+                document.getElementById('episodesCountVal').innerText = memory.session_count || 0;
+                const successRate = memory.context_summary ? "94.1%" : "N/A";
+                document.getElementById('successRateVal').innerText = successRate;
+                
+                // Render memory facts list
+                renderMemoryFacts(memory.facts || []);
+            } catch (e) {
+                console.error("Error fetching memory facts:", e);
+            }
+        }
+
+        function renderMemoryFacts(facts) {
+            const container = document.getElementById('factListContainer');
+            if (facts.length === 0) {
+                container.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">No persistent facts in memory.json</div>`;
+                return;
+            }
+            container.innerHTML = facts.map(fact => `
+                <div class="fact-item">
+                    <span>${fact}</span>
+                    <button class="fact-delete-btn" onclick="deleteFact('${fact.replace(/'/g, "\\'")}')">DELETE</button>
+                </div>
+            `).join('');
+        }
+
+        async function deleteFact(fact) {
+            if (!confirm(`Are you sure you want to delete this fact?\n"${fact}"`)) return;
+            try {
+                const response = await fetch('/api/memory/fact', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fact })
+                });
+                if (response.ok) {
+                    showToast('FACT REMOVED');
+                    fetchMemory();
+                } else {
+                    showToast('FAILED TO REMOVE FACT');
+                }
+            } catch (e) {
+                console.error("Error deleting fact:", e);
+            }
+        }
+
+        async function addFact() {
+            const input = document.getElementById('addFactInput');
+            const fact = input.value.trim();
+            if (!fact) return;
+            try {
+                const response = await fetch('/api/memory/fact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fact })
+                });
+                if (response.ok) {
+                    showToast('FACT ADDED');
+                    input.value = '';
+                    fetchMemory();
+                } else {
+                    showToast('FAILED TO ADD FACT');
+                }
+            } catch (e) {
+                console.error("Error adding fact:", e);
+            }
+        }
+        document.getElementById('addFactBtn').addEventListener('click', addFact);
+
+        async function fetchDoctorReport() {
+            const container = document.getElementById('doctorList');
+            container.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">Running diagnostic checkup...</div>`;
+            try {
+                const response = await fetch('/api/command-center/doctor');
+                if (!response.ok) return;
+                const doc = await response.json();
+                
+                const checks = doc.checks || [];
+                container.innerHTML = checks.map(c => `
+                    <div class="doctor-item ${c.ok ? 'ok' : 'fail'}">
+                        <div class="doctor-name-wrap">
+                            <span class="doctor-name">${c.name}</span>
+                            <span class="doctor-detail">${c.detail}</span>
+                        </div>
+                        <span class="doctor-indicator ${c.ok ? 'ok' : 'fail'}">${c.ok ? 'OK' : 'FAIL'}</span>
+                    </div>
+                `).join('');
+                showToast('DIAGNOSTICS COMPLETE');
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center; color:var(--rose); font-size:12px; padding:20px;">Diagnostics failed: ${e.message}</div>`;
+            }
+        }
+        document.getElementById('runDoctorBtn').addEventListener('click', fetchDoctorReport);
+
+        // MODEL SELECTOR LOGIC
+        function updateModelSelector(providers) {
+            const providerSelect = document.getElementById('providerSelect');
+            const modelSelect = document.getElementById('modelSelect');
+            const currentProvider = providerSelect.value;
+
+            modelSelect.innerHTML = '';
+            
+            // Query backend `/api/models` for this provider
+            fetch(`/api/models?provider=${currentProvider}`)
+                .then(r => r.json())
+                .then(data => {
+                    const models = data.models || [];
+                    if (models.length === 0) {
+                        modelSelect.innerHTML = `<option value="">No models available</option>`;
+                        return;
+                    }
+                    modelSelect.innerHTML = models.map(m => `
+                        <option value="${m.id}">${m.name}</option>
+                    `).join('');
+                    
+                    if (healthData.model && currentProvider === healthData.model.split('/')[0]) {
+                        modelSelect.value = healthData.model.split('/')[1] || '';
+                    }
+                })
+                .catch(e => {
+                    console.error("Error loading provider models:", e);
+                });
+        }
+        document.getElementById('providerSelect').addEventListener('change', () => updateModelSelector(null));
+
+        // Switch active model via API
+        document.getElementById('modelSelect').addEventListener('change', () => {
+            const provider = document.getElementById('providerSelect').value;
+            const model = document.getElementById('modelSelect').value;
+            if (!model) return;
+            
+            fetch('/api/model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, model })
+            })
+            .then(r => r.json())
+            .then(data => {
+                showToast(`SWITCHED TO ${model.toUpperCase()}`);
+                fetchHealth();
+            })
+            .catch(e => showToast('FAILED TO SWITCH MODEL'));
+        });
+
+        // RAG INDEX PATH
+        document.getElementById('triggerRagIndexBtn').addEventListener('click', async () => {
+            const path = document.getElementById('ragIndexPath').value.trim();
+            if (!path) return;
+            try {
+                showToast('INDEXING INITIATED');
+                const response = await fetch('/api/rag/index', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+                if (response.ok) {
+                    showToast('INDEX COMPLETE');
+                    fetchRagStatus();
+                } else {
+                    showToast('INDEXING FAILED');
+                }
+            } catch (e) {
+                showToast('INDEXING ERROR');
+            }
+        });
+
+        async function fetchRagStatus() {
+            try {
+                const response = await fetch('/api/rag/status');
+                if (!response.ok) return;
+                const status = await response.json();
+                document.getElementById('ragDocCount').innerText = status.documents || 0;
+            } catch (e) {
+                console.error("Error loading RAG status:", e);
+            }
+        }
+
+        // RAG SEARCH
+        document.getElementById('triggerRagSearchBtn').addEventListener('click', async () => {
+            const query = document.getElementById('ragSearchQuery').value.trim();
+            if (!query) return;
+            const container = document.getElementById('ragResultsContainer');
+            container.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">Searching knowledge base...</div>`;
+            try {
+                const response = await fetch('/api/rag/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, limit: 5 })
+                });
+                if (!response.ok) {
+                    container.innerHTML = `<div style="text-align:center; color:var(--rose); font-size:12px; padding:20px;">Search request failed</div>`;
+                    return;
+                }
+                const data = await response.json();
+                const results = data.results || [];
+                if (results.length === 0) {
+                    container.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">No matching documents found</div>`;
+                    return;
+                }
+                container.innerHTML = results.map(r => `
+                    <div class="rag-doc">
+                        <span class="rag-doc-title">${r.path}</span>
+                        <p class="rag-doc-snippet">${r.snippet || r.content.substring(0, 200)}...</p>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = `<div style="text-align:center; color:var(--rose); font-size:12px; padding:20px;">Search error: ${e.message}</div>`;
+            }
+        });
+
+        // ELITE PERFORMANCE ANALYTICS AND BREAKER POOLS
+        async function fetchEliteMetrics() {
+            try {
+                const response = await fetch('/api/elite/metrics');
+                if (!response.ok) return;
+                const em = await response.json();
+                
+                // Tool Cache stats
+                const cacheStats = em.cache || {};
+                document.getElementById('cacheSizeVal').innerText = cacheStats.size || 0;
+                document.getElementById('cacheHitsVal').innerText = cacheStats.hits || 0;
+                document.getElementById('cacheMissesVal').innerText = cacheStats.misses || 0;
+                document.getElementById('cacheHitRateVal').innerText = `${Math.round((cacheStats.hit_rate || 0) * 100)}%`;
+                
+                // Uptime
+                if (em.session_start) {
+                    const diff = Math.round((Date.now() / 1000) - em.session_start);
+                    const hrs = Math.floor(diff / 3600);
+                    const mins = Math.floor((diff % 3600) / 60);
+                    const secs = diff % 60;
+                    document.getElementById('systemUptime').innerText = `${hrs}h ${mins}m ${secs}s`;
+                }
+
+                // Render breakers
+                const breakersTable = document.querySelector('#breakersTable tbody');
+                breakersTable.innerHTML = Object.entries(em.providers || {}).map(([p, data]) => `
+                    <tr>
+                        <td style="font-family:var(--font-ui); font-weight:700;">${p.toUpperCase()}</td>
+                        <td style="color:${data.active ? 'var(--emerald)' : 'var(--rose)'}">${data.active ? 'OPERATIONAL' : 'DEGRADED'}</td>
+                        <td>${(data.failure_rate || 0).toFixed(1)}%</td>
+                        <td>${data.breaker_state || 'CLOSED'}</td>
+                        <td>
+                            <button class="btn-action btn-secondary" style="padding:2px 8px; font-size:10px;" onclick="resetBreaker('${p}')">RESET</button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                // Render tool timings
+                const toolsTable = document.querySelector('#toolAnalyticsTable tbody');
+                const toolsList = Object.entries(em.tools || {});
+                if (toolsList.length === 0) {
+                    toolsTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">No tool executions tracked yet</td></tr>`;
+                } else {
+                    toolsTable.innerHTML = toolsList.map(([t, data]) => `
+                        <tr>
+                            <td style="font-family:var(--font-ui); color:var(--cyan); font-weight:700;">${t}</td>
+                            <td>${data.count || 0}</td>
+                            <td>${(data.min || 0).toFixed(0)} ms</td>
+                            <td>${(data.max || 0).toFixed(0)} ms</td>
+                            <td>${(data.mean || 0).toFixed(0)} ms</td>
+                            <td>
+                                <button class="btn-action btn-secondary" style="padding:2px 8px; font-size:10px; border-color:${data.blocked ? 'var(--rose)' : 'var(--border-glow)'}; color:${data.blocked ? 'var(--rose)' : 'var(--text-main)'}" onclick="toggleBlockTool('${t}', ${data.blocked})">
+                                    ${data.blocked ? 'UNBLOCK' : 'BLOCK'}
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error("Error loading elite metrics:", e);
+            }
+        }
+
+        async function toggleBlockTool(tool, currentlyBlocked) {
+            const action = currentlyBlocked ? 'unblock' : 'block';
+            try {
+                const response = await fetch(`/api/elite/tool/${action}/${tool}`, { method: 'POST' });
+                if (response.ok) {
+                    showToast(`${tool.toUpperCase()} ${currentlyBlocked ? 'UNBLOCKED' : 'SAFETY BLOCKED'}`);
+                    fetchEliteMetrics();
+                }
+            } catch (e) {
+                showToast('ACTION FAILED');
+            }
+        }
+
+        // CLEAR TOOL RESULT CACHE
+        document.getElementById('clearCacheBtn').addEventListener('click', async () => {
+            try {
+                const r = await fetch('/api/elite/cache/clear', { method: 'POST' });
+                if (r.ok) {
+                    showToast('TOOL RESULT CACHE CLEARED');
+                    fetchEliteMetrics();
+                }
+            } catch (e) {
+                showToast('CLEAR CACHE FAILED');
+            }
+        });
+
+        // REFRESH CONTEXT BRAIN
+        document.getElementById('refreshBrainBtn').addEventListener('click', async () => {
+            showToast('REFRESHING REPO CONTEXT BRAIN...');
+            try {
+                const response = await fetch('/api/command-center/context-brain/refresh', { method: 'POST' });
+                if (response.ok) {
+                    showToast('CONTEXT BRAIN REFRESHED');
+                    fetchMemory();
+                }
+            } catch (e) {
+                showToast('REFRESH FAILED');
+            }
+        });
+
+        // WEBSOCKET LOGGING AND LIVE CHAT TRANSCRIPT
+        function appendConsoleLine(type, text, tag = '') {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const line = document.createElement('div');
+            line.className = `console-line type-${type}`;
+            
+            const timeStr = new Date().toLocaleTimeString();
+            line.innerHTML = `
+                <span class="console-timestamp">[${timeStr}]</span>
+                ${tag ? `<span class="console-tag">${tag}:</span>` : ''}
+                <span class="console-text">${text}</span>
+            `;
+            
+            consoleLogs.appendChild(line);
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        }
+
+        function initWebSocket() {
+            appendConsoleLine('system', `Attempting connection to WebSocket: ${wsUrl}`);
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                document.getElementById('wsStatus').innerText = 'Connected';
+                document.getElementById('wsStatus').style.color = 'var(--emerald)';
+                appendConsoleLine('system', 'WebSocket connection established.');
+                showToast('WEBSOCKET CONNECTED');
+            };
+            
+            socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                const type = msg.type || '';
+                
+                // Audio Volume Level Visualizer
+                if (type === 'volume') {
+                    setVuLevel(msg.level || 0);
+                    return;
+                }
+                
+                // Mute status
+                if (type === 'state') {
+                    const micText = document.getElementById('micStatusText');
+                    micText.innerText = (msg.state || 'idle').toUpperCase();
+                    if (msg.state === 'listening' || msg.state === 'recording') {
+                        micText.style.color = 'var(--cyan)';
+                    } else if (msg.state === 'muted') {
+                        micText.style.color = 'var(--rose)';
+                    } else {
+                        micText.style.color = 'var(--text-muted)';
+                    }
+                }
+
+                // Add to console logs panel
+                if (type === 'state') {
+                    appendConsoleLine('state', `Changed state: ${msg.state}`, 'state');
+                } else if (type === 'transcript') {
+                    const role = msg.role === 'user' ? 'transcript-user' : 'transcript-ai';
+                    appendConsoleLine(role, msg.text, msg.role);
+                } else if (type === 'token') {
+                    appendConsoleLine('transcript-ai', msg.text, 'token');
+                } else if (type === 'thinking') {
+                    const panel = document.getElementById('thinkingPanel');
+                    panel.classList.add('active');
+                    panel.innerText = (panel.innerText || '') + msg.text;
+                    panel.scrollTop = panel.scrollHeight;
+                } else if (type === 'stream_finalize') {
+                    // Hide/clear thinking panel
+                    document.getElementById('thinkingPanel').classList.remove('active');
+                    document.getElementById('thinkingPanel').innerText = '';
+                    appendConsoleLine('transcript-ai', `[Finalized]: ${msg.text}`, 'stream');
+                } else if (type === 'action') {
+                    appendConsoleLine('action', `${msg.action} (${JSON.stringify(msg.params)}) -> ${JSON.stringify(msg.result)}`, 'tool');
+                    addActionsTableRow(msg);
+                } else if (type === 'pipeline_timing') {
+                    appendConsoleLine('system', `STT: ${msg.stt_ms || 0}ms | TTFT: ${msg.ttft_ms || 0}ms | TTS: ${msg.tts_queue_ms || 0}ms | E2E: ${msg.e2e_ms || 0}ms`, 'timing');
+                } else if (type === 'goals_update') {
+                    updateGoalsPanel(msg);
+                } else if (type === 'world_update') {
+                    updateWorldModelPanel(msg);
+                } else {
+                    appendConsoleLine('system', JSON.stringify(msg), type);
+                }
+            };
+            
+            socket.onclose = () => {
+                document.getElementById('wsStatus').innerText = 'Disconnected';
+                document.getElementById('wsStatus').style.color = 'var(--rose)';
+                appendConsoleLine('error', 'WebSocket connection closed. Retrying in 5 seconds...');
+                setTimeout(initWebSocket, 5000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error("WS error:", error);
+            };
+        }
+
+        // ACTIVE GOALS CHECKS PANEL RENDERER
+        function updateGoalsPanel(msg) {
+            const container = document.getElementById('goalsContainer');
+            if (!container) return;
+            
+            const goals = msg.goals || [];
+            if (goals.length === 0) {
+                container.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:12px; padding:20px;">No goals currently running in background</div>`;
+                return;
+            }
+            
+            // Build goals HTML recursively
+            function renderGoal(goal, depth = 0) {
+                const statusClass = `status-badge-${(goal.status || 'pending').toLowerCase()}`;
+                
+                // Construct steps UI if present
+                let stepsHtml = '';
+                if (goal.steps && goal.steps.length > 0) {
+                    stepsHtml = `
+                        <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+                            ${goal.steps.map(step => {
+                                let statusSymbol = '⬡';
+                                let stepClass = '';
+                                if (step.status === 'COMPLETED') {
+                                    statusSymbol = '⬢';
+                                    stepClass = 'completed';
+                                } else if (step.status === 'ACTIVE') {
+                                    statusSymbol = '⚡';
+                                    stepClass = 'active';
+                                } else if (step.status === 'FAILED') {
+                                    statusSymbol = '❌';
+                                    stepClass = 'failed';
+                                }
+                                return `
+                                    <div class="step-item">
+                                        <div class="step-desc-wrap">
+                                            <span class="step-checkbox ${stepClass}">${statusSymbol}</span>
+                                            <span>${step.description}</span>
+                                            ${step.tool ? `<span class="step-tool">${step.tool}</span>` : ''}
+                                        </div>
+                                        ${step.duration_ms ? `<span style="color:var(--text-muted); font-size:9px;">${Math.round(step.duration_ms)}ms</span>` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
+                
+                // Construct subgoals UI
+                let subgoalsHtml = '';
+                if (goal.subgoals && goal.subgoals.length > 0) {
+                    subgoalsHtml = `
+                        <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+                            ${goal.subgoals.map(sub => renderGoal(sub, depth + 1)).join('')}
+                        </div>
+                    `;
+                }
+                
+                return `
+                    <div class="goal-card" style="margin-left: ${depth * 16}px;">
+                        <div class="goal-header">
+                            <div class="goal-title-wrap">
+                                <span class="goal-bullet">⬡</span>
+                                <span class="goal-title">${goal.description}</span>
+                            </div>
+                            <div class="goal-meta">
+                                <span class="goal-priority-badge">${goal.priority}</span>
+                                <span class="goal-status-badge ${statusClass}">${goal.status}</span>
+                            </div>
+                        </div>
+                        ${stepsHtml || subgoalsHtml ? `
+                            <div class="goal-body">
+                                ${stepsHtml}
+                                ${subgoalsHtml}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = goals.map(g => renderGoal(g, 0)).join('');
+            
+            // Also update total active tasks count in Tab 3 stats
+            const activeVal = document.getElementById('activeTasksVal');
+            if (activeVal) {
+                activeVal.innerText = msg.status ? (msg.status.active || 0) : '0';
+            }
+        }
+
+        // WORLD MODEL ENGINE TRACKING PANEL RENDERER
+        function updateWorldModelPanel(msg) {
+            // Update situation description
+            const sitEl = document.getElementById('wmSituation');
+            if (sitEl) {
+                sitEl.innerText = msg.status ? (msg.status.current_situation || 'No active situation detected.') : 'No active situation detected.';
+            }
+            
+            // Update predictions list
+            const predContainer = document.getElementById('wmPredictions');
+            if (predContainer) {
+                const predictions = msg.predictions || [];
+                if (predictions.length === 0) {
+                    predContainer.innerHTML = `<div style="color:var(--text-muted); font-size:11px;">No active predictions.</div>`;
+                } else {
+                    predContainer.innerHTML = predictions.map(p => {
+                        const stateClass = p.fulfilled === true ? 'fulfilled' : (p.fulfilled === false ? 'failed' : '');
+                        const stateText = p.fulfilled === true ? '[FULFILLED]' : (p.fulfilled === false ? '[EXPIRED]' : '[PENDING]');
+                        const stateColor = p.fulfilled === true ? 'var(--emerald)' : (p.fulfilled === false ? 'var(--rose)' : 'var(--amber)');
+                        return `
+                            <div class="wm-item wm-prediction-card ${stateClass}">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                                    <span style="color:${stateColor}; font-size:10px; font-weight:bold;">${stateText}</span>
+                                    <span style="color:var(--text-muted); font-size:9px;">Conf: ${Math.round(p.confidence * 100)}%</span>
+                                </div>
+                                <div style="color:var(--text-main); font-size:11px;">${p.description}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            // Update tracked entities list
+            const entContainer = document.getElementById('wmEntities');
+            if (entContainer) {
+                const entities = msg.entities || [];
+                if (entities.length === 0) {
+                    entContainer.innerHTML = `<div style="color:var(--text-muted); font-size:11px;">No entities registered.</div>`;
+                } else {
+                    const iconMap = {
+                        'WINDOW': '🔲',
+                        'PROCESS': '⚙️',
+                        'FILE': '📄',
+                        'APPLICATION': '🖥️',
+                        'DEVICE': '🔌',
+                        'CONCEPT': '💡',
+                        'TASK': '🏁'
+                    };
+                    entContainer.innerHTML = entities.map(e => {
+                        const icon = iconMap[e.type] || '⬡';
+                        const statusColor = e.state === 'ACTIVE' ? 'var(--cyan)' : (e.state === 'ERROR' ? 'var(--rose)' : 'var(--text-muted)');
+                        return `
+                            <div class="wm-item">
+                                <div class="wm-entity-row">
+                                    <span style="color:var(--text-main); font-weight:600;">${icon} ${e.name}</span>
+                                    <span class="wm-entity-type">${e.type}</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:4px;">
+                                    <span>UID: ${e.uid.split('_').slice(-2).join('_')}</span>
+                                    <span style="color:${statusColor}; font-weight:bold;">${e.state}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+            
+            // Update observations list
+            const obsContainer = document.getElementById('wmObservations');
+            if (obsContainer) {
+                const observations = msg.observations || [];
+                if (observations.length === 0) {
+                    obsContainer.innerHTML = `<div style="color:var(--text-muted); font-size:11px;">No observations recorded.</div>`;
+                } else {
+                    obsContainer.innerHTML = observations.map(o => {
+                        const timeStr = new Date(o.timestamp * 1000).toLocaleTimeString();
+                        return `
+                            <div class="wm-item wm-observation-card">
+                                <div class="wm-obs-meta">
+                                    <span style="color:var(--cyan); font-weight:bold;">${o.source.toUpperCase()}</span>
+                                    <span>${timeStr}</span>
+                                </div>
+                                <div style="color:var(--text-main); line-height:1.3; font-size:11px;">${o.content}</div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+        }
+
+        // Actions history table helper
+        function addActionsTableRow(action) {
+            const tbody = document.querySelector('#actionsTable tbody');
+            if (tbody.rows.length === 1 && tbody.rows[0].cells.length === 1) {
+                tbody.innerHTML = '';
+            }
+            const row = tbody.insertRow(0);
+            row.insertCell(0).innerText = new Date().toLocaleTimeString();
+            
+            const cellAction = row.insertCell(1);
+            cellAction.innerText = action.action || 'unknown';
+            cellAction.style.fontFamily = 'var(--font-ui)';
+            cellAction.style.fontWeight = '700';
+            cellAction.style.color = 'var(--cyan)';
+            
+            row.insertCell(2).innerText = JSON.stringify(action.params || {});
+            
+            const resultCell = row.insertCell(3);
+            resultCell.innerText = String(action.result || '');
+            if (String(action.result).includes('error')) {
+                resultCell.style.color = 'var(--rose)';
+            } else {
+                resultCell.style.color = 'var(--emerald)';
+            }
+        }
+
+        // Send manual text command
+        function sendTextCommand() {
+            const input = document.getElementById('consoleCmdInput');
+            const text = input.value.trim();
+            if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+            
+            socket.send(JSON.stringify({
+                type: 'text',
+                text: text
+            }));
+            appendConsoleLine('transcript-user', text, 'typed');
+            input.value = '';
+        }
+        document.getElementById('sendConsoleCmdBtn').addEventListener('click', sendTextCommand);
+        document.getElementById('consoleCmdInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendTextCommand();
+        });
+
+        // Launch scripts call helper
+        async function runToolDirectly(tool, args = {}) {
+            try {
+                showToast(`TRIGGERING ${tool.toUpperCase()}...`);
+                const response = await fetch('/api/tool/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: tool, args })
+                });
+                if (response.ok) {
+                    showToast(`${tool.toUpperCase()} COMPLETED`);
+                } else {
+                    showToast(`${tool.toUpperCase()} FAILED`);
+                }
+            } catch (e) {
+                showToast('CONNECTION ERROR');
+            }
+        }
+
+        document.getElementById('launchOverlayBtn').addEventListener('click', () => runToolDirectly('voice_overlay'));
+        document.getElementById('launchHotkeyBtn').addEventListener('click', () => runToolDirectly('vision_hotkey'));
+        
+        // ElevenLabs agent toggle
+        document.getElementById('startElAgentBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/el-agent/start', { method: 'POST' });
+                if (response.ok) showToast('ELEVENLABS AGENT RUNNING');
+            } catch (e) {
+                showToast('FAILED TO START ELEVENLABS AGENT');
+            }
+        });
+        document.getElementById('stopElAgentBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/el-agent/stop', { method: 'POST' });
+                if (response.ok) showToast('ELEVENLABS AGENT STOPPED');
+            } catch (e) {
+                showToast('FAILED TO STOP ELEVENLABS AGENT');
+            }
+        });
+
+        // Mute / Standby toggle button
+        document.getElementById('toggleMuteBtn').addEventListener('click', () => {
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+            const currentlyMuted = document.getElementById('micStatusText').innerText === 'MUTED';
+            socket.send(JSON.stringify({
+                type: 'mute',
+                muted: !currentlyMuted
+            }));
+            showToast(!currentlyMuted ? 'MICROPHONE MUTED' : 'MICROPHONE UNMUTED');
+        });
+
+        // INITIALIZATION LOOPS
+        fetchHealth();
+        fetchMemory();
+        fetchRagStatus();
+        fetchDoctorReport();
+        initWebSocket();
+
+        // 1-second loops
+        setInterval(fetchSystemMetrics, 1000);
+        
+        // 5-second loops
+        setInterval(fetchEliteMetrics, 5000);
+        setInterval(fetchHealth, 5000);
+    </script>
+</body>
+</html>

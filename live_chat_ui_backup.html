@@ -434,6 +434,7 @@ footer{
 ═══════════════════════════════════════════════════════ */
 #pickerOverlay{
   position:fixed;inset:0;z-index:8000;background:rgba(3,3,8,.85);
+  -webkit-backdrop-filter:blur(6px);
   backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;
 }
 #pickerOverlay.open{display:flex}
@@ -497,6 +498,21 @@ footer{
    ELEVENLABS WIDGET OVERRIDE
 ═══════════════════════════════════════════════════════ */
 elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
+
+/* ═══════════════════════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════════════════════ */
+.hdr-btn-primary{border-color:var(--primary);color:var(--primary)}
+.ftr-brand{flex:1}
+.ftr-brand-lbl{color:var(--primary2)}
+.tab-content-col{padding:14px;overflow-y:auto;flex-direction:column}
+.actions-section-lbl-gap{font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--dim);margin:10px 0}
+.actions-section-lbl-sm{font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--dim);margin:6px 0 4px}
+.mem-profile{font-size:11px;color:var(--text2)}
+.picker-loading{color:var(--dim);text-align:center;padding:30px}
+.picker-error{color:var(--red);padding:20px}
+.picker-el-note{padding:6px 14px;font-size:11px;color:var(--dim)}
+.log-level{color:var(--primary2);margin-right:6px}
 </style>
 </head>
 <body>
@@ -523,7 +539,7 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
   <div id="modelBadge" onclick="openPicker()">⬡ SELECT MODEL</div>
   <button class="hdr-btn" id="muteBtn" onclick="toggleMute()">🎙 MIC ON</button>
   <button class="hdr-btn" onclick="document.getElementById('modeBtn').click()">⚡ CHAT</button>
-  <button class="hdr-btn" onclick="openPicker()" style="border-color:var(--primary);color:var(--primary)">⚙ CONFIG</button>
+  <button class="hdr-btn hdr-btn-primary" onclick="openPicker()">⚙ CONFIG</button>
 </header>
 
 <!-- MAIN -->
@@ -596,8 +612,8 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
     </div>
 
     <!-- ACTIONS TAB -->
-    <div class="tab-content" id="actionsTab" style="padding:14px;overflow-y:auto;flex-direction:column">
-      <div style="font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--dim);margin-bottom:10px">◆ DESKTOP CONTROL</div>
+    <div class="tab-content tab-content-col" id="actionsTab">
+      <div class="actions-section-lbl">◆ DESKTOP CONTROL</div>
       <div class="action-grid">
         <div class="action-card" onclick="quickAction('read_screen')"><div class="action-icon">👁</div><div class="action-label">READ SCREEN</div></div>
         <div class="action-card" onclick="quickAction('screenshot')"><div class="action-icon">📸</div><div class="action-label">SCREENSHOT</div></div>
@@ -610,7 +626,7 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
         <div class="action-card" onclick="promptAction('list_files','Directory path (blank=Desktop):')"><div class="action-icon">📁</div><div class="action-label">LIST FILES</div></div>
         <div class="action-card" onclick="promptAction('read_file','File path:')"><div class="action-icon">📄</div><div class="action-label">READ FILE</div></div>
       </div>
-      <div style="font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--dim);margin:10px 0">◆ BROWSER (PLAYWRIGHT)</div>
+      <div class="actions-section-lbl-gap">◆ BROWSER (PLAYWRIGHT)</div>
       <div class="action-grid">
         <div class="action-card" onclick="promptAction('browser_open','URL to open:')"><div class="action-icon">🌐</div><div class="action-label">OPEN URL</div></div>
         <div class="action-card" onclick="promptAction('browser_click','CSS selector or text:')"><div class="action-icon">🖱</div><div class="action-label">BROWSER CLICK</div></div>
@@ -618,7 +634,7 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
         <div class="action-card" onclick="promptAction('browser_extract','CSS selector (blank=page):')"><div class="action-icon">📤</div><div class="action-label">EXTRACT TEXT</div></div>
         <div class="action-card" onclick="quickAction('browser_screenshot')"><div class="action-icon">📸</div><div class="action-label">BROWSER SNAP</div></div>
       </div>
-      <div style="font-family:var(--font-ui);font-size:9px;letter-spacing:.2em;color:var(--dim);margin:6px 0 4px">◆ OUTPUT</div>
+      <div class="actions-section-lbl-sm">◆ OUTPUT</div>
       <div class="action-result" id="actionResult">Action output will appear here.</div>
     </div>
 
@@ -627,7 +643,7 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
       <div class="mem-grid" id="memGrid">
         <div class="mem-card">
           <div class="mem-card-title">◆ USER PROFILE</div>
-          <div id="memProfile" style="font-size:11px;color:var(--text2)">—</div>
+          <div class="mem-profile" id="memProfile">—</div>
         </div>
         <div class="mem-card">
           <div class="mem-card-title">◆ LONG-TERM FACTS</div>
@@ -750,8 +766,8 @@ elevenlabs-convai{position:fixed;bottom:46px;right:16px;z-index:500}
   <div class="ftr-item">SESSION <span class="ftr-val" id="ftrSession">1</span></div>
   <div class="ftr-sep"></div>
   <div class="ftr-item">UPTIME <span class="ftr-val" id="ftrUptime">00:00</span></div>
-  <div style="flex:1"></div>
-  <div class="ftr-item" style="color:var(--primary2)">⬡ VISION OS v2.0</div>
+  <div class="ftr-brand"></div>
+  <div class="ftr-item ftr-brand-lbl">⬡ VISION OS v2.0</div>
 </footer>
 
 <!-- MODEL PICKER OVERLAY -->

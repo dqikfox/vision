@@ -128,7 +128,7 @@ def main() -> int:
 
     command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", str(workspace)]
     try:
-        result = subprocess.run(command, check=False)
+        result = subprocess.run(command, check=False, shell=(os.name == "nt"))
     except FileNotFoundError:
         print("Unable to start lmstudio-rag MCP because 'npx' is not installed or not on PATH.", file=sys.stderr)
         return 1

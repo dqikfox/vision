@@ -231,3 +231,88 @@ class AdminMCPTools:
 
 # Singleton instance
 admin_mcp_tools = AdminMCPTools()
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Vision Admin")
+
+@mcp.tool()
+def vision_admin_login(username: str, password: str) -> dict[str, Any]:
+    """Authenticate and get JWT token.
+    
+    Args:
+        username: Admin username
+        password: Admin password
+    """
+    return admin_mcp_tools.vision_admin_login(username, password)
+
+@mcp.tool()
+def vision_admin_logout(token: str) -> dict[str, Any]:
+    """Invalidate token.
+    
+    Args:
+        token: JWT token to invalidate
+    """
+    return admin_mcp_tools.vision_admin_logout(token)
+
+@mcp.tool()
+def vision_admin_validate(token: str) -> dict[str, Any]:
+    """Validate token and get user info.
+    
+    Args:
+        token: JWT token to validate
+    """
+    return admin_mcp_tools.vision_admin_validate(token)
+
+@mcp.tool()
+def vision_admin_users(token: str) -> dict[str, Any]:
+    """List all users (admin only).
+    
+    Args:
+        token: Admin JWT token
+    """
+    return admin_mcp_tools.vision_admin_users(token)
+
+@mcp.tool()
+def vision_admin_create_user(token: str, username: str, password: str, role: str = "user") -> dict[str, Any]:
+    """Create new user (admin only).
+    
+    Args:
+        token: Admin JWT token
+        username: New username
+        password: New password
+        role: Role (user/teacher/admin)
+    """
+    return admin_mcp_tools.vision_admin_create_user(token, username, password, role)
+
+@mcp.tool()
+def vision_admin_delete_user(token: str, user_id: str) -> dict[str, Any]:
+    """Delete user (admin only).
+    
+    Args:
+        token: Admin JWT token
+        user_id: User ID to delete
+    """
+    return admin_mcp_tools.vision_admin_delete_user(token, user_id)
+
+@mcp.tool()
+def vision_admin_logs(token: str, limit: int = 50) -> dict[str, Any]:
+    """View audit logs (admin/teacher).
+    
+    Args:
+        token: JWT token with teacher+ role
+        limit: Maximum entries to return
+    """
+    return admin_mcp_tools.vision_admin_logs(token, limit)
+
+@mcp.tool()
+def vision_admin_stats(token: str) -> dict[str, Any]:
+    """Get system statistics (admin/teacher).
+    
+    Args:
+        token: JWT token with teacher+ role
+    """
+    return admin_mcp_tools.vision_admin_stats(token)
+
+if __name__ == "__main__":
+    mcp.run()
