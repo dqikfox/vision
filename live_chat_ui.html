@@ -620,6 +620,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   background:rgba(29,78,216,.08);border:1px solid rgba(29,78,216,.2);
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;
   color:var(--tx2);transition:all .2s;
+  padding:0;margin:0;
 }
 .modal-close:hover{background:rgba(239,68,68,.2);color:var(--r);border-color:var(--r)}
 
@@ -1388,26 +1389,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot Viewer" onclick="if(event.target===this)closeScreenshot()">
+  <button class="modal-close" aria-label="Close screenshot viewer" onclick="closeScreenshot()">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Model Picker" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" aria-label="Close model picker" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System Architecture Map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2382,7 +2383,16 @@ async function openPicker() {
 function closePicker() { document.getElementById('pickerModal').classList.remove('open'); }
 function openSystemMap() { document.getElementById('systemMapModal').classList.add('open'); }
 function closeSystemMap() { document.getElementById('systemMapModal').classList.remove('open'); }
+function closeScreenshot() { document.getElementById('screenshotModal').classList.remove('open'); }
 function escAttr(s) { return String(s).replace(/"/g,'&quot;'); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closePicker();
+    closeSystemMap();
+    closeScreenshot();
+  }
+});
 
 function renderPicker(data) {
   const body = document.getElementById('pickerBody');
