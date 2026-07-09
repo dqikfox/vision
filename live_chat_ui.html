@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot Viewer" onclick="if(event.target===this)closeScreenshot()">
+  <button class="modal-close" aria-label="Close screenshot viewer" style="padding:0; border:none; background:none;" onclick="closeScreenshot()">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Select Model" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" aria-label="Close model selector" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System Architecture Map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2379,9 +2379,18 @@ async function openPicker() {
     document.getElementById('pickerBody').innerHTML = `<div style="padding:20px;color:var(--r)">Error: ${escHtml(String(e.message || e))}</div>`;
   }
 }
+function closeScreenshot() { document.getElementById('screenshotModal').classList.remove('open'); }
 function closePicker() { document.getElementById('pickerModal').classList.remove('open'); }
 function openSystemMap() { document.getElementById('systemMapModal').classList.add('open'); }
 function closeSystemMap() { document.getElementById('systemMapModal').classList.remove('open'); }
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('screenshotModal').classList.contains('open')) closeScreenshot();
+    if (document.getElementById('pickerModal').classList.contains('open')) closePicker();
+    if (document.getElementById('systemMapModal').classList.contains('open')) closeSystemMap();
+  }
+});
 function escAttr(s) { return String(s).replace(/"/g,'&quot;'); }
 
 function renderPicker(data) {

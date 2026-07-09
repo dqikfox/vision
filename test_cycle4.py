@@ -23,7 +23,7 @@ def _app():
     if "live_chat_app" in sys.modules:
         return sys.modules["live_chat_app"]
     stubs = {
-        "elevenlabs": types.ModuleType("elevenlabs"),
+        "elevenlabs": mock.MagicMock(),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
         "pyautogui": types.ModuleType("pyautogui"),
         "pytesseract": types.ModuleType("pytesseract"),

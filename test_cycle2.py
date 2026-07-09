@@ -26,7 +26,7 @@ def _import_app_module():
         return sys.modules["live_chat_app"]
     # Patch heavy optional imports so the module can be imported offline
     stubs = {
-        "elevenlabs": types.ModuleType("elevenlabs"),
+        "elevenlabs": mock.MagicMock(),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
         "pyautogui": types.ModuleType("pyautogui"),
         "pytesseract": types.ModuleType("pytesseract"),
