@@ -38,7 +38,10 @@ from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 import httpx
 import numpy as np
@@ -2863,7 +2866,7 @@ async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
 
 
 @app.get("/api/export/trace")
-async def api_export_trace() -> FileResponse | JSONResponse:
+async def api_export_trace() -> Any:
     """Download the operator action trace log for debugging and audits."""
     if not LOG_FILE.exists():
         return JSONResponse({"error": "No trace log available yet"}, status_code=404)
