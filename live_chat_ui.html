@@ -1349,7 +1349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Take screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1373,7 +1373,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="Open Agent panel">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" onclick="if(event.target===this)this.classList.remove('open')">
+  <button class="modal-close" aria-label="Close screenshot" style="border:none;background:none;padding:0" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</button>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" aria-label="Close picker" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2756,6 +2756,30 @@ function toast(msg, type) {
 ═══════════════════════════════════════ */
 updateModelBadge();
 buildKeysList();
+
+/* ═══════════════════════════════════════
+   GLOBAL KEYBOARD ACCESSIBILITY
+═══════════════════════════════════════ */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const sm = document.getElementById('screenshotModal');
+    if (sm && sm.classList.contains('open')) {
+      sm.classList.remove('open');
+      return;
+    }
+    const pm = document.getElementById('pickerModal');
+    if (pm && pm.classList.contains('open')) {
+      closePicker();
+      return;
+    }
+    const sMap = document.getElementById('systemMapModal');
+    if (sMap && sMap.classList.contains('open')) {
+      closeSystemMap();
+      return;
+    }
+  }
+});
+
 </script>
 </body>
 </html>
