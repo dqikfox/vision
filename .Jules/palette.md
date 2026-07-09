@@ -1,0 +1,3 @@
+## 2026-07-09 - Modal Semantics and Keyboard Dismissal
+**Learning:** Adding `role="dialog"` and `aria-modal="true"` properly defines the scope of custom modals for screen readers. Furthermore, a global 'Escape' listener is critical for keyboard accessibility, ensuring users can quickly dismiss overlays, and it should invoke native component teardowns rather than just removing CSS classes.
+**Action:** When implementing or enhancing custom modals, always assign proper ARIA roles, add descriptive `aria-label`s to close controls, and wire up the `Escape` key to the modal's native close methods to maintain proper logic and state. Ensure any `div`s converted to `<button>`s include a CSS reset to prevent layout breakage.
