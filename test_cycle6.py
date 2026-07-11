@@ -15,10 +15,10 @@ import unittest.mock as mock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Module import helper
 # ---------------------------------------------------------------------------
+
 
 def _app():
     if "live_chat_app" in sys.modules:
@@ -39,9 +39,10 @@ def _app():
 # _validate_tool_path — traversal + blocked paths
 # ---------------------------------------------------------------------------
 
+
 def test_validate_path_blocks_etc_passwd():
     app = _app()
-    with pytest.raises(ValueError, match="system path|not allowed"):
+    with pytest.raises(ValueError, match=r"system path|not allowed"):
         app._validate_tool_path("/etc/passwd")
 
 
@@ -80,6 +81,7 @@ def test_validate_path_raises_on_whitespace():
 # File tools reject blocked paths
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_read_file_blocks_system_path():
     app = _app()
@@ -113,6 +115,7 @@ async def test_read_file_allows_tmp_path(tmp_path):
 # ---------------------------------------------------------------------------
 # Rate limiter
 # ---------------------------------------------------------------------------
+
 
 def test_rate_limiter_allows_up_to_limit():
     app = _app()
@@ -161,8 +164,10 @@ def test_rate_limiter_independent_keys():
 # Dependabot config exists
 # ---------------------------------------------------------------------------
 
+
 def test_dependabot_yml_exists():
     from pathlib import Path
+
     dep = Path(__file__).with_name(".github") / "dependabot.yml"
     assert dep.exists(), ".github/dependabot.yml should exist after cycle-6"
 
@@ -171,8 +176,10 @@ def test_dependabot_yml_exists():
 # ARIA labels on key UI buttons
 # ---------------------------------------------------------------------------
 
+
 def test_ui_buttons_have_aria_labels():
     from pathlib import Path
+
     html = Path(__file__).with_name("live_chat_ui.html").read_text(encoding="utf-8")
     # Key interactive elements must have aria-label
     assert 'aria-label="Toggle microphone mute"' in html

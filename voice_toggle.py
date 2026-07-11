@@ -22,9 +22,9 @@ Usage:
 
 import asyncio
 import base64
+import contextlib
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import threading
@@ -33,30 +33,32 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import keyboard
-import numpy as np
-import pyperclip
-import sounddevice as sd
-import websockets
-import winsound
-from scipy.io import wavfile
+import winsound  # noqa: E402
 
-API_KEY     = os.environ.get("ELEVENLABS_API_KEY", "")
-VOICE_ID    = "0iuMR9ISp6Q7mg6H70yo"  # Hitch
-MODEL_ID    = "eleven_flash_v2_5"       # Fastest ElevenLabs model
+import keyboard  # noqa: E402
+import numpy as np  # noqa: E402
+import pyperclip  # noqa: E402
+import sounddevice as sd  # noqa: E402
+import websockets  # noqa: E402
+from scipy.io import wavfile  # noqa: E402
+
+API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+VOICE_ID = "0iuMR9ISp6Q7mg6H70yo"  # Hitch
+MODEL_ID = "eleven_flash_v2_5"  # Fastest ElevenLabs model
 SAMPLE_RATE = 16_000
-DEBOUNCE_S  = 0.4# minimum seconds between F10 toggles
+DEBOUNCE_S = 0.4  # minimum seconds between F10 toggles
 
-tts_enabled    = True
-recording      = False
-audio_chunks   = []
-last_tts_text  = ""
-last_f10_time  = 0.0
-record_lock    = threading.Lock()
-f10_lock       = threading.Lock()
+tts_enabled = True
+recording = False
+audio_chunks = []
+last_tts_text = ""
+last_f10_time = 0.0
+record_lock = threading.Lock()
+f10_lock = threading.Lock()
 
 
 # ── beep feedback ─────────────────────────────────────────────────────────────
+
 
 def beep(freq: int, ms: int):
     """Blocking beep — call from a thread if you need non-blocking."""
@@ -67,28 +69,42 @@ def _async_beep(freq: int, ms: int):
     threading.Thread(target=winsound.Beep, args=(freq, ms), daemon=True).start()
 
 
-def beep_record_start():   _async_beep(400, 120)
-def beep_record_stop():    _async_beep(880, 120)
+def beep_record_start():
+    _async_beep(400, 120)
+
+
+def beep_record_stop():
+    _async_beep(880, 120)
+
 
 def beep_transcribed():
     def _seq():
         for _ in range(3):
             winsound.Beep(1000, 80)
             time.sleep(0.12)
+
     threading.Thread(target=_seq, daemon=True).start()
+
 
 def beep_tts_on():
     def _seq():
         winsound.Beep(900, 80)
         time.sleep(0.1)
         winsound.Beep(900, 80)
+
     threading.Thread(target=_seq, daemon=True).start()
 
-def beep_tts_off():        _async_beep(300, 350)
-def beep_replay():         _async_beep(660, 100)
+
+def beep_tts_off():
+    _async_beep(300, 350)
+
+
+def beep_replay():
+    _async_beep(660, 100)
 
 
 # ── TTS (ElevenLabs) ──────────────────────────────────────────────────────────
+
 
 def speak(text: str):
     global last_tts_text
@@ -105,11 +121,15 @@ async def _stream_tts(text: str) -> None:
     )
     with sd.OutputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16") as stream:
         async with websockets.connect(uri, additional_headers={"xi-api-key": API_KEY}) as ws:
-            await ws.send(json.dumps({
-                "text": " ",
-                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "use_speaker_boost": False},
-                "generation_config": {"chunk_length_schedule": [50, 120, 160, 250]},
-            }))
+            await ws.send(
+                json.dumps(
+                    {
+                        "text": " ",
+                        "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "use_speaker_boost": False},
+                        "generation_config": {"chunk_length_schedule": [50, 120, 160, 250]},
+                    }
+                )
+            )
             await ws.send(json.dumps({"text": text, "flush": True}))
             await ws.send(json.dumps({"text": ""}))
             async for raw in ws:
@@ -130,6 +150,7 @@ def _speak_blocking(text: str):
 
 # ── STT (ElevenLabs) ──────────────────────────────────────────────────────────
 
+
 def transcribe_wav(wav_path: str) -> str:
     try:
         from elevenlabs.client import ElevenLabs
@@ -149,6 +170,7 @@ def transcribe_wav(wav_path: str) -> str:
 
 
 # ── recording ─────────────────────────────────────────────────────────────────
+
 
 def log(msg: str):
     print(f"[voice] {msg}", flush=True)
@@ -193,10 +215,8 @@ def stop_recording_and_transcribe():
         text = transcribe_wav(wav_path)
     finally:
         if wav_path:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(wav_path)
-            except OSError:
-                pass
 
     if text:
         pyperclip.copy(text)
@@ -217,6 +237,7 @@ def audio_callback(indata, frames, time_info, status):
 
 # ── hotkeys ───────────────────────────────────────────────────────────────────
 
+
 def on_f9_press(e):
     start_recording()
 
@@ -230,7 +251,7 @@ def on_f10(e):
     with f10_lock:
         now = time.monotonic()
         if now - last_f10_time < DEBOUNCE_S:
-            return          # ignore key-repeat
+            return  # ignore key-repeat
         last_f10_time = now
         tts_enabled = not tts_enabled
 
@@ -253,6 +274,7 @@ def on_f11(e):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
+
 def main():
     if not API_KEY:
         print("ERROR: ELEVENLABS_API_KEY not set.", file=sys.stderr)
@@ -266,10 +288,10 @@ def main():
     print("  ESC       → quit")
     print("━" * 54)
 
-    keyboard.on_press_key("f9",  on_f9_press,  suppress=False)
+    keyboard.on_press_key("f9", on_f9_press, suppress=False)
     keyboard.on_release_key("f9", on_f9_release)
-    keyboard.on_press_key("f10", on_f10,       suppress=False)
-    keyboard.on_press_key("f11", on_f11,       suppress=False)
+    keyboard.on_press_key("f10", on_f10, suppress=False)
+    keyboard.on_press_key("f11", on_f11, suppress=False)
 
     speak("Voice toggle ready. Hold F9 to speak. F10 mutes me. F11 replays.")
 

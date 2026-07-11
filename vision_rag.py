@@ -9,6 +9,7 @@ the Hugging Face bucket mirror at F:\\rag-v1\\data on Windows) and exposes:
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import hashlib
 import json
@@ -216,10 +217,8 @@ class VisionRAGManager:
         for col, typedef in (("file_mtime", "INTEGER"), ("file_hash", "TEXT")):
             if col not in _ALLOWED_MIGRATION_COLS or _ALLOWED_MIGRATION_COLS[col] != typedef:
                 raise ValueError(f"Unexpected migration column: {col!r}")
-            try:
+            with contextlib.suppress(sqlite3.OperationalError):
                 conn.execute(f"ALTER TABLE chunks ADD COLUMN {col} {typedef};")
-            except sqlite3.OperationalError:
-                pass  # column already exists
 
     def _clear_index(self, conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM chunks;")
@@ -240,10 +239,8 @@ class VisionRAGManager:
             pass
         finally:
             if conn is not None:
-                try:
+                with contextlib.suppress(Exception):
                     conn.close()
-                except Exception:
-                    pass
 
     def _extract_text(self, path: Path) -> tuple[str, str]:
         suffix = path.suffix.lower()
@@ -326,9 +323,7 @@ class VisionRAGManager:
             # Load existing file hashes so unchanged files can be skipped
             existing_hashes: set[str] = set()
             try:
-                rows = conn.execute(
-                    "SELECT DISTINCT file_hash FROM chunks WHERE file_hash IS NOT NULL"
-                ).fetchall()
+                rows = conn.execute("SELECT DISTINCT file_hash FROM chunks WHERE file_hash IS NOT NULL").fetchall()
                 existing_hashes = {r[0] for r in rows}
             except sqlite3.OperationalError:
                 pass
@@ -360,9 +355,7 @@ class VisionRAGManager:
                 except OSError:
                     file_mtime = 0
                     file_size = 0
-                file_hash = hashlib.sha256(
-                    f"{path.as_posix()}:{file_mtime}:{file_size}".encode()
-                ).hexdigest()
+                file_hash = hashlib.sha256(f"{path.as_posix()}:{file_mtime}:{file_size}".encode()).hexdigest()
                 current_file_hashes.add(file_hash)
 
                 # Skip re-chunking if hash unchanged (incremental mode)
@@ -384,14 +377,22 @@ class VisionRAGManager:
                 rel_path = str(path.relative_to(self.source_root)).replace("\\", "/")
                 chunks = _chunk_text(text, chunk_size=chunk_size, overlap=overlap)
                 for idx, chunk in enumerate(chunks):
-                    chunk_id = hashlib.sha1(
-                        f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")
-                    ).hexdigest()
+                    chunk_id = hashlib.sha1(f"{rel_path}:{idx}:{chunk[:120]}".encode("utf-8", "ignore")).hexdigest()
                     char_count = len(chunk)
                     token_count = _token_count(chunk)
                     chunks_rows.append(
-                        (chunk_id, rel_path, str(path), source_type, chunk,
-                         char_count, token_count, now, file_mtime, file_hash)
+                        (
+                            chunk_id,
+                            rel_path,
+                            str(path),
+                            source_type,
+                            chunk,
+                            char_count,
+                            token_count,
+                            now,
+                            file_mtime,
+                            file_hash,
+                        )
                     )
                     fts_rows.append((chunk_id, rel_path, chunk))
                     total_chunks += 1
@@ -404,9 +405,7 @@ class VisionRAGManager:
                     f"DELETE FROM chunks WHERE abs_path NOT IN ({placeholders})",
                     list(current_abs_paths),
                 )
-                conn.execute(
-                    "DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)"
-                )
+                conn.execute("DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT chunk_id FROM chunks)")
 
             conn.executemany(
                 """
@@ -435,24 +434,18 @@ class VisionRAGManager:
                 "schema_version": "2",
             }
             for key, value in meta.items():
-                conn.execute(
-                    "INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value)
-                )
+                conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, value))
 
             conn.commit()
 
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 conn.rollback()
-            except Exception:
-                pass
             raise
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
                 conn.close()
-            except Exception:
-                pass
 
         return {
             "ok": True,
@@ -480,7 +473,7 @@ class VisionRAGManager:
             self._ensure_schema(conn)
             chunk_count = int(conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
             meta_rows = conn.execute("SELECT key, value FROM meta").fetchall()
-            meta = {k: v for k, v in meta_rows}
+            meta = dict(meta_rows)
 
         return {
             "ok": True,

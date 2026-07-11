@@ -5,7 +5,6 @@ Prevents common vulnerabilities: injection, secrets exposure, unsafe async.
 """
 
 import re
-from typing import List, Optional
 from dataclasses import dataclass
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -20,17 +19,13 @@ SENSITIVE_PATTERNS = {
     ),
     "aws_key": re.compile(r"(AKIA[0-9A-Z]{16})"),
     "github_token": re.compile(r"ghp_[0-9a-zA-Z]{36}"),
-    "password": re.compile(
-        r"(?i)(password|passwd|pwd)\s*[:=]?\s*['\"]([^'\"]+)['\"]"
-    ),
+    "password": re.compile(r"(?i)(password|passwd|pwd)\s*[:=]?\s*['\"]([^'\"]+)['\"]"),
     "database_url": re.compile(r"(mongodb|postgres|mysql|redis):\/\/.*?@"),
-    "private_key": re.compile(
-        r"-----BEGIN (?:RSA |EC |PGP )?PRIVATE KEY"
-    ),
+    "private_key": re.compile(r"-----BEGIN (?:RSA |EC |PGP )?PRIVATE KEY"),
 }
 
 
-def scan_for_secrets(text: str, patterns: dict = None) -> List[dict]:
+def scan_for_secrets(text: str, patterns: dict | None = None) -> list[dict]:
     """Scan text for exposed secrets/credentials."""
     patterns = patterns or SENSITIVE_PATTERNS
     findings = []
@@ -38,12 +33,14 @@ def scan_for_secrets(text: str, patterns: dict = None) -> List[dict]:
     for secret_type, pattern in patterns.items():
         matches = pattern.finditer(text)
         for match in matches:
-            findings.append({
-                "type": secret_type,
-                "position": match.start(),
-                "pattern": secret_type,
-                "severity": "CRITICAL",
-            })
+            findings.append(
+                {
+                    "type": secret_type,
+                    "position": match.start(),
+                    "pattern": secret_type,
+                    "severity": "CRITICAL",
+                }
+            )
 
     return findings
 
@@ -55,9 +52,7 @@ def sanitize_for_logging(text: str) -> str:
     return text
 
 
-def validate_no_hardcoded_secrets(
-    code: str, raise_on_finding: bool = False
-) -> bool:
+def validate_no_hardcoded_secrets(code: str, raise_on_finding: bool = False) -> bool:
     """Validate code contains no hardcoded secrets."""
     findings = scan_for_secrets(code)
     if findings and raise_on_finding:
@@ -74,9 +69,7 @@ class InputValidator:
     """Validate and sanitize user inputs."""
 
     @staticmethod
-    def sanitize_file_path(
-        path: str, base_dir: str = None
-    ) -> Optional[str]:
+    def sanitize_file_path(path: str, base_dir: str | None = None) -> str | None:
         """Prevent path traversal attacks."""
         import os
         from pathlib import Path
@@ -99,18 +92,18 @@ class InputValidator:
     def sanitize_shell_input(text: str) -> str:
         """Escape shell metacharacters."""
         import shlex
+
         return shlex.quote(text)
 
     @staticmethod
-    def validate_json_input(
-        data: str, max_size_bytes: int = 1_000_000
-    ) -> tuple[bool, Optional[dict]]:
+    def validate_json_input(data: str, max_size_bytes: int = 1_000_000) -> tuple[bool, dict | None]:
         """Safely validate and parse JSON."""
         if len(data) > max_size_bytes:
             return False, None
 
         try:
             import json
+
             return True, json.loads(data)
         except json.JSONDecodeError:
             return False, None
@@ -127,13 +120,12 @@ class InputValidator:
         parsed = urlparse(url)
 
         blocked_hosts = {
-            "localhost", "127.0.0.1", "0.0.0.0",
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
             "169.254.169.254",  # AWS metadata
         }
-        if parsed.hostname in blocked_hosts:
-            return False
-
-        return True
+        return parsed.hostname not in blocked_hosts
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -145,7 +137,7 @@ class AsyncSafety:
     """Detect and prevent common async antipatterns."""
 
     @staticmethod
-    def validate_no_blocking_in_async(fn_code: str) -> List[str]:
+    def validate_no_blocking_in_async(fn_code: str) -> list[str]:
         """Warn about blocking calls in async functions."""
         warnings = []
         blocking_calls = {
@@ -158,26 +150,20 @@ class AsyncSafety:
 
         for call, suggestion in blocking_calls.items():
             if call in fn_code:
-                warnings.append(
-                    f"Possible blocking call '{call}': {suggestion}"
-                )
+                warnings.append(f"Possible blocking call '{call}': {suggestion}")
 
         return warnings
 
     @staticmethod
-    def validate_proper_task_cleanup(code: str) -> List[str]:
+    def validate_proper_task_cleanup(code: str) -> list[str]:
         """Warn about uncancelled asyncio tasks."""
         warnings = []
 
         if "asyncio.create_task(" in code and "cancel()" not in code:
-            warnings.append(
-                "create_task used without visible cancel() — may leak tasks"
-            )
+            warnings.append("create_task used without visible cancel() — may leak tasks")
 
         if "gather(" in code and "return_exceptions" not in code:
-            warnings.append(
-                "gather() without return_exceptions may fail if one task raises"
-            )
+            warnings.append("gather() without return_exceptions may fail if one task raises")
 
         return warnings
 
@@ -197,7 +183,7 @@ class CodeHealth:
     no_blocking_calls: bool
     async_safe: bool
     score: float  # 0-1
-    issues: List[str]
+    issues: list[str]
 
 
 def assess_code_health(code: str, is_async: bool = False) -> CodeHealth:
@@ -222,13 +208,15 @@ def assess_code_health(code: str, is_async: bool = False) -> CodeHealth:
         issues.extend(blocking_warns)
         issues.extend(async_warns)
 
-    score = sum([
-        has_type_hints * 0.25,
-        has_docstrings * 0.25,
-        lacks_secrets * 0.25,
-        no_blocking * 0.125,
-        async_safe * 0.125,
-    ])
+    score = sum(
+        [
+            has_type_hints * 0.25,
+            has_docstrings * 0.25,
+            lacks_secrets * 0.25,
+            no_blocking * 0.125,
+            async_safe * 0.125,
+        ]
+    )
 
     return CodeHealth(
         has_type_hints=has_type_hints,
@@ -264,16 +252,14 @@ class SecurityPolicy:
     }
 
     @staticmethod
-    def enforce(code: str, policy: dict) -> tuple[bool, List[str]]:
+    def enforce(code: str, policy: dict) -> tuple[bool, list[str]]:
         """Check code against policy."""
         violations = []
 
         if not policy.get("allow_secrets"):
             secrets = scan_for_secrets(code)
             if secrets:
-                violations.append(
-                    f"Policy violation: hardcoded secrets found ({len(secrets)})"
-                )
+                violations.append(f"Policy violation: hardcoded secrets found ({len(secrets)})")
 
         if policy.get("require_type_hints") and "->" not in code:
             violations.append("Policy violation: missing type hints")
@@ -283,8 +269,6 @@ class SecurityPolicy:
 
         for module in policy.get("block_dangerous_modules", []):
             if f"import {module}" in code or f"from {module}" in code:
-                violations.append(
-                    f"Policy violation: blocked module '{module}'"
-                )
+                violations.append(f"Policy violation: blocked module '{module}'")
 
         return len(violations) == 0, violations

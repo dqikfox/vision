@@ -7,6 +7,7 @@ Covers:
 - yamlCode.innerHTML uses escHtml(webhookUrl)
 - quality.yml coverage threshold bumped to 60%
 """
+
 from __future__ import annotations
 
 import unittest
@@ -18,6 +19,7 @@ ROOT = Path(__file__).parent
 # ---------------------------------------------------------------------------
 # 1. _activate_provider() uses _global_state_lock
 # ---------------------------------------------------------------------------
+
 
 class TestActivateProviderLock(unittest.TestCase):
     def test_global_state_lock_acquired(self):
@@ -52,6 +54,7 @@ class TestActivateProviderLock(unittest.TestCase):
 # 2. set_continuous WS handler locks global write
 # ---------------------------------------------------------------------------
 
+
 class TestSetContinuousLock(unittest.TestCase):
     def test_lock_wraps_continuous_listening_write(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
@@ -66,6 +69,7 @@ class TestSetContinuousLock(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. /screenshot endpoint has rate limiting
 # ---------------------------------------------------------------------------
+
 
 class TestScreenshotRateLimit(unittest.TestCase):
     def test_request_param_added(self):
@@ -99,6 +103,7 @@ class TestScreenshotRateLimit(unittest.TestCase):
 # 4. yamlCode.innerHTML uses escHtml(webhookUrl)
 # ---------------------------------------------------------------------------
 
+
 class TestYamlCodeXSSFix(unittest.TestCase):
     def test_escHtml_wraps_webhookUrl(self):
         src = (ROOT / "live_chat_ui.html").read_text(encoding="utf-8")
@@ -107,6 +112,7 @@ class TestYamlCodeXSSFix(unittest.TestCase):
     def test_bare_webhookUrl_not_in_innerHTML(self):
         """Bare ${webhookUrl} must not appear inside innerHTML template."""
         import re
+
         src = (ROOT / "live_chat_ui.html").read_text(encoding="utf-8")
         # Find yamlCode.innerHTML assignment and verify it uses escHtml
         pattern = re.compile(r"yamlCode\.innerHTML\s*=.*?\$\{webhookUrl\}", re.DOTALL)
@@ -119,8 +125,7 @@ class TestYamlCodeXSSFix(unittest.TestCase):
         lines = src.splitlines()
         for line in lines:
             if "yamlCode.innerHTML" in line:
-                self.assertIn("escHtml(webhookUrl)", line,
-                              "yamlCode.innerHTML must use escHtml(webhookUrl)")
+                self.assertIn("escHtml(webhookUrl)", line, "yamlCode.innerHTML must use escHtml(webhookUrl)")
                 return
         self.fail("yamlCode.innerHTML line not found")
 
@@ -129,10 +134,12 @@ class TestYamlCodeXSSFix(unittest.TestCase):
 # 5. quality.yml coverage threshold bumped to 60%
 # ---------------------------------------------------------------------------
 
+
 class TestCoverageThreshold(unittest.TestCase):
     def test_threshold_at_least_60(self):
         src = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
         import re
+
         m = re.search(r"--cov-fail-under=(\d+)", src)
         self.assertIsNotNone(m, "--cov-fail-under not found in quality.yml")
         threshold = int(m.group(1))

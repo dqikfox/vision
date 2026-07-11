@@ -6,10 +6,9 @@ Covers:
 - build_index() parameter validation + clamping
 - broadcast() JSON pre-serialization safety
 """
+
 from __future__ import annotations
 
-import json
-import sys
 import unittest
 from pathlib import Path
 
@@ -19,6 +18,7 @@ ROOT = Path(__file__).parent
 # ---------------------------------------------------------------------------
 # 1. _load_context_brain() corruption fallback
 # ---------------------------------------------------------------------------
+
 
 class TestContextBrainCorruptionFallback(unittest.TestCase):
     def test_try_except_wraps_json_load(self):
@@ -60,42 +60,43 @@ class TestContextBrainCorruptionFallback(unittest.TestCase):
 # 2. screenshot_region actual screen bounds
 # ---------------------------------------------------------------------------
 
+
 class TestScreenshotRegionBounds(unittest.TestCase):
     def test_uses_pyautogui_size(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertIn("pyautogui.size()", snippet)
 
     def test_x_clamped_to_screen_width(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertIn("screen_w - 1", snippet)
 
     def test_y_clamped_to_screen_height(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertIn("screen_h - 1", snippet)
 
     def test_width_clamped_relative_to_x(self):
         """Width must be clamped to screen_w - x to prevent out-of-bounds region."""
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertIn("screen_w - x", snippet)
 
     def test_height_clamped_relative_to_y(self):
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertIn("screen_h - y", snippet)
 
     def test_no_hardcoded_65535(self):
         """Old magic constant 65535 should be gone from screenshot_region."""
         src = (ROOT / "live_chat_app.py").read_text(encoding="utf-8")
-        idx = src.index("elif name == \"screenshot_region\":")
+        idx = src.index('elif name == "screenshot_region":')
         snippet = src[idx : idx + 400]
         self.assertNotIn("65535", snippet)
 
@@ -103,6 +104,7 @@ class TestScreenshotRegionBounds(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. build_index() parameter validation
 # ---------------------------------------------------------------------------
+
 
 class TestBuildIndexParamValidation(unittest.TestCase):
     def test_max_files_capped(self):
@@ -138,6 +140,7 @@ class TestBuildIndexParamValidation(unittest.TestCase):
 
     def test_logic_correctness(self):
         """Unit-test the clamping logic directly."""
+
         def clamp(max_files, chunk_size, overlap):
             max_files = max(0, min(max_files, 100_000))
             chunk_size = max(100, min(chunk_size, 10_000))
@@ -161,6 +164,7 @@ class TestBuildIndexParamValidation(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 4. broadcast() JSON pre-serialization safety
 # ---------------------------------------------------------------------------
+
 
 class TestBroadcastJsonSafety(unittest.TestCase):
     def test_pre_serialize_before_send_text(self):

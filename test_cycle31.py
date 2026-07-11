@@ -32,6 +32,7 @@ def _tool_block(src: str, tool_name: str) -> str:
 # run_command timeout guarded
 # ---------------------------------------------------------------------------
 
+
 def test_run_command_timeout_guarded():
     src = _read(APP)
     body = _tool_block(src, "run_command")
@@ -39,14 +40,13 @@ def test_run_command_timeout_guarded():
     assert timeout_pos != -1, "run_command: timeout int() conversion not found"
     preceding = body[:timeout_pos]
     assert "try:" in preceding, "run_command: timeout must be inside a try block"
-    assert "(ValueError, TypeError)" in body, (
-        "run_command: must catch (ValueError, TypeError)"
-    )
+    assert "(ValueError, TypeError)" in body, "run_command: must catch (ValueError, TypeError)"
 
 
 # ---------------------------------------------------------------------------
 # wait tool seconds guarded
 # ---------------------------------------------------------------------------
+
 
 def test_wait_secs_guarded():
     src = _read(APP)
@@ -62,6 +62,7 @@ def test_wait_secs_guarded():
 # kb_index max_files guarded
 # ---------------------------------------------------------------------------
 
+
 def test_kb_index_max_files_guarded():
     src = _read(APP)
     body = _tool_block(src, "kb_index")
@@ -75,6 +76,7 @@ def test_kb_index_max_files_guarded():
 # ---------------------------------------------------------------------------
 # kb_search limit guarded
 # ---------------------------------------------------------------------------
+
 
 def test_kb_search_limit_guarded():
     src = _read(APP)
@@ -90,21 +92,21 @@ def test_kb_search_limit_guarded():
 # kb_export_training_data max_examples guarded
 # ---------------------------------------------------------------------------
 
+
 def test_kb_export_max_examples_guarded():
     src = _read(APP)
     body = _tool_block(src, "kb_export_training_data")
     me_pos = body.find("max_examples = max(")
     assert me_pos != -1, "kb_export_training_data: max_examples clamped assignment not found"
     preceding = body[:me_pos]
-    assert "try:" in preceding, (
-        "kb_export_training_data: max_examples must be inside a try block"
-    )
+    assert "try:" in preceding, "kb_export_training_data: max_examples must be inside a try block"
     assert "(ValueError, TypeError)" in body
 
 
 # ---------------------------------------------------------------------------
 # browser_wait timeout guarded
 # ---------------------------------------------------------------------------
+
 
 def test_browser_wait_timeout_guarded():
     src = _read(APP)
@@ -120,6 +122,7 @@ def test_browser_wait_timeout_guarded():
 # fetch_url timeout_secs guarded
 # ---------------------------------------------------------------------------
 
+
 def test_fetch_url_timeout_secs_guarded():
     src = _read(APP)
     body = _tool_block(src, "fetch_url")
@@ -133,6 +136,7 @@ def test_fetch_url_timeout_secs_guarded():
 # ---------------------------------------------------------------------------
 # ocr_region coords guarded
 # ---------------------------------------------------------------------------
+
 
 def test_ocr_region_coords_guarded():
     src = _read(APP)
@@ -148,12 +152,11 @@ def test_ocr_region_coords_guarded():
 # UI: provider label escaped
 # ---------------------------------------------------------------------------
 
+
 def test_provider_label_escaped():
     src = _read(UI)
     # Must use escHtml(p.label...) not bare p.label
-    assert "escHtml(p.label" in src, (
-        "live_chat_ui.html: prov-title template must escape p.label with escHtml()"
-    )
+    assert "escHtml(p.label" in src, "live_chat_ui.html: prov-title template must escape p.label with escHtml()"
     # Must NOT have bare ${p.label||key} without escHtml
     assert "${p.label||key}" not in src, (
         "live_chat_ui.html: bare ${p.label||key} interpolation found — must use escHtml"
