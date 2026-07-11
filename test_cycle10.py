@@ -7,22 +7,23 @@ Covers: provider/model validation on /api/model and WS set_model,
 """
 
 import asyncio
-import json
+import contextlib
 import sqlite3
 import types
-from pathlib import Path
 from unittest import mock
 
-import pytest
 import httpx
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _app_module():
-    import importlib, sys
+    import importlib
+    import sys
+
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -41,6 +42,7 @@ def _app_module():
 # ---------------------------------------------------------------------------
 # Finding 2 + 5 — Provider/model validation
 # ---------------------------------------------------------------------------
+
 
 class TestProviderModelValidation:
     @pytest.mark.asyncio
@@ -101,6 +103,7 @@ class TestProviderModelValidation:
 # Finding 3 — broadcast() exception logging
 # ---------------------------------------------------------------------------
 
+
 class TestBroadcastExceptionLogging:
     @pytest.mark.asyncio
     async def test_failed_send_is_logged(self):
@@ -116,9 +119,11 @@ class TestBroadcastExceptionLogging:
         async with app._clients_lock:
             app.clients.add(ws_bad)
 
-        with mock.patch.object(app, "write_log", side_effect=lambda *a: log_calls.append(a)):
-            with mock.patch.object(app, "_resolve_target", return_value=None):
-                await app.broadcast({"type": "test"})
+        with (
+            mock.patch.object(app, "write_log", side_effect=lambda *a: log_calls.append(a)),
+            mock.patch.object(app, "_resolve_target", return_value=None),
+        ):
+            await app.broadcast({"type": "test"})
 
         # The failed send should have been logged
         logged_keys = [a[0] for a in log_calls]
@@ -137,9 +142,8 @@ class TestBroadcastExceptionLogging:
         async with app._clients_lock:
             app.clients.add(ws_bad)
 
-        with mock.patch.object(app, "_resolve_target", return_value=None):
-            with mock.patch.object(app, "write_log"):
-                await app.broadcast({"type": "test"})
+        with mock.patch.object(app, "_resolve_target", return_value=None), mock.patch.object(app, "write_log"):
+            await app.broadcast({"type": "test"})
 
         assert ws_bad not in app.clients
 
@@ -147,6 +151,7 @@ class TestBroadcastExceptionLogging:
 # ---------------------------------------------------------------------------
 # Finding 4 — _tool_err() info-disclosure prevention
 # ---------------------------------------------------------------------------
+
 
 class TestToolErrSanitisation:
     def test_permission_error_sanitised(self):
@@ -189,10 +194,12 @@ class TestToolErrSanitisation:
 # Finding 6 — SQLite connection timeout
 # ---------------------------------------------------------------------------
 
+
 class TestSQLiteConnectionTimeout:
     def test_connect_has_timeout(self, tmp_path):
         """_connect() must use a timeout to avoid hanging on lock contention."""
         from vision_rag import VisionRAGManager
+
         mgr = VisionRAGManager(source_root=tmp_path / "src", db_path=tmp_path / "rag.db")
         (tmp_path / "src").mkdir()
 
@@ -203,20 +210,19 @@ class TestSQLiteConnectionTimeout:
             conn_calls.append(kwargs)
             return original_connect(path, **kwargs)
 
-        with mock.patch("sqlite3.connect", side_effect=spy_connect):
-            try:
-                mgr.build_index()
-            except Exception:
-                pass
+        with mock.patch("sqlite3.connect", side_effect=spy_connect), contextlib.suppress(Exception):
+            mgr.build_index()
 
         timeouts = [c.get("timeout") for c in conn_calls]
-        assert any(t is not None and t > 0 for t in timeouts), \
+        assert any(t is not None and t > 0 for t in timeouts), (
             f"Expected timeout in connect() calls but got: {conn_calls}"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Finding 9 — window_resize / window_move bounds
 # ---------------------------------------------------------------------------
+
 
 class TestWindowBounds:
     @pytest.mark.asyncio
@@ -231,7 +237,7 @@ class TestWindowBounds:
                 "window_resize",
                 {"title": "Test Window", "width": -100, "height": -500},
             )
-        # Should succeed (clamped to min 200×200) or report no window found
+        # Should succeed (clamped to min 200x200) or report no window found
         assert "error" not in result.lower() or "window" in result.lower()
         if win_mock.resizeTo.called:
             w_arg, h_arg = win_mock.resizeTo.call_args[0]

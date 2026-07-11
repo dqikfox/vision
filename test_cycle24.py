@@ -46,9 +46,7 @@ def test_list_files_validate_before_listdir():
     listdir_pos = body.find("_listdir")
     assert validate_pos != -1, "_validate_tool_path call not found in list_files"
     assert listdir_pos != -1, "_listdir not found in list_files"
-    assert validate_pos < listdir_pos, (
-        "_validate_tool_path must be called before _listdir() executes"
-    )
+    assert validate_pos < listdir_pos, "_validate_tool_path must be called before _listdir() executes"
 
 
 def test_file_tools_consistently_validate_path():

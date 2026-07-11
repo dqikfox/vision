@@ -10,20 +10,20 @@ Covers: ao_* shell injection guards, set_api_key/set_wake_word locking,
 import asyncio
 import json
 import shlex
-import threading
 import types
-from pathlib import Path
 from unittest import mock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _app_module():
-    import importlib, sys
+    import importlib
+    import sys
+
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -43,6 +43,7 @@ def _app_module():
 # Finding 1 — ao_command shell injection (now uses create_subprocess_exec)
 # ---------------------------------------------------------------------------
 
+
 class TestAoCommandInjection:
     def test_ao_command_shlex_split_used(self):
         """shlex.split should parse ao_command args without shell interpretation."""
@@ -58,11 +59,12 @@ class TestAoCommandInjection:
 
     def test_ao_command_invalid_syntax_returns_error(self):
         """Unmatched quotes in ao_command args should return a safe error string."""
+        import contextlib
+
         # shlex.split('unmatched "quote', posix=False) raises ValueError on some platforms
-        try:
+        with contextlib.suppress(ValueError):
             shlex.split('unmatched "quote', posix=False)
-        except ValueError:
-            pass  # Good — error would be caught and returned safely
+            # Good — error would be caught and returned safely
 
     @pytest.mark.asyncio
     async def test_ao_command_uses_exec_not_shell(self):
@@ -89,6 +91,7 @@ class TestAoCommandInjection:
 # Finding 2 — set_api_key race condition (now uses _global_state_lock)
 # ---------------------------------------------------------------------------
 
+
 class TestSetApiKeyLock:
     def test_global_state_lock_exists(self):
         app = _app_module()
@@ -105,6 +108,7 @@ class TestSetApiKeyLock:
 # ---------------------------------------------------------------------------
 # Finding 3 — send_notification double-quote escaping
 # ---------------------------------------------------------------------------
+
 
 class TestNotificationEscaping:
     def test_double_quote_escaping(self):
@@ -126,6 +130,7 @@ class TestNotificationEscaping:
 # ---------------------------------------------------------------------------
 # Finding 4 — /api/model rate limit
 # ---------------------------------------------------------------------------
+
 
 class TestModelRateLimit:
     def test_model_endpoint_rate_limited(self):
@@ -150,6 +155,7 @@ class TestModelRateLimit:
 # ---------------------------------------------------------------------------
 # Finding 5 — Ollama tool call JSON parse safety
 # ---------------------------------------------------------------------------
+
 
 class TestToolCallJsonParseSafety:
     def test_valid_dict_passes(self):
@@ -199,6 +205,7 @@ class TestToolCallJsonParseSafety:
 # Finding 6 — append_to_file uses run_in_executor + validate_tool_path
 # ---------------------------------------------------------------------------
 
+
 class TestAppendToFile:
     @pytest.mark.asyncio
     async def test_append_to_file_path_validated(self, tmp_path):
@@ -229,6 +236,7 @@ class TestAppendToFile:
 # Finding 7 — browser_eval dangerous pattern blocking
 # ---------------------------------------------------------------------------
 
+
 class TestBrowserEvalBlocking:
     @pytest.mark.asyncio
     async def test_fetch_blocked(self):
@@ -248,6 +256,7 @@ class TestBrowserEvalBlocking:
     async def test_safe_js_passes(self):
         """document.title access should not be blocked."""
         import re
+
         dangerous = re.compile(
             r"fetch\s*\(|XMLHttpRequest|navigator\.credentials|localStorage|sessionStorage|indexedDB",
             re.IGNORECASE,
@@ -268,6 +277,7 @@ class TestBrowserEvalBlocking:
 # ---------------------------------------------------------------------------
 # Finding 8 — speak task cancelled on WS disconnect
 # ---------------------------------------------------------------------------
+
 
 class TestSpeakTaskCancelOnDisconnect:
     @pytest.mark.asyncio
