@@ -193,7 +193,7 @@ class TestSQLiteConnectionTimeout:
     def test_connect_has_timeout(self, tmp_path):
         """_connect() must use a timeout to avoid hanging on lock contention."""
         from vision_rag import VisionRAGManager
-        mgr = VisionRAGManager(source_root=tmp_path / "src", db_path=tmp_path / "rag.db")
+        mgr = VisionRAGManager(base_dir=tmp_path, source_root=tmp_path / "src")
         (tmp_path / "src").mkdir()
 
         conn_calls = []

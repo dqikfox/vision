@@ -187,7 +187,7 @@ class TestRAGCloseExplicit:
         from vision_rag import VisionRAGManager
         src = tmp_path / "src"
         src.mkdir()
-        mgr = VisionRAGManager(source_root=src, db_path=tmp_path / "rag.db")
+        mgr = VisionRAGManager(source_root=src, base_dir=tmp_path)
         (src / "a.txt").write_text("some content " * 50, encoding="utf-8")
         mgr.build_index()
 
