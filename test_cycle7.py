@@ -27,7 +27,7 @@ def _make_rag(tmp_path: Path):
     from vision_rag import VisionRAGManager
     source = tmp_path / "src"
     source.mkdir()
-    return VisionRAGManager(source_root=source, db_path=tmp_path / "rag.db")
+    return VisionRAGManager(source_root=source, base_dir=tmp_path)
 
 
 # ---------------------------------------------------------------------------
