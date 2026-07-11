@@ -123,7 +123,7 @@ def _app_module():
 
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
-        "elevenlabs.client": types.ModuleType("elevenlabs.client"),
+        "elevenlabs.client": types.ModuleType("elevenlabs"),
         "pyautogui": types.ModuleType("pyautogui"),
         "pytesseract": types.ModuleType("pytesseract"),
         "PIL": types.ModuleType("PIL"),
