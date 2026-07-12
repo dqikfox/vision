@@ -1,0 +1,4 @@
+
+## 2024-05-18 - Accessible Modals and Escape Key Dismissal
+**Learning:** When creating custom overlays and modals, it is essential to include explicit ARIA semantics (`role="dialog"`, `aria-modal="true"`). Furthermore, close buttons must use semantic HTML tags (`<button>`) instead of generic elements (`<div>`), paired with appropriate `aria-label`s. Implementing global `Escape` key event listeners ensures robust keyboard navigation and accessibility, allowing users to gracefully dismiss modals without relying solely on cursor interactions.
+**Action:** Always ensure custom modals feature semantic ARIA roles, use proper `<button>` elements for close actions, and inherently support `Escape` key dismissal. Avoid directly manipulating CSS classes for dismissal; instead, invoke their native closure functions to ensure proper state management.
