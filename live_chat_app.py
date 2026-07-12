@@ -14,14 +14,14 @@ import binascii
 import contextlib
 import contextvars
 import fnmatch
-import io
 import importlib.util
+import io
 import json
 import os
 import queue
 import re
-import shutil
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -743,9 +743,7 @@ def write_log(event: str, detail: str) -> None:
     ts = datetime.now().isoformat(timespec="milliseconds")
     try:
         if LOG_FILE.exists() and LOG_FILE.stat().st_size > 100_000_000:
-            rotated = LOG_FILE.with_name(
-                f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
-            )
+            rotated = LOG_FILE.with_name(f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log")
             LOG_FILE.rename(rotated)
     except OSError:
         pass
@@ -845,7 +843,7 @@ if HAS_CONVAI:
 
         def __init__(self) -> None:
             self.input_callback: Any = None
-            self.output_queue: "queue.Queue[bytes]" = queue.Queue()
+            self.output_queue: queue.Queue[bytes] = queue.Queue()
             self.should_stop = threading.Event()
             self.output_thread: threading.Thread | None = None
             self.in_stream: sd.RawInputStream | None = None
@@ -2150,6 +2148,7 @@ def _run_automation_routine(routine_id: str, *, record_history: bool = True) -> 
     elif action == "command":
         try:
             import shlex
+
             cmd_str = str(routine.get("command", ""))
             # Use shlex.split for shell-free execution — eliminates injection via shell=True
             cmd_args = shlex.split(cmd_str, posix=False)  # posix=False preserves Windows backslashes
@@ -2584,9 +2583,7 @@ async def api_set_model(payload: dict[str, Any], request: Request) -> JSONRespon
     if provider and model and provider != "ollama":
         valid_models = PROVIDERS.get(provider, {}).get("models", [])
         if valid_models and model not in valid_models:
-            return JSONResponse(
-                {"error": f"Model {model!r} not available for provider {provider!r}"}, status_code=400
-            )
+            return JSONResponse({"error": f"Model {model!r} not available for provider {provider!r}"}, status_code=400)
     global current_provider, current_model, _ollama_failover_active
     async with _global_state_lock:
         if provider:
@@ -2771,7 +2768,7 @@ async def screenshot_ep(request: Request) -> JSONResponse:
 
     try:
         hd, data = await asyncio.wait_for(loop.run_in_executor(None, _snap), timeout=10.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         write_log("screenshot_timeout", "pyautogui.screenshot() exceeded 10s — possible display driver hang")
         return JSONResponse({"error": "Screenshot timed out (display driver hang?)"}, status_code=504)
     return JSONResponse({"data": data, "hd": hd})
@@ -2861,13 +2858,13 @@ async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "received": event})
 
 
-
 @app.get("/api/export/trace")
 async def api_export_trace() -> FileResponse | JSONResponse:
     """Download the operator action trace log for debugging and audits."""
     if not LOG_FILE.exists():
         return JSONResponse({"error": "No trace log available yet"}, status_code=404)
     from datetime import datetime as _dt
+
     filename = f"vision_trace_{_dt.utcnow().strftime('%Y%m%dT%H%M%SZ')}.log"
     return FileResponse(LOG_FILE, media_type="text/plain; charset=utf-8", filename=filename)
 
@@ -3288,8 +3285,9 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     except (TypeError, ValueError) as e:
         write_log("broadcast_serialize_error", f"msg type serialization failed: {e}")
         try:
-            safe = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v)[:500])
-                    for k, v in msg.items()}
+            safe = {
+                k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v)[:500]) for k, v in msg.items()
+            }
             msg_text = json.dumps(safe)
         except Exception as e2:
             write_log("broadcast_sanitize_failed", str(e2))
@@ -3302,7 +3300,7 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     for ws in recipients:
         try:
             await asyncio.wait_for(ws.send_text(msg_text), timeout=5.0)
-        except (asyncio.TimeoutError, Exception) as e:
+        except (TimeoutError, Exception) as e:
             write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
     if dead:
@@ -4765,9 +4763,7 @@ def _validate_tool_path(path: str) -> Path:
     for blocked in _BLOCKED_PATH_PREFIXES:
         try:
             resolved.relative_to(Path(blocked).resolve())
-            raise ValueError(
-                f"Access to system path {blocked!r} is not allowed"
-            )
+            raise ValueError(f"Access to system path {blocked!r} is not allowed")
         except ValueError as e:
             if "system path" in str(e):
                 raise
@@ -5227,6 +5223,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         url = args.get("url", "")
         try:
             from urllib.parse import urlparse as _urlparse
+
             _p = _urlparse(url)
             if _p.scheme not in ("http", "https"):
                 return f"browser_open error: only http/https URLs are allowed (got {_p.scheme!r})"
@@ -5351,7 +5348,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
             await asyncio.wait_for(loop.run_in_executor(None, _append), timeout=10.0)
             return f"Appended {len(content)} chars to {path_s}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"append_to_file timed out after 10s writing to {path_s}"
         except Exception as e:
             return _tool_err("append_to_file", e)
@@ -5480,8 +5477,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             import pygetwindow as gw
 
             all_wins = gw.getAllWindows()
-            wins = [w_ for w_ in all_wins if w_.title.lower() == title.lower()] or \
-                   [w_ for w_ in all_wins if title.lower() in w_.title.lower()]
+            wins = [w_ for w_ in all_wins if w_.title.lower() == title.lower()] or [
+                w_ for w_ in all_wins if title.lower() in w_.title.lower()
+            ]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].resizeTo(w, h)
@@ -5500,8 +5498,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             import pygetwindow as gw
 
             all_wins = gw.getAllWindows()
-            wins = [w for w in all_wins if w.title.lower() == title.lower()] or \
-                   [w for w in all_wins if title.lower() in w.title.lower()]
+            wins = [w for w in all_wins if w.title.lower() == title.lower()] or [
+                w for w in all_wins if title.lower() in w.title.lower()
+            ]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].moveTo(x, y)
@@ -5537,7 +5536,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         try:
             result = await asyncio.wait_for(page.evaluate(js), timeout=10.0)
             return str(result)[:2000] if result is not None else "(no return value)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             write_log("browser_eval_timeout", f"js={js[:100]!r}")
             return "browser_eval timed out after 10s"
         except Exception as e:
@@ -5577,7 +5576,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:2000] if result else "(started)"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return "Orchestrator starting in background (dashboard at http://localhost:3000)"
             except Exception as e:
                 return str(e)
@@ -5640,7 +5639,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out2, err2 = await asyncio.wait_for(proc2.communicate(), timeout=15)
                 result = (out2 + err2).decode(errors="replace").strip()
             return result[:2000] or "(no output)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"Command '{shlex.join(cmd_list)}' timed out"
         except Exception as e:
             return _tool_err("ao_command", e)
@@ -5737,13 +5736,15 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         enc = args.get("encoding", "utf-8")
         try:
             _validate_tool_path(fpath)
+
             def _write():
                 p = Path(fpath)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding=enc)
+
             await asyncio.wait_for(loop.run_in_executor(None, _write), timeout=10.0)
             return f"Written {len(content)} chars to {fpath}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return _tool_err("write_file", TimeoutError(f"write to {fpath} timed out after 10s"))
         except Exception as e:
             return _tool_err("write_file", e)
@@ -5755,6 +5756,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return _tool_err("list_files", ValueError(f"invalid pattern: {str(pattern)[:60]}"))
         try:
             _validate_tool_path(fpath)
+
             def _listdir():
                 p = Path(fpath)
                 entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
@@ -5774,6 +5776,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                             )
                             lines.append(f"📄 {entry.name} ({sz})")
                 return "\n".join(lines[:100]) or "(empty)"
+
             return await loop.run_in_executor(None, _listdir)
         except Exception as e:
             return f"Error listing {fpath}: {e}"
@@ -5850,6 +5853,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 # Post-execution memory guard using psutil (best-effort, Windows-safe)
                 try:
                     import psutil as _ps
+
                     _MAX_RSS = 256 * 1024 * 1024  # 256 MB
                     if result.returncode == 0:
                         # Process already finished; check output size as a proxy
@@ -5923,7 +5927,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 "-Command",
                 "Add-Type -AssemblyName System.Windows.Forms; "
                 "[System.Windows.Forms.MessageBox]::Show($args[0], $args[1])",
-                "-ArgumentList", message, title,
+                "-ArgumentList",
+                message,
+                title,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -6238,7 +6244,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             vidx = int(v["index"])
             if exact is None and vfold == needle:
                 exact = (vidx, vname)
-            if word is None and re.search(r'\b' + re.escape(needle) + r'\b', vfold):
+            if word is None and re.search(r"\b" + re.escape(needle) + r"\b", vfold):
                 word = (vidx, vname)
             if sub is None and needle in vfold:
                 sub = (vidx, vname)
@@ -7485,8 +7491,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         # Trigger learning in background
         _learn_task = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
         _learn_task.add_done_callback(
-            lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-            if not t.cancelled() and t.exception() is not None else None
+            lambda t: (
+                write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
         )
 
     if current_provider == "anthropic":
@@ -7520,8 +7529,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         else:
             _learn_task2 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
             _learn_task2.add_done_callback(
-                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-                if not t.cancelled() and t.exception() is not None else None
+                lambda t: (
+                    write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                    if not t.cancelled() and t.exception() is not None
+                    else None
+                )
             )
             return
 
@@ -7551,8 +7563,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         if not errored:
             _learn_task3 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
             _learn_task3.add_done_callback(
-                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-                if not t.cancelled() and t.exception() is not None else None
+                lambda t: (
+                    write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                    if not t.cancelled() and t.exception() is not None
+                    else None
+                )
             )
             return
 
@@ -7595,7 +7610,7 @@ async def speak(text_gen):
 
                 await asyncio.wait_for(loop.run_in_executor(None, _sapi), timeout=30.0)
                 return True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("[tts] pyttsx3 timeout after 30s")
                 return False
             except asyncio.CancelledError:
@@ -7924,8 +7939,10 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 _conf_snapshot: dict[str, Any] | None = None
                 _conf_is_no = False
                 async with _global_state_lock:
-                    if not pending_expired and _pending_tool_confirmation and (
-                        _is_confirmation_yes(text) or _is_confirmation_no(text)
+                    if (
+                        not pending_expired
+                        and _pending_tool_confirmation
+                        and (_is_confirmation_yes(text) or _is_confirmation_no(text))
                     ):
                         _conf_is_no = _is_confirmation_no(text)
                         _conf_snapshot = _pop_pending_tool_confirmation()
@@ -8401,11 +8418,13 @@ async def startup():
     failures = [k for k, v in _preflight_result.items() if not v]
     if failures:
         print(f"[preflight] ⚠ checks failed: {', '.join(failures)}")
-    await broadcast({
-        "type": "system_preflight",
-        "preflight": _preflight_result,
-        "timestamp": datetime.utcnow().isoformat(),
-    })
+    await broadcast(
+        {
+            "type": "system_preflight",
+            "preflight": _preflight_result,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
