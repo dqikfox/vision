@@ -949,7 +949,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div>◆ Voice systems online…</div>
     <div class="ok">✓ All systems operational</div>
   </div>
-  <div class="boot-enter" id="bootEnter" onclick="dismissBoot()">[ CLICK TO ENTER ]</div>
+  <div class="boot-enter" id="bootEnter" role="button" tabindex="0" aria-label="Enter system" onclick="dismissBoot()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); dismissBoot();}">[ CLICK TO ENTER ]</div>
 </div>
 
 <!-- ═══ BACKGROUND CANVAS ═══ -->
@@ -1006,8 +1006,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODEL BADGE ═══ -->
 <a id="commandCenterBadge" href="/command-center" target="_blank" rel="noopener">CMD CENTER</a>
-<div id="systemMapBadge" class="sys-map-badge-pulse" onclick="openSystemMap()">SYSTEM MAP</div>
-<div id="modelBadge" onclick="openPicker()">⬡ SELECT MODEL</div>
+<div id="systemMapBadge" class="sys-map-badge-pulse" role="button" tabindex="0" aria-label="Open System Map" onclick="openSystemMap()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openSystemMap();}">SYSTEM MAP</div>
+<div id="modelBadge" role="button" tabindex="0" aria-label="Select AI Model" onclick="openPicker()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); openPicker();}">⬡ SELECT MODEL</div>
 
 <!-- ═══ STAGE / HERO ═══ -->
 <div id="stage">
@@ -1097,7 +1097,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <div id="factList" style="max-height:90px;overflow-y:auto"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <input id="factInput" style="flex:1;background:rgba(29,78,216,.04);border:1px solid rgba(29,78,216,.12);border-radius:4px;padding:5px 10px;color:var(--tx);font-size:11px;font-family:var(--font-mono);outline:none" placeholder="Add a fact to remember…"/>
-        <button onclick="addFact()" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
+        <button onclick="addFact()" aria-label="Add fact" style="padding:5px 10px;border-radius:4px;border:none;cursor:pointer;background:rgba(29,78,216,.2);color:var(--p3);font-size:11px">+</button>
       </div>
     </div>
   </div>
@@ -1349,7 +1349,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div id="inputWrap">
     <input id="textInput" type="text" placeholder="Speak to Vision or type here…" autocomplete="off" spellcheck="false" aria-label="Message input"/>
     <button class="input-icon-btn" id="micBtn" onclick="toggleMute()" title="Toggle mic" aria-label="Toggle microphone mute">🎙</button>
-    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot">📷</button>
+    <button class="input-icon-btn" onclick="requestScreen()" title="Screenshot" aria-label="Take screenshot">📷</button>
   </div>
   <button class="input-send-btn" onclick="sendText()" title="Send (Enter)" aria-label="Send message">➤</button>
 </div>
@@ -1373,7 +1373,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div class="corner-btn-lbl" id="continuousLbl">ALWAYS</div>
   </div>
   <div class="corner-label-group">
-    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent">🤖</button>
+    <button class="corner-btn" onclick="openRPanelTab('agent')" title="ElevenLabs Agent" aria-label="ElevenLabs Agent">🤖</button>
     <div class="corner-btn-lbl">AGENT</div>
   </div>
   <div class="corner-label-group">
