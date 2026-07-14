@@ -124,48 +124,23 @@ def check_drift(
         if re.fullmatch(r"[a-z][a-z0-9_]{2,40}", ref) and ref not in code_set:
             # Avoid false positives on common prose words
             _prose_words = {
-                "the",
-                "and",
-                "for",
-                "with",
-                "from",
-                "that",
-                "this",
-                "not",
-                "are",
-                "was",
-                "has",
-                "can",
-                "will",
-                "get",
-                "set",
-                "run",
-                "use",
-                "true",
-                "false",
-                "none",
-                "main",
-                "env",
-                "key",
-                "log",
-                "api",
-                "str",
-                "int",
-                "bool",
-                "list",
-                "dict",
-                "any",
-                "type",
-                "path",
+                "the", "and", "for", "with", "from", "that", "this", "not",
+                "are", "was", "has", "can", "will", "get", "set", "run", "use",
+                "true", "false", "none", "main", "env", "key", "log", "api",
+                "str", "int", "bool", "list", "dict", "any", "type", "path",
             }
             if ref not in _prose_words:
-                drift.append(f"  [{label}] '{ref}' is referenced in docs but no longer exists in code")
+                drift.append(
+                    f"  [{label}] '{ref}' is referenced in docs but no longer exists in code"
+                )
 
     # Strict: items in code not mentioned anywhere in docs
     if strict:
         for item in code_items:
             if item not in docs_text:
-                drift.append(f"  [{label}] '{item}' exists in code but is not mentioned in any doc")
+                drift.append(
+                    f"  [{label}] '{item}' exists in code but is not mentioned in any doc"
+                )
 
     return drift
 
@@ -189,7 +164,7 @@ def main() -> int:
     route_paths = extract_route_paths(src)
     provider_names = extract_provider_names(src)
 
-    print("Vision Doc Consistency Check")
+    print(f"Vision Doc Consistency Check")
     print(f"  App file : {APP_FILE.name}")
     print(f"  Tools    : {len(tool_names)} found")
     print(f"  Routes   : {len(route_paths)} found")
@@ -232,10 +207,8 @@ def main() -> int:
         print()
         return 1
     else:
-        print("✅ No drift detected")
-        print(
-            f"   {len(tool_names)} tools, {len(route_paths)} routes, {len(provider_names)} providers — all consistent"
-        )
+        print(f"✅ No drift detected")
+        print(f"   {len(tool_names)} tools, {len(route_paths)} routes, {len(provider_names)} providers — all consistent")
         return 0
 
 

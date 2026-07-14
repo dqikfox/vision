@@ -10,14 +10,15 @@ import asyncio
 import json
 import threading
 import types
+from pathlib import Path
 from unittest import mock
 
 import pytest
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 def _app_module():
     """Import live_chat_app with heavy optional deps stubbed out."""
@@ -42,7 +43,6 @@ def _app_module():
 # ---------------------------------------------------------------------------
 # Finding 3 — Thread-safe rate limiter
 # ---------------------------------------------------------------------------
-
 
 class TestRateLimiter:
     def test_allows_calls_within_limit(self):
@@ -91,7 +91,6 @@ class TestRateLimiter:
 # Finding 2 — JSON config corruption recovery
 # ---------------------------------------------------------------------------
 
-
 class TestConfigCorruptionRecovery:
     def test_corrupt_command_center_config_returns_default(self, tmp_path):
         app = _app_module()
@@ -115,7 +114,6 @@ class TestConfigCorruptionRecovery:
 # ---------------------------------------------------------------------------
 # Finding 5 — WS message type validation
 # ---------------------------------------------------------------------------
-
 
 class TestWSMessageValidation:
     @pytest.mark.asyncio
@@ -153,7 +151,6 @@ class TestWSMessageValidation:
 # Finding 8 — fetch_url SSRF guard
 # ---------------------------------------------------------------------------
 
-
 class TestFetchUrlSSRF:
     @pytest.mark.asyncio
     async def test_non_http_url_rejected(self):
@@ -186,7 +183,6 @@ class TestFetchUrlSSRF:
 # Finding 1 — Global state lock present and initialised in startup
 # ---------------------------------------------------------------------------
 
-
 class TestGlobalStateLock:
     def test_global_state_lock_declaration_exists(self):
         app = _app_module()
@@ -208,7 +204,6 @@ class TestGlobalStateLock:
 # ---------------------------------------------------------------------------
 # escHtml (UI) — verify patterns not tested at Python level but documented
 # ---------------------------------------------------------------------------
-
 
 class TestEscHtmlPatterns:
     """Document the expected escHtml output patterns (logic lives in JS)."""

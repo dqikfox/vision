@@ -1,8 +1,7 @@
+import os
 import ast
 import json
-import os
 from pathlib import Path
-
 
 def analyze_file(file_path):
     """Analyze a Python file for Copilot-unfriendly patterns using AST."""
@@ -10,7 +9,12 @@ def analyze_file(file_path):
         content = Path(file_path).read_text(encoding="utf-8")
         tree = ast.parse(content)
 
-        findings = {"missing_type_hints": [], "missing_docstrings": [], "complex_functions": [], "score": 100}
+        findings = {
+            "missing_type_hints": [],
+            "missing_docstrings": [],
+            "complex_functions": [],
+            "score": 100
+        }
 
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -41,10 +45,9 @@ def analyze_file(file_path):
     except Exception as e:
         return {"error": str(e)}
 
-
 def main():
     report = {}
-    for root, _dirs, files in os.walk("."):
+    for root, dirs, files in os.walk("."):
         # Skip noisy directories
         if any(d in root for d in [".git", "__pycache__", ".gemini", "node_modules", "venv", ".vscode"]):
             continue
@@ -54,7 +57,6 @@ def main():
                 report[file_path] = analyze_file(file_path)
 
     print(json.dumps(report, indent=2))
-
 
 if __name__ == "__main__":
     main()

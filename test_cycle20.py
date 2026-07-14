@@ -11,6 +11,8 @@ Tests verify:
 
 import re
 
+import pytest
+
 
 def _read(path: str) -> str:
     with open(path, encoding="utf-8") as f:
@@ -36,9 +38,9 @@ def test_save_key_strips_newlines():
     assert fn is not None, "_save_key() not found"
     body = fn.group()
     # Should have a safe_value that strips newlines
-    assert "safe_value" in body or (r'replace("\n"' in body or "replace('\\n'" in body), (
-        "_save_key() must strip newlines from value before writing to .env"
-    )
+    assert "safe_value" in body or (
+        r'replace("\n"' in body or "replace('\\n'" in body
+    ), "_save_key() must strip newlines from value before writing to .env"
 
 
 def test_save_key_uses_safe_value():
@@ -54,10 +56,14 @@ def test_save_key_uses_safe_value():
     # The .env write lines should use safe_value, not raw value
     env_write = re.search(r"lines\[i\] = f\"{env_var}=(\S+)\"", body)
     if env_write:
-        assert "safe_value" in env_write.group(1), "lines[i] assignment must use safe_value, not raw value"
+        assert "safe_value" in env_write.group(1), (
+            "lines[i] assignment must use safe_value, not raw value"
+        )
     append_write = re.search(r"lines\.append\(f\"{env_var}=(\S+)\"\)", body)
     if append_write:
-        assert "safe_value" in append_write.group(1), "lines.append() must use safe_value, not raw value"
+        assert "safe_value" in append_write.group(1), (
+            "lines.append() must use safe_value, not raw value"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +98,9 @@ def test_press_key_validates_ascii():
     )
     assert block is not None
     body = block.group()
-    assert "isascii()" in body or ".isascii" in body, "press_key must validate key names are ASCII"
+    assert "isascii()" in body or ".isascii" in body, (
+        "press_key must validate key names are ASCII"
+    )
 
 
 def test_press_key_uses_tool_err():
@@ -105,7 +113,9 @@ def test_press_key_uses_tool_err():
     )
     assert block is not None
     body = block.group()
-    assert "_tool_err(" in body, "press_key must wrap pyautogui.hotkey() in try/except using _tool_err()"
+    assert "_tool_err(" in body, (
+        "press_key must wrap pyautogui.hotkey() in try/except using _tool_err()"
+    )
 
 
 # ---------------------------------------------------------------------------

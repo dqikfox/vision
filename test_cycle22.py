@@ -119,7 +119,8 @@ def test_elevenlabs_auth_uses_global_state_lock():
     assert fn is not None, "_handle_invalid_elevenlabs_auth not found"
     body = fn.group()
     assert "_global_state_lock" in body, (
-        "_handle_invalid_elevenlabs_auth must acquire _global_state_lock before mutating preferred_stt/preferred_tts"
+        "_handle_invalid_elevenlabs_auth must acquire _global_state_lock "
+        "before mutating preferred_stt/preferred_tts"
     )
 
 
@@ -154,7 +155,9 @@ def test_fast_completion_closes_ollama_client():
     )
     assert fn is not None, "_fast_completion not found"
     body = fn.group()
-    assert "await client.close()" in body, "_fast_completion must call await client.close() to release connection pools"
+    assert "await client.close()" in body, (
+        "_fast_completion must call await client.close() to release connection pools"
+    )
 
 
 def test_fast_completion_client_close_in_finally():
@@ -175,7 +178,9 @@ def test_fast_completion_client_close_in_finally():
     # Each finally block should have a close call after it
     for fm in finally_match:
         nearby_body = body[fm.start() : fm.start() + 200]
-        assert "await client.close()" in nearby_body, "client.close() must appear immediately inside the finally block"
+        assert "await client.close()" in nearby_body, (
+            "client.close() must appear immediately inside the finally block"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +210,9 @@ def test_pyttsx3_tts_timeout_value():
     )
     assert fn is not None
     body = fn.group(1)
-    assert "timeout=30" in body or "timeout=30.0" in body, "_pyttsx3_tts asyncio.wait_for must specify a 30s timeout"
+    assert "timeout=30" in body or "timeout=30.0" in body, (
+        "_pyttsx3_tts asyncio.wait_for must specify a 30s timeout"
+    )
 
 
 def test_pyttsx3_tts_handles_timeout_error():
@@ -217,4 +224,6 @@ def test_pyttsx3_tts_handles_timeout_error():
     )
     assert fn is not None
     body = fn.group(1)
-    assert "TimeoutError" in body, "_pyttsx3_tts must catch asyncio.TimeoutError from the wait_for"
+    assert "TimeoutError" in body, (
+        "_pyttsx3_tts must catch asyncio.TimeoutError from the wait_for"
+    )

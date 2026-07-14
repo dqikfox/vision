@@ -7,23 +7,22 @@ Covers: provider/model validation on /api/model and WS set_model,
 """
 
 import asyncio
-import contextlib
+import json
 import sqlite3
 import types
+from pathlib import Path
 from unittest import mock
 
-import httpx
 import pytest
+import httpx
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _app_module():
-    import importlib
-    import sys
-
+    import importlib, sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -42,7 +41,6 @@ def _app_module():
 # ---------------------------------------------------------------------------
 # Finding 2 + 5 — Provider/model validation
 # ---------------------------------------------------------------------------
-
 
 class TestProviderModelValidation:
     @pytest.mark.asyncio
@@ -103,7 +101,6 @@ class TestProviderModelValidation:
 # Finding 3 — broadcast() exception logging
 # ---------------------------------------------------------------------------
 
-
 class TestBroadcastExceptionLogging:
     @pytest.mark.asyncio
     async def test_failed_send_is_logged(self):
@@ -140,8 +137,9 @@ class TestBroadcastExceptionLogging:
         async with app._clients_lock:
             app.clients.add(ws_bad)
 
-        with mock.patch.object(app, "_resolve_target", return_value=None), mock.patch.object(app, "write_log"):
-            await app.broadcast({"type": "test"})
+        with mock.patch.object(app, "_resolve_target", return_value=None):
+            with mock.patch.object(app, "write_log"):
+                await app.broadcast({"type": "test"})
 
         assert ws_bad not in app.clients
 
@@ -149,7 +147,6 @@ class TestBroadcastExceptionLogging:
 # ---------------------------------------------------------------------------
 # Finding 4 — _tool_err() info-disclosure prevention
 # ---------------------------------------------------------------------------
-
 
 class TestToolErrSanitisation:
     def test_permission_error_sanitised(self):
@@ -192,12 +189,10 @@ class TestToolErrSanitisation:
 # Finding 6 — SQLite connection timeout
 # ---------------------------------------------------------------------------
 
-
 class TestSQLiteConnectionTimeout:
     def test_connect_has_timeout(self, tmp_path):
         """_connect() must use a timeout to avoid hanging on lock contention."""
         from vision_rag import VisionRAGManager
-
         mgr = VisionRAGManager(source_root=tmp_path / "src", db_path=tmp_path / "rag.db")
         (tmp_path / "src").mkdir()
 
@@ -208,19 +203,20 @@ class TestSQLiteConnectionTimeout:
             conn_calls.append(kwargs)
             return original_connect(path, **kwargs)
 
-        with mock.patch("sqlite3.connect", side_effect=spy_connect), contextlib.suppress(Exception):
-            mgr.build_index()
+        with mock.patch("sqlite3.connect", side_effect=spy_connect):
+            try:
+                mgr.build_index()
+            except Exception:
+                pass
 
         timeouts = [c.get("timeout") for c in conn_calls]
-        assert any(t is not None and t > 0 for t in timeouts), (
+        assert any(t is not None and t > 0 for t in timeouts), \
             f"Expected timeout in connect() calls but got: {conn_calls}"
-        )
 
 
 # ---------------------------------------------------------------------------
 # Finding 9 — window_resize / window_move bounds
 # ---------------------------------------------------------------------------
-
 
 class TestWindowBounds:
     @pytest.mark.asyncio

@@ -12,6 +12,8 @@ Tests verify:
 
 import re
 
+import pytest
+
 
 def _read(path: str) -> str:
     with open(path, encoding="utf-8") as f:
@@ -39,7 +41,9 @@ def test_speak_eleven_no_fname_fstring():
     assert fn is not None, "_speak_eleven() not found"
     body = fn.group()
     # Old pattern: f"$p.Open([uri]'{fname}')"
-    assert "uri]'{fname}'" not in body, "_speak_eleven() must not interpolate fname into PowerShell URI string"
+    assert "uri]'{fname}'" not in body, (
+        "_speak_eleven() must not interpolate fname into PowerShell URI string"
+    )
 
 
 def test_speak_eleven_uses_argument_list():
@@ -52,8 +56,12 @@ def test_speak_eleven_uses_argument_list():
     )
     assert fn is not None
     body = fn.group()
-    assert "-ArgumentList" in body, "_speak_eleven() must use -ArgumentList to pass the filename safely"
-    assert "$args[0]" in body, "_speak_eleven() PowerShell script must reference $args[0] for the filename"
+    assert "-ArgumentList" in body, (
+        "_speak_eleven() must use -ArgumentList to pass the filename safely"
+    )
+    assert "$args[0]" in body, (
+        "_speak_eleven() PowerShell script must reference $args[0] for the filename"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -78,8 +86,12 @@ def test_set_request_lane_busy_uses_lock():
     )
     assert fn is not None, "_set_request_lane_busy not found"
     body = fn.group()
-    assert "_request_lane_lock" in body, "_set_request_lane_busy() must use _request_lane_lock"
-    assert "with _request_lane_lock:" in body, "_set_request_lane_busy() must acquire lock via context manager"
+    assert "_request_lane_lock" in body, (
+        "_set_request_lane_busy() must use _request_lane_lock"
+    )
+    assert "with _request_lane_lock:" in body, (
+        "_set_request_lane_busy() must acquire lock via context manager"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +119,9 @@ def test_eleven_out_close_guarded():
     )
     assert region is not None, "ElevenLabs out stream section not found"
     body = region.group()
-    assert "if out is not None:" in body, "out.close() must be guarded by 'if out is not None:'"
+    assert "if out is not None:" in body, (
+        "out.close() must be guarded by 'if out is not None:'"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +139,9 @@ def test_write_file_uses_wait_for():
     )
     assert block is not None, "write_file handler not found"
     body = block.group()
-    assert "asyncio.wait_for" in body, "write_file must use asyncio.wait_for to timeout long writes"
+    assert "asyncio.wait_for" in body, (
+        "write_file must use asyncio.wait_for to timeout long writes"
+    )
     timeout_match = re.search(r"wait_for\(.*?timeout=(\d+\.?\d*)", body, re.DOTALL)
     assert timeout_match is not None, "asyncio.wait_for must specify numeric timeout"
     assert float(timeout_match.group(1)) >= 5.0, "write_file timeout should be ≥5s"
@@ -141,7 +157,9 @@ def test_write_file_uses_tool_err():
     )
     assert block is not None
     body = block.group()
-    assert "_tool_err(" in body, 'write_file must use _tool_err() not bare f"Error writing {fpath}: {e}"'
+    assert "_tool_err(" in body, (
+        'write_file must use _tool_err() not bare f"Error writing {fpath}: {e}"'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +179,9 @@ def test_voice_supervisor_has_backoff():
     body = fn.group()
     # Should have a growing backoff
     assert "backoff" in body, "_voice_supervisor() must use a 'backoff' variable"
-    assert "backoff * 2" in body or "backoff *= 2" in body, "backoff must double on each crash"
+    assert "backoff * 2" in body or "backoff *= 2" in body, (
+        "backoff must double on each crash"
+    )
 
 
 def test_voice_supervisor_backoff_capped():
@@ -205,5 +225,9 @@ def test_voice_radio_short_name_escaped():
     """Voice radio option labels must use escHtml(shortName) to prevent XSS."""
     src = _read(UI)
     # Must not have raw ${shortName} in template literal
-    assert "${shortName}" not in src, "Voice radio label must use escHtml(shortName), not bare ${shortName}"
-    assert "${escHtml(shortName)}" in src, "Voice radio label must use escHtml(shortName) to prevent XSS"
+    assert "${shortName}" not in src, (
+        "Voice radio label must use escHtml(shortName), not bare ${shortName}"
+    )
+    assert "${escHtml(shortName)}" in src, (
+        "Voice radio label must use escHtml(shortName) to prevent XSS"
+    )

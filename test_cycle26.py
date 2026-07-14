@@ -53,7 +53,9 @@ def test_brain_ingest_uses_tracked_task():
         re.DOTALL,
     )
     assert ingest_ctx is not None, "brain_ai.ingest task call not found"
-    assert ingest_ctx.group(1) == "_tracked_task", "brain_ai.ingest must use _tracked_task(), not asyncio.create_task()"
+    assert ingest_ctx.group(1) == "_tracked_task", (
+        "brain_ai.ingest must use _tracked_task(), not asyncio.create_task()"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -81,20 +83,28 @@ def test_el_agent_start_uses_tracked_task():
     src = _read(APP)
     # Must have zero bare create_task calls for _start_el_agent
     bare = list(re.finditer(r"asyncio\.create_task\(_start_el_agent\(\)\)", src))
-    assert not bare, f"Found {len(bare)} bare asyncio.create_task(_start_el_agent()) — must use _tracked_task() instead"
+    assert not bare, (
+        f"Found {len(bare)} bare asyncio.create_task(_start_el_agent()) — "
+        "must use _tracked_task() instead"
+    )
     tracked = list(re.finditer(r"_tracked_task\(_start_el_agent\(\)\)", src))
     assert len(tracked) >= 2, (
-        f"Expected at least 2 _tracked_task(_start_el_agent()) calls (REST endpoint + WS handler), found {len(tracked)}"
+        f"Expected at least 2 _tracked_task(_start_el_agent()) calls "
+        f"(REST endpoint + WS handler), found {len(tracked)}"
     )
 
 
 def test_el_agent_stop_uses_tracked_task():
     src = _read(APP)
     bare = list(re.finditer(r"asyncio\.create_task\(_stop_el_agent\(\)\)", src))
-    assert not bare, f"Found {len(bare)} bare asyncio.create_task(_stop_el_agent()) — must use _tracked_task() instead"
+    assert not bare, (
+        f"Found {len(bare)} bare asyncio.create_task(_stop_el_agent()) — "
+        "must use _tracked_task() instead"
+    )
     tracked = list(re.finditer(r"_tracked_task\(_stop_el_agent\(\)\)", src))
     assert len(tracked) >= 2, (
-        f"Expected at least 2 _tracked_task(_stop_el_agent()) calls (REST endpoint + WS handler), found {len(tracked)}"
+        f"Expected at least 2 _tracked_task(_stop_el_agent()) calls "
+        f"(REST endpoint + WS handler), found {len(tracked)}"
     )
 
 

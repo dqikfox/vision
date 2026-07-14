@@ -134,8 +134,8 @@ Response style:
 
 
 def load_vision_tool_specs() -> tuple[list[dict], list[str]]:
-    from live_chat_app import _EL_TOOL_NAMES
     from live_chat_app import TOOLS as APP_TOOLS
+    from live_chat_app import _EL_TOOL_NAMES
 
     tool_map: dict[str, dict] = {}
     for entry in APP_TOOLS:

@@ -7,21 +7,22 @@ Covers: _rate_buckets memory cleanup, browser_eval _tool_err() usage,
         pooling, execute_python 4MB output guard (cycles 5/11).
 """
 
+import asyncio
+import json
 import sqlite3
 import types
+from pathlib import Path
 from unittest import mock
 
 import pytest
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _app_module():
-    import importlib
-    import sys
-
+    import importlib, sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
         "elevenlabs.client": types.ModuleType("elevenlabs.client"),
@@ -41,7 +42,6 @@ def _app_module():
 # Finding 2 — _rate_buckets memory leak / opportunistic sweep
 # ---------------------------------------------------------------------------
 
-
 class TestRateBucketsMemory:
     def test_sweep_prunes_stale_empty_buckets(self):
         """When >500 keys exist, empty buckets should be pruned opportunistically."""
@@ -50,7 +50,6 @@ class TestRateBucketsMemory:
 
         # Fill with >500 empty deques
         import collections
-
         for i in range(600):
             app._rate_buckets[f"stale-ip-{i}"] = collections.deque()
 
@@ -79,7 +78,6 @@ class TestRateBucketsMemory:
 # Finding 3 — browser_eval: _tool_err() for generic exception
 # ---------------------------------------------------------------------------
 
-
 class TestBrowserEvalToolErr:
     @pytest.mark.asyncio
     async def test_browser_eval_timeout_logged(self):
@@ -87,7 +85,7 @@ class TestBrowserEvalToolErr:
         app = _app_module()
         log_calls = []
         page_mock = mock.AsyncMock()
-        page_mock.evaluate = mock.AsyncMock(side_effect=TimeoutError())
+        page_mock.evaluate = mock.AsyncMock(side_effect=asyncio.TimeoutError())
 
         with mock.patch.object(app, "get_browser_page", return_value=page_mock):
             with mock.patch.object(app, "write_log", side_effect=lambda *a: log_calls.append(a)):
@@ -116,7 +114,6 @@ class TestBrowserEvalToolErr:
 # Finding 4 — Ollama model list null/whitespace filter
 # ---------------------------------------------------------------------------
 
-
 class TestOllamaModelFilter:
     def test_whitespace_model_names_filtered(self):
         """Ollama model list must filter out whitespace-only model names."""
@@ -130,11 +127,9 @@ class TestOllamaModelFilter:
 
     def test_none_model_names_filtered(self):
         """Ollama model list must skip entries where model is None/falsy."""
-
         class FakeModel:
             def __init__(self, name):
                 self.model = name
-
         models = [FakeModel("llama3"), FakeModel(None), FakeModel(""), FakeModel("  ")]
         result = [str(m.model).strip() for m in models if m and m.model]
         result = [m for m in result if m]
@@ -144,7 +139,6 @@ class TestOllamaModelFilter:
 # ---------------------------------------------------------------------------
 # Finding 5 — Config corruption: delete fallback
 # ---------------------------------------------------------------------------
-
 
 class TestConfigCorruptionDeleteFallback:
     def test_corrupt_config_rename_fails_then_deletes(self, tmp_path):
@@ -187,12 +181,10 @@ class TestConfigCorruptionDeleteFallback:
 # Finding 8 — vision_rag.py close(): explicit conn.close()
 # ---------------------------------------------------------------------------
 
-
 class TestRAGCloseExplicit:
     def test_close_calls_conn_close(self, tmp_path):
         """VisionRAGManager.close() must explicitly close the connection."""
         from vision_rag import VisionRAGManager
-
         src = tmp_path / "src"
         src.mkdir()
         mgr = VisionRAGManager(source_root=src, db_path=tmp_path / "rag.db")
@@ -214,15 +206,16 @@ class TestRAGCloseExplicit:
     def test_close_on_missing_db_does_not_raise(self, tmp_path):
         """close() on non-existent DB should return without error."""
         from vision_rag import VisionRAGManager
-
-        mgr = VisionRAGManager(source_root=tmp_path / "src", db_path=tmp_path / "nonexistent.db")
+        mgr = VisionRAGManager(
+            source_root=tmp_path / "src",
+            db_path=tmp_path / "nonexistent.db"
+        )
         mgr.close()  # Must not raise
 
 
 # ---------------------------------------------------------------------------
 # Finding 10 (P3) — execute_python 4MB output guard (regression test)
 # ---------------------------------------------------------------------------
-
 
 class TestExecutePython4MBGuard:
     @pytest.mark.asyncio
@@ -255,16 +248,13 @@ class TestExecutePython4MBGuard:
 # MCP server — connection pooling limits
 # ---------------------------------------------------------------------------
 
-
 class TestMCPConnectionPooling:
     def test_http_client_has_limits(self):
         """MCP server httpx client must have explicit connection limits."""
-        import sys
-
+        import importlib, sys
         with mock.patch.dict(sys.modules, {"mcp": types.ModuleType("mcp")}):
             try:
                 import vision_mcp_server as mcp_server
-
                 if hasattr(mcp_server._http_client, "limits"):
                     limits = mcp_server._http_client.limits
                     assert limits.max_connections is not None
@@ -274,9 +264,8 @@ class TestMCPConnectionPooling:
     def test_atexit_registered_for_close(self):
         """MCP server must register atexit cleanup for the HTTP client."""
         # We already verified atexit.register(_http_client.close) exists at line 28
-
+        import atexit
         # Just verify the module has an atexit-registered close somewhere
         # (can't easily introspect atexit handlers, so just verify code structure)
         import vision_mcp_server
-
         assert hasattr(vision_mcp_server._http_client, "close")

@@ -19,7 +19,6 @@ def _read(p: Path) -> str:
 # /api/memory/fact DELETE endpoint
 # ---------------------------------------------------------------------------
 
-
 def test_api_del_fact_uses_save_lock():
     src = _read(APP)
     m = re.search(
@@ -29,17 +28,20 @@ def test_api_del_fact_uses_save_lock():
     )
     assert m is not None, "DELETE /api/memory/fact endpoint not found"
     body = m.group(1)
-    assert "memory._save_lock" in body, "DELETE /api/memory/fact must use memory._save_lock"
+    assert "memory._save_lock" in body, (
+        "DELETE /api/memory/fact must use memory._save_lock"
+    )
     # The lock must wrap the remove, not just be present
     lock_pos = body.find("memory._save_lock")
     remove_pos = body.find(".remove(fact)")
-    assert lock_pos < remove_pos, "memory._save_lock must precede .remove(fact) in DELETE endpoint"
+    assert lock_pos < remove_pos, (
+        "memory._save_lock must precede .remove(fact) in DELETE endpoint"
+    )
 
 
 # ---------------------------------------------------------------------------
 # WS del_fact handler — elif (by-value) branch
 # ---------------------------------------------------------------------------
-
 
 def test_ws_del_fact_elif_uses_save_lock():
     src = _read(APP)
@@ -60,13 +62,14 @@ def test_ws_del_fact_elif_uses_save_lock():
     elif_pos = body.find("elif fact")
     # Look for a second lock after the elif
     second_lock_pos = body.find("memory._save_lock", body.find("memory._save_lock") + 1)
-    assert second_lock_pos != -1 and second_lock_pos > elif_pos, "elif branch of del_fact must also use _save_lock"
+    assert second_lock_pos != -1 and second_lock_pos > elif_pos, (
+        "elif branch of del_fact must also use _save_lock"
+    )
 
 
 # ---------------------------------------------------------------------------
 # forget tool handler
 # ---------------------------------------------------------------------------
-
 
 def test_forget_tool_uses_save_lock():
     src = _read(APP)
@@ -77,16 +80,19 @@ def test_forget_tool_uses_save_lock():
     )
     assert m is not None, "forget tool handler not found"
     body = m.group(1)
-    assert "memory._save_lock" in body, "forget tool handler must use memory._save_lock"
+    assert "memory._save_lock" in body, (
+        "forget tool handler must use memory._save_lock"
+    )
     lock_pos = body.find("memory._save_lock")
     before_pos = body.find("before = len(")
-    assert lock_pos < before_pos, "memory._save_lock must precede 'before = len(' in forget handler"
+    assert lock_pos < before_pos, (
+        "memory._save_lock must precede 'before = len(' in forget handler"
+    )
 
 
 # ---------------------------------------------------------------------------
 # recall tool handler
 # ---------------------------------------------------------------------------
-
 
 def test_recall_tool_uses_save_lock():
     src = _read(APP)
@@ -97,7 +103,11 @@ def test_recall_tool_uses_save_lock():
     )
     assert m is not None, "recall tool handler not found"
     body = m.group(1)
-    assert "memory._save_lock" in body, "recall tool handler must use memory._save_lock when reading facts"
+    assert "memory._save_lock" in body, (
+        "recall tool handler must use memory._save_lock when reading facts"
+    )
     lock_pos = body.find("memory._save_lock")
     facts_pos = body.find("memory.data")
-    assert lock_pos < facts_pos, "memory._save_lock must precede memory.data access in recall handler"
+    assert lock_pos < facts_pos, (
+        "memory._save_lock must precede memory.data access in recall handler"
+    )

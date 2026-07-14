@@ -51,7 +51,9 @@ def test_tool_execute_returns_400_on_bad_json():
     )
     assert fn is not None
     body = fn.group()
-    assert "status_code=400" in body, "tool_execute must return HTTP 400 when JSON parse fails"
+    assert "status_code=400" in body, (
+        "tool_execute must return HTTP 400 when JSON parse fails"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -129,13 +131,13 @@ def test_execute_python_error_before_execution():
 def test_always_learn_tasks_have_done_callbacks():
     src = _read(APP)
     # Count create_task calls for _always_learn_step
-    task_sites = list(
-        re.finditer(
-            r"asyncio\.create_task\(_always_learn_step\(",
-            src,
-        )
+    task_sites = list(re.finditer(
+        r"asyncio\.create_task\(_always_learn_step\(",
+        src,
+    ))
+    assert len(task_sites) >= 3, (
+        f"Expected at least 3 _always_learn_step task sites, found {len(task_sites)}"
     )
-    assert len(task_sites) >= 3, f"Expected at least 3 _always_learn_step task sites, found {len(task_sites)}"
     # Each site should be followed by add_done_callback within 300 chars
     for m in task_sites:
         nearby = src[m.start() : m.start() + 350]
@@ -151,7 +153,7 @@ def test_always_learn_callback_logs_exceptions():
     callbacks = list(re.finditer(r"add_done_callback\(", src))
     for cb in callbacks:
         nearby = src[cb.start() : cb.start() + 300]
-        if "always_learn" in src[max(0, cb.start() - 200) : cb.start()]:
+        if "always_learn" in src[max(0, cb.start()-200) : cb.start()]:
             assert "write_log" in nearby or "exception" in nearby.lower(), (
                 "add_done_callback for always_learn must log the exception"
             )
@@ -179,8 +181,12 @@ def test_transcribe_tempfile_inside_try():
     last_try_pos = try_matches[-1].start()
     # Also find the matching finally (search forward from try pos)
     code_from_try = src[last_try_pos : last_try_pos + 5000]
-    assert "finally:" in code_from_try, "The try block containing NamedTemporaryFile must have a finally clause"
-    assert "os.unlink(path)" in code_from_try, "The finally block must unlink the temp file"
+    assert "finally:" in code_from_try, (
+        "The try block containing NamedTemporaryFile must have a finally clause"
+    )
+    assert "os.unlink(path)" in code_from_try, (
+        "The finally block must unlink the temp file"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +204,9 @@ def test_list_files_validates_pattern_type():
     assert fn is not None, "list_files handler not found"
     body = fn.group(1)
     assert "pattern" in body, "list_files must use the pattern parameter"
-    assert "isinstance(pattern" in body or "len(pattern)" in body, "list_files must validate the pattern parameter"
+    assert "isinstance(pattern" in body or "len(pattern)" in body, (
+        "list_files must validate the pattern parameter"
+    )
 
 
 def test_list_files_blocks_path_separators_in_pattern():
@@ -211,15 +219,9 @@ def test_list_files_blocks_path_separators_in_pattern():
     assert fn is not None
     body = fn.group(1)
     # Must reject slash/backslash in pattern
-    assert (
-        '"/"' in body
-        or "'/'" in body
-        or '"\\\\"' in body
-        or "'\\\\'" in body
-        or '"\\\\"' in body
-        or "sep" in body
-        or "\\\\" in body
-    ), "list_files pattern validation must block path separator characters"
+    assert '"/"' in body or "'/'" in body or '"\\\\"' in body or "'\\\\'" in body or '"\\\\"' in body or 'sep' in body or '\\\\' in body, (
+        "list_files pattern validation must block path separator characters"
+    )
 
 
 def test_list_files_pattern_max_length():
@@ -231,4 +233,6 @@ def test_list_files_pattern_max_length():
     )
     assert fn is not None
     body = fn.group(1)
-    assert "256" in body or "len(pattern)" in body, "list_files must enforce a maximum pattern length"
+    assert "256" in body or "len(pattern)" in body, (
+        "list_files must enforce a maximum pattern length"
+    )

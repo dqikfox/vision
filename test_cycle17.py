@@ -11,6 +11,8 @@ Tests verify:
 
 import re
 
+import pytest
+
 
 def _read(path: str) -> str:
     with open(path, encoding="utf-8") as f:
@@ -35,7 +37,9 @@ def test_mute_handler_uses_lock():
         re.DOTALL,
     )
     assert block is not None, "Could not find 't == mute' block"
-    assert "_global_state_lock" in block.group(), "muted assignment in 't == mute' block must use _global_state_lock"
+    assert "_global_state_lock" in block.group(), (
+        "muted assignment in 't == mute' block must use _global_state_lock"
+    )
 
 
 def test_mode_handler_uses_lock():
@@ -47,7 +51,9 @@ def test_mode_handler_uses_lock():
         re.DOTALL,
     )
     assert block is not None, "Could not find 't == mode' block"
-    assert "_global_state_lock" in block.group(), "mode assignment in 't == mode' block must use _global_state_lock"
+    assert "_global_state_lock" in block.group(), (
+        "mode assignment in 't == mode' block must use _global_state_lock"
+    )
 
 
 def test_set_mute_handler_uses_lock():
@@ -73,7 +79,9 @@ def test_set_mode_handler_uses_lock():
         re.DOTALL,
     )
     assert block is not None, "Could not find 't == set_mode' block"
-    assert "_global_state_lock" in block.group(), "mode assignment in 't == set_mode' block must use _global_state_lock"
+    assert "_global_state_lock" in block.group(), (
+        "mode assignment in 't == set_mode' block must use _global_state_lock"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +103,9 @@ def test_set_state_locks_runtime_state():
     assign_pos = body.find("runtime_state =")
     assert lock_pos != -1, "set_state() must reference _global_state_lock"
     assert assign_pos != -1, "set_state() must assign runtime_state"
-    assert lock_pos < assign_pos, "Lock must be acquired before runtime_state assignment in set_state()"
+    assert lock_pos < assign_pos, (
+        "Lock must be acquired before runtime_state assignment in set_state()"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +142,9 @@ def test_transcribe_path_assigned_before_write():
     write_pos = body.find("wavfile.write(path")
     assert path_assign_pos != -1, "path = f.name not found in transcribe()"
     assert write_pos != -1, "wavfile.write(path, ...) not found — should use 'path' not 'f.name'"
-    assert path_assign_pos < write_pos, "path must be assigned before wavfile.write so cleanup can run on write failure"
+    assert path_assign_pos < write_pos, (
+        "path must be assigned before wavfile.write so cleanup can run on write failure"
+    )
 
 
 def test_transcribe_unlink_guarded():
@@ -169,12 +181,16 @@ def test_broadcast_send_has_timeout():
     )
     assert fn is not None, "broadcast() not found"
     body = fn.group()
-    assert "asyncio.wait_for" in body, "broadcast() must use asyncio.wait_for to timeout slow WS sends"
+    assert "asyncio.wait_for" in body, (
+        "broadcast() must use asyncio.wait_for to timeout slow WS sends"
+    )
     # Verify a numeric timeout
     timeout_match = re.search(r"wait_for\(.*?timeout=(\d+\.?\d*)", body, re.DOTALL)
     assert timeout_match is not None, "asyncio.wait_for must specify a numeric timeout"
     timeout_val = float(timeout_match.group(1))
-    assert 1.0 <= timeout_val <= 30.0, f"broadcast() send timeout should be between 1 and 30 seconds, got {timeout_val}"
+    assert 1.0 <= timeout_val <= 30.0, (
+        f"broadcast() send timeout should be between 1 and 30 seconds, got {timeout_val}"
+    )
 
 
 def test_broadcast_catches_timeout_error():
@@ -207,7 +223,9 @@ def test_api_rag_export_max_examples_bounded():
     )
     assert ep is not None, "api_rag_export_training not found"
     body = ep.group()
-    assert "10_000" in body or "10000" in body, "api_rag_export_training must cap max_examples at 10,000"
+    assert "10_000" in body or "10000" in body, (
+        "api_rag_export_training must cap max_examples at 10,000"
+    )
     assert "min(" in body, "Should use min() to cap the value"
 
 
@@ -221,5 +239,7 @@ def test_tool_handler_max_examples_bounded():
     )
     assert block is not None, "kb_export_training_data handler not found"
     body = block.group()
-    assert "10_000" in body or "10000" in body, "kb_export_training_data tool must cap max_examples at 10,000"
+    assert "10_000" in body or "10000" in body, (
+        "kb_export_training_data tool must cap max_examples at 10,000"
+    )
     assert "min(" in body, "Should use min() to cap the value"

@@ -32,7 +32,8 @@ def test_facts_pop_under_save_lock():
     assert fn is not None, "del_fact handler not found"
     body = fn.group()
     assert "_save_lock" in body, (
-        "memory.data['facts'].pop() must be performed under memory._save_lock to prevent TOCTOU index-out-of-range race"
+        "memory.data['facts'].pop() must be performed under memory._save_lock "
+        "to prevent TOCTOU index-out-of-range race"
     )
 
 
@@ -75,7 +76,9 @@ def test_tts_rate_int_guarded():
     tts_rate_pos = body.find("tts_rate = int(")
     assert tts_rate_pos != -1, "tts_rate int() conversion not found"
     preceding = body[:tts_rate_pos]
-    assert "try:" in preceding, "tts_rate int() must be wrapped in a try block to handle ValueError"
+    assert "try:" in preceding, (
+        "tts_rate int() must be wrapped in a try block to handle ValueError"
+    )
     assert "(ValueError, TypeError)" in body, (
         "set_voice_settings must catch (ValueError, TypeError) for int() conversions"
     )
@@ -93,7 +96,9 @@ def test_tts_voice_idx_int_guarded():
     idx_pos = body.find("tts_voice_idx = int(")
     assert idx_pos != -1, "tts_voice_idx int() conversion not found"
     preceding = body[:idx_pos]
-    assert "try:" in preceding, "tts_voice_idx int() must be wrapped in a try block"
+    assert "try:" in preceding, (
+        "tts_voice_idx int() must be wrapped in a try block"
+    )
 
 
 def test_voice_settings_int_errors_preserve_existing_value():

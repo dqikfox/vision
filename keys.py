@@ -24,7 +24,6 @@ def get_key(name: str, default: str = "") -> str:
     # 2. Windows Credential Manager
     try:
         import keyring
-
         val = keyring.get_password("operator", name) or ""
         if val:
             return val.strip()
@@ -49,7 +48,6 @@ def store_key(name: str, value: str) -> None:
     """Store a key in Windows Credential Manager."""
     try:
         import keyring
-
         keyring.set_password("operator", name, value)
         print(f"[keys] Stored {name} in Windows Credential Manager")
     except Exception as e:
@@ -60,7 +58,7 @@ def store_key(name: str, value: str) -> None:
         updated = False
         if env_path.exists():
             for line in env_path.read_text(encoding="utf-8").splitlines():
-                if line.startswith((name + "=", name + " =")):
+                if line.startswith(name + "=") or line.startswith(name + " ="):
                     lines.append(f"{name}={value}")
                     updated = True
                 else:
@@ -73,7 +71,6 @@ def store_key(name: str, value: str) -> None:
 
 if __name__ == "__main__":
     import sys
-
     if len(sys.argv) == 3 and sys.argv[1] == "set":
         store_key(sys.argv[2], input(f"Value for {sys.argv[2]}: ").strip())
     elif len(sys.argv) == 2:

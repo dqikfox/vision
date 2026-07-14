@@ -4,11 +4,9 @@ elite_api.py — Elite endpoints for monitoring, debugging, optimization
 Metrics dashboard, provider health, tool analytics, memory insights.
 """
 
-import json
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-
+import json
 
 async def register_elite_endpoints(app: FastAPI):
     """Register all elite monitoring & debug endpoints."""
@@ -25,12 +23,10 @@ async def register_elite_endpoints(app: FastAPI):
     async def get_health_report():
         """Provider health and circuit breaker status."""
         # Will be populated when providers register their breakers
-        return JSONResponse(
-            {
-                "timestamp": json.dumps({"ready": True}),
-                "providers": {},
-            }
-        )
+        return JSONResponse({
+            "timestamp": json.dumps({"ready": True}),
+            "providers": {},
+        })
 
     @app.get("/api/elite/tools")
     async def get_tool_analytics():
@@ -41,13 +37,11 @@ async def register_elite_endpoints(app: FastAPI):
     async def get_memory_insights():
         """Memory usage and context optimization stats."""
         # Will integrate with elite_memory module
-        return JSONResponse(
-            {
-                "context_tokens": 0,
-                "message_count": 0,
-                "facts": 0,
-            }
-        )
+        return JSONResponse({
+            "context_tokens": 0,
+            "message_count": 0,
+            "facts": 0,
+        })
 
     @app.post("/api/elite/cache/clear")
     async def clear_tool_cache():
@@ -70,20 +64,16 @@ async def register_elite_endpoints(app: FastAPI):
     @app.get("/api/elite/summary")
     async def elite_summary():
         """High-level summary for voice + UI."""
-        return JSONResponse(
-            {
-                "uptime": "...",
-                "metrics": metrics.summary(),
-                "tools": tool_executor.analytics_summary(),
-            }
-        )
+        return JSONResponse({
+            "uptime": "...",
+            "metrics": metrics.summary(),
+            "tools": tool_executor.analytics_summary(),
+        })
 
     print("[elite] endpoints registered")
 
-
 # Advanced debugging mode
 DEBUG_MODE = False
-
 
 def set_debug(enabled: bool):
     """Enable/disable verbose debugging."""
@@ -91,7 +81,6 @@ def set_debug(enabled: bool):
     DEBUG_MODE = enabled
     if enabled:
         print("[elite] debug mode enabled — expect verbose logging")
-
 
 def debug_log(category: str, message: str):
     """Log in debug mode."""

@@ -4,27 +4,26 @@ elite_metrics.py — Observability, metrics, profiling
 Real-time performance tracking, latency histograms, token usage analytics.
 """
 
+import json
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from typing import Optional
 
 
 @dataclass
 class Metric:
     """Single metric measurement."""
-
     name: str
     value: float
     unit: str = ""
     timestamp: float = field(default_factory=time.time)
     tags: dict = field(default_factory=dict)
 
-
 @dataclass
 class LatencyHistogram:
     """Track latency distribution (percentiles)."""
-
     name: str
     measurements: deque = field(default_factory=lambda: deque(maxlen=1000))
 
@@ -53,12 +52,13 @@ class LatencyHistogram:
             "p99": self.percentile(0.99),
         }
 
-
 class MetricsCollector:
     """Central metrics hub for Vision."""
 
     def __init__(self):
-        self.latencies: dict[str, LatencyHistogram] = defaultdict(lambda: LatencyHistogram(name=""))
+        self.latencies: dict[str, LatencyHistogram] = defaultdict(
+            lambda: LatencyHistogram(name="")
+        )
         self.counters: dict[str, int] = defaultdict(int)
         self.gauges: dict[str, float] = {}
         self.events: deque = deque(maxlen=10000)  # Event audit log
@@ -80,21 +80,19 @@ class MetricsCollector:
 
     def record_event(self, event_type: str, detail: str, level: str = "info"):
         """Log structured event."""
-        self.events.append(
-            {
-                "type": event_type,
-                "detail": detail,
-                "level": level,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
+        self.events.append({
+            "type": event_type,
+            "detail": detail,
+            "level": level,
+            "timestamp": datetime.now().isoformat(),
+        })
 
     def llm_request_stats(self, provider: str, model: str, tokens: int, latency_ms: float):
         """Record LLM API call metrics."""
         self.record_latency(f"llm_latency_{provider}", latency_ms)
         self.increment(f"llm_tokens_{provider}", tokens)
         self.increment(f"llm_requests_{provider}")
-        self.record_event("llm_call", f"{provider}/{model}: {tokens} tokens, {latency_ms:.0f}ms")
+        self.record_event(f"llm_call", f"{provider}/{model}: {tokens} tokens, {latency_ms:.0f}ms")
 
     def tool_execution_stats(self, tool_name: str, duration_ms: float, success: bool):
         """Record tool execution metrics."""
@@ -110,7 +108,10 @@ class MetricsCollector:
         return {
             "timestamp": datetime.now().isoformat(),
             "uptime_seconds": time.time() - self.session_start,
-            "latencies": {name: hist.snapshot() for name, hist in self.latencies.items()},
+            "latencies": {
+                name: hist.snapshot()
+                for name, hist in self.latencies.items()
+            },
             "counters": dict(self.counters),
             "gauges": self.gauges,
             "recent_events": list(self.events)[-20:],
@@ -118,8 +119,14 @@ class MetricsCollector:
 
     def summary(self) -> dict:
         """High-level summary for dashboard."""
-        llm_requests = {k: v for k, v in self.counters.items() if k.startswith("llm_requests_")}
-        tool_calls = {k: v for k, v in self.counters.items() if k.startswith("tool_calls_")}
+        llm_requests = {
+            k: v for k, v in self.counters.items()
+            if k.startswith("llm_requests_")
+        }
+        tool_calls = {
+            k: v for k, v in self.counters.items()
+            if k.startswith("tool_calls_")
+        }
         return {
             "uptime_minutes": round((time.time() - self.session_start) / 60, 1),
             "total_llm_requests": sum(llm_requests.values()),
@@ -135,13 +142,12 @@ class MetricsCollector:
             "error_count": self.counters.get("tool_error_total", 0),
         }
 
-
 class ExecutionProfiler:
     """Profile execution time of async functions."""
 
     def __init__(self, name: str):
         self.name = name
-        self.start_time: float | None = None
+        self.start_time: Optional[float] = None
         self.elapsed_ms: float = 0.0
 
     async def __aenter__(self):
@@ -154,7 +160,6 @@ class ExecutionProfiler:
 
     def report(self) -> str:
         return f"[profile] {self.name}: {self.elapsed_ms:.1f}ms"
-
 
 # Global singleton
 metrics = MetricsCollector()

@@ -4,23 +4,20 @@ elite_voice.py — Advanced voice pipeline, buffering, emotion detection
 Streaming optimization, audio quality metrics, speaking style adaptation.
 """
 
-from collections import deque
-from collections.abc import AsyncGenerator
-from dataclasses import dataclass
-
+import asyncio
 import numpy as np
-
+from collections import deque
+from dataclasses import dataclass
+from typing import AsyncGenerator
 
 @dataclass
 class AudioMetrics:
     """Audio stream quality metrics."""
-
     rms_level: float
     peak: float
     noise_floor: float
     signal_to_noise: float
     clipping_detected: bool
-
 
 class AudioBuffer:
     """Smart ring buffer for streaming audio with backpressure."""
@@ -65,7 +62,6 @@ class AudioBuffer:
             "fill_percent": round(len(self.buffer) / self.capacity * 100, 1),
         }
 
-
 class VoiceMetricsAnalyzer:
     """Analyze audio stream quality in real-time."""
 
@@ -90,7 +86,7 @@ class VoiceMetricsAnalyzer:
         window = np.array(list(self.recent_frames))
 
         # RMS level (loudness)
-        rms = np.sqrt(np.mean(window**2))
+        rms = np.sqrt(np.mean(window ** 2))
 
         # Peak
         peak = np.abs(window).max()
@@ -113,7 +109,6 @@ class VoiceMetricsAnalyzer:
             signal_to_noise=float(snr),
             clipping_detected=clipping,
         )
-
 
 class StreamingOptimizer:
     """Optimize token streaming for speech synthesis."""
@@ -141,7 +136,6 @@ class StreamingOptimizer:
             yield " ".join(self.word_buffer)
             self.word_buffer.clear()
 
-
 class EmotionDetector:
     """Detect emotion/intent from user audio (basic heuristics)."""
 
@@ -165,7 +159,6 @@ class EmotionDetector:
         if total > 0:
             scores = {k: v / total for k, v in scores.items()}
         return scores
-
 
 class SpeakingStyleAdapter:
     """Adapt response based on user emotion/style."""
