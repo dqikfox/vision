@@ -42,7 +42,10 @@ def test_confirmation_pop_under_global_state_lock():
         nearby = body[lb.start() : lb.start() + 500]
         if "_pop_pending_tool_confirmation" in nearby:
             return  # Found it inside a lock block
-    raise AssertionError("_pop_pending_tool_confirmation() must be called inside an " "'async with _global_state_lock:' block to prevent race conditions")
+    raise AssertionError(
+        "_pop_pending_tool_confirmation() must be called inside an "
+        "'async with _global_state_lock:' block to prevent race conditions"
+    )
 
 
 def test_confirmation_snapshot_before_await():
