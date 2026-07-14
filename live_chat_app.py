@@ -14,14 +14,14 @@ import binascii
 import contextlib
 import contextvars
 import fnmatch
-import io
 import importlib.util
+import io
 import json
 import os
 import queue
 import re
-import shutil
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -47,7 +47,6 @@ import pyautogui
 import sounddevice as sd
 import uvicorn
 import websockets as ws_lib
-from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -55,6 +54,13 @@ from ollama import AsyncClient as OllamaAsyncClient
 from ollama import Options as OllamaOptions
 from ollama import ResponseError as OllamaResponseError
 from openai import AsyncOpenAI
+
+try:
+    from elevenlabs.client import ElevenLabs
+
+    HAS_ELEVENLABS = True
+except ImportError:
+    HAS_ELEVENLABS = False
 
 try:
     from elevenlabs.conversational_ai.conversation import AudioInterface, ClientTools, Conversation
@@ -567,10 +573,8 @@ async def _cancel_task(task: asyncio.Task[None] | None) -> None:
     if not task or task.done():
         return
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
 
 
 async def _cancel_all_speak_tasks() -> None:
@@ -743,9 +747,7 @@ def write_log(event: str, detail: str) -> None:
     ts = datetime.now().isoformat(timespec="milliseconds")
     try:
         if LOG_FILE.exists() and LOG_FILE.stat().st_size > 100_000_000:
-            rotated = LOG_FILE.with_name(
-                f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log"
-            )
+            rotated = LOG_FILE.with_name(f"{LOG_FILE.stem}.{datetime.now().strftime('%Y%m%dT%H%M%S')}.log")
             LOG_FILE.rename(rotated)
     except OSError:
         pass
@@ -845,7 +847,7 @@ if HAS_CONVAI:
 
         def __init__(self) -> None:
             self.input_callback: Any = None
-            self.output_queue: "queue.Queue[bytes]" = queue.Queue()
+            self.output_queue: queue.Queue[bytes] = queue.Queue()
             self.should_stop = threading.Event()
             self.output_thread: threading.Thread | None = None
             self.in_stream: sd.RawInputStream | None = None
@@ -1213,15 +1215,16 @@ def _direct_tool_reply(tool_name: str, result: str, success_reply: str | None) -
 class Memory:
     """Persistent JSON-backed long-term memory."""
 
-    _default = lambda _: {
-        "user": {"name": None, "preferences": []},
-        "facts": [],
-        "context_summary": "",
-        "voice": {"continuous_listening": False, "wake_word": False},
-        "session_count": 0,
-        "last_session": None,
-        "task_history": [],
-    }
+    def _default(_):
+        return {
+            "user": {"name": None, "preferences": []},
+            "facts": [],
+            "context_summary": "",
+            "voice": {"continuous_listening": False, "wake_word": False},
+            "session_count": 0,
+            "last_session": None,
+            "task_history": [],
+        }
 
     def __init__(self) -> None:
         self._save_lock = threading.Lock()
@@ -1329,9 +1332,7 @@ class Memory:
         alpha = sum(ch.isalpha() for ch in text)
         if alpha and alpha / max(len(text), 1) < 0.45:
             return True
-        if text.count(".") > 8 or text.count("...") > 2:
-            return True
-        return False
+        return bool(text.count(".") > 8 or text.count("...") > 2)
 
     def _is_memorable_task(self, task: str) -> bool:
         lowered = task.casefold()
@@ -1343,11 +1344,9 @@ class Memory:
             return False
         if lowered.startswith("(") and "00:" in lowered:
             return False
-        if lowered.startswith("reply with exactly") or lowered.startswith("run the echo command"):
+        if lowered.startswith(("reply with exactly", "run the echo command")):
             return False
-        if "vision_test_ok" in lowered or "toolcall_ok" in lowered:
-            return False
-        return True
+        return not ("vision_test_ok" in lowered or "toolcall_ok" in lowered)
 
     def _is_memorable_fact(self, fact: str) -> bool:
         lowered = fact.casefold().strip(" \"'.")
@@ -1433,7 +1432,7 @@ class Memory:
 
     def _looks_like_preference(self, text: str) -> bool:
         lowered = text.casefold()
-        return lowered.startswith("user prefers") or lowered.startswith("prefers ") or lowered.startswith("user uses")
+        return lowered.startswith(("user prefers", "prefers ", "user uses"))
 
     def learn_from_exchange(self, user_text: str, assistant_text: str = "") -> None:
         user_text = self._clean_text(user_text, 200)
@@ -2150,6 +2149,7 @@ def _run_automation_routine(routine_id: str, *, record_history: bool = True) -> 
     elif action == "command":
         try:
             import shlex
+
             cmd_str = str(routine.get("command", ""))
             # Use shlex.split for shell-free execution — eliminates injection via shell=True
             cmd_args = shlex.split(cmd_str, posix=False)  # posix=False preserves Windows backslashes
@@ -2584,9 +2584,7 @@ async def api_set_model(payload: dict[str, Any], request: Request) -> JSONRespon
     if provider and model and provider != "ollama":
         valid_models = PROVIDERS.get(provider, {}).get("models", [])
         if valid_models and model not in valid_models:
-            return JSONResponse(
-                {"error": f"Model {model!r} not available for provider {provider!r}"}, status_code=400
-            )
+            return JSONResponse({"error": f"Model {model!r} not available for provider {provider!r}"}, status_code=400)
     global current_provider, current_model, _ollama_failover_active
     async with _global_state_lock:
         if provider:
@@ -2771,7 +2769,7 @@ async def screenshot_ep(request: Request) -> JSONResponse:
 
     try:
         hd, data = await asyncio.wait_for(loop.run_in_executor(None, _snap), timeout=10.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         write_log("screenshot_timeout", "pyautogui.screenshot() exceeded 10s — possible display driver hang")
         return JSONResponse({"error": "Screenshot timed out (display driver hang?)"}, status_code=504)
     return JSONResponse({"data": data, "hd": hd})
@@ -2861,13 +2859,13 @@ async def agent_orchestrator_webhook(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "received": event})
 
 
-
 @app.get("/api/export/trace")
 async def api_export_trace() -> FileResponse | JSONResponse:
     """Download the operator action trace log for debugging and audits."""
     if not LOG_FILE.exists():
         return JSONResponse({"error": "No trace log available yet"}, status_code=404)
     from datetime import datetime as _dt
+
     filename = f"vision_trace_{_dt.utcnow().strftime('%Y%m%dT%H%M%SZ')}.log"
     return FileResponse(LOG_FILE, media_type="text/plain; charset=utf-8", filename=filename)
 
@@ -2911,10 +2909,8 @@ async def api_voices() -> JSONResponse:
                                     locale = lang_map.get(lang_code, lang_code)
                                     display_name = f"{voice_name_attr} ({locale})"
                             except Exception:
-                                try:
+                                with contextlib.suppress(Exception):
                                     display_name = winreg.QueryValueEx(tkey, "DisplayName")[0] or token_key
-                                except Exception:
-                                    pass
                             # Last-resort: parse MSTTS_V110_enUS_MarkM → "Mark (US)"
                             if display_name == token_key:
                                 parts = token_key.split("_")
@@ -3218,14 +3214,10 @@ async def ws_ep(websocket: WebSocket) -> None:
                         _new_tts = msg.get("preferred_tts", preferred_tts)
                         if _new_tts in {"auto", "elevenlabs", "local"}:
                             preferred_tts = _new_tts
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         tts_rate = max(50, min(300, int(msg.get("tts_rate", tts_rate))))
-                    except (ValueError, TypeError):
-                        pass
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         tts_voice_idx = int(msg.get("tts_voice_idx", tts_voice_idx))
-                    except (ValueError, TypeError):
-                        pass
                 write_log("voice", f"stt={preferred_stt} tts={preferred_tts} rate={tts_rate} voice={tts_voice_idx}")
                 await asyncio.to_thread(_save_settings)
                 await _broadcast_voice_settings_update()
@@ -3288,8 +3280,9 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     except (TypeError, ValueError) as e:
         write_log("broadcast_serialize_error", f"msg type serialization failed: {e}")
         try:
-            safe = {k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v)[:500])
-                    for k, v in msg.items()}
+            safe = {
+                k: (v if isinstance(v, (str, int, float, bool, type(None))) else str(v)[:500]) for k, v in msg.items()
+            }
             msg_text = json.dumps(safe)
         except Exception as e2:
             write_log("broadcast_sanitize_failed", str(e2))
@@ -3302,7 +3295,7 @@ async def broadcast(msg: dict, target: object | WebSocket | None = _USE_CONTEXT_
     for ws in recipients:
         try:
             await asyncio.wait_for(ws.send_text(msg_text), timeout=5.0)
-        except (asyncio.TimeoutError, Exception) as e:
+        except (TimeoutError, Exception) as e:
             write_log("broadcast_error", f"send to {ws.client} failed: {type(e).__name__}: {str(e)[:100]}")
             dead.add(ws)
     if dead:
@@ -3571,10 +3564,8 @@ async def transcribe(frames: list[np.ndarray]) -> str:
 
     finally:
         if path:
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(path)
-            except Exception:
-                pass
 
 
 # ── Operator tools ────────────────────────────────────────────────────────────
@@ -3584,7 +3575,31 @@ _pw_driver = None
 _pw_browser = None
 _pw_page = None
 _pw_lock: asyncio.Lock | None = None
+_pw_last_error: str = ""
 _PW_PROFILE = str(BASE / ".pw_profile")  # persistent user data dir (cookies, logins, etc.)
+
+
+def _browser_unavailable_message() -> str:
+    """Human-readable browser-unavailable message including the last root cause, if known."""
+    if _pw_last_error:
+        return f"Browser unavailable: {_pw_last_error[:300]} (see chat_events.log BROWSER_ERROR for detail)"
+    return "Browser unavailable (see chat_events.log BROWSER_ERROR for detail)"
+
+
+def _clear_stale_browser_lock(profile_dir: str) -> None:
+    """Remove a stale Chromium SingletonLock/SingletonSocket left behind by a crash.
+
+    launch_persistent_context refuses to start if a previous process died without
+    cleaning up its lock files, which otherwise makes the browser permanently
+    unavailable until someone manually deletes the profile directory.
+    """
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        try:
+            p = Path(profile_dir) / name
+            if p.exists() or p.is_symlink():
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 async def _reset_browser_page_state() -> None:
@@ -3602,32 +3617,32 @@ async def _reset_browser_page_state() -> None:
         except Exception:
             pass
     if browser is not None:
-        try:
+        with contextlib.suppress(Exception):
             await browser.close()
-        except Exception:
-            pass
     if driver is not None:
-        try:
+        with contextlib.suppress(Exception):
             await driver.stop()
-        except Exception:
-            pass
 
 
 async def get_browser_page():
     """Lazy-init a persistent Playwright Chromium browser with saved profile."""
-    global _pw_driver, _pw_browser, _pw_page, _pw_lock
+    global _pw_driver, _pw_browser, _pw_page, _pw_lock, _pw_last_error
     try:
         from playwright.async_api import async_playwright
 
         if _pw_lock is None:
             _pw_lock = asyncio.Lock()
         async with _pw_lock:
-            last_error: Exception | None = None
             for attempt in range(2):
                 try:
                     if _pw_browser is None:
                         _pw_driver = await async_playwright().start()
                         os.makedirs(_PW_PROFILE, exist_ok=True)
+                        if attempt > 0:
+                            # A previous attempt failed — clear any stale lock files a
+                            # crashed Chromium instance may have left in the profile dir,
+                            # which otherwise blocks every future launch permanently.
+                            _clear_stale_browser_lock(_PW_PROFILE)
                         _pw_browser = await _pw_driver.chromium.launch_persistent_context(
                             _PW_PROFILE,
                             headless=False,
@@ -3637,14 +3652,17 @@ async def get_browser_page():
                     if _pw_page is None or _pw_page.is_closed():
                         pages = _pw_browser.pages
                         _pw_page = pages[0] if pages else await _pw_browser.new_page()
+                    _pw_last_error = ""
                     return _pw_page
-                except Exception as e:
-                    last_error = e
+                except Exception:
                     if attempt == 0:
                         await _reset_browser_page_state()
                         continue
                     raise
     except Exception as e:
+        _pw_last_error = str(e) or e.__class__.__name__
+        with contextlib.suppress(Exception):
+            write_log("BROWSER_ERROR", f"get_browser_page failed: {_pw_last_error[:500]}")
         print(f"[playwright] {e}")
         return None
 
@@ -4765,9 +4783,7 @@ def _validate_tool_path(path: str) -> Path:
     for blocked in _BLOCKED_PATH_PREFIXES:
         try:
             resolved.relative_to(Path(blocked).resolve())
-            raise ValueError(
-                f"Access to system path {blocked!r} is not allowed"
-            )
+            raise ValueError(f"Access to system path {blocked!r} is not allowed")
         except ValueError as e:
             if "system path" in str(e):
                 raise
@@ -5212,10 +5228,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 result = (out + err).decode(errors="replace").strip()
                 return result[:3000] if result else f"(command exited {proc.returncode})"
             except TimeoutError:
-                try:
+                with contextlib.suppress(Exception):
                     proc.kill()
-                except Exception:
-                    pass
                 return f"Command timed out after {timeout}s. Use a shorter command or run in background."
         except Exception as e:
             return _tool_err("run_command", e)
@@ -5227,6 +5241,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         url = args.get("url", "")
         try:
             from urllib.parse import urlparse as _urlparse
+
             _p = _urlparse(url)
             if _p.scheme not in ("http", "https"):
                 return f"browser_open error: only http/https URLs are allowed (got {_p.scheme!r})"
@@ -5235,7 +5250,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 return f"browser_open error: navigation to {_p.hostname!r} is blocked (SSRF protection)"
             page = await get_browser_page()
             if page is None:
-                raise RuntimeError("Browser unavailable")
+                raise RuntimeError(_browser_unavailable_message())
             await page.goto(url, timeout=15000, wait_until="domcontentloaded")
             return f"Opened: {url}"
         except Exception as e:
@@ -5244,7 +5259,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         selector = args.get("selector", "")
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         try:
             # Try CSS selector first, then text match
             try:
@@ -5258,7 +5273,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         selector, text = args.get("selector", ""), args.get("text", "")
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         try:
             await page.fill(selector, text, timeout=5000)
             return f"Filled '{selector}' with: {text[:60]}"
@@ -5268,7 +5283,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         selector = args.get("selector", "")
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         try:
             if selector:
                 text = await page.inner_text(selector, timeout=5000)
@@ -5280,7 +5295,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_screenshot":
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         buf = await page.screenshot()
         b64 = base64.b64encode(buf).decode()
         await broadcast({"type": "screenshot", "data": b64})
@@ -5289,7 +5304,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         key = args.get("key", "Enter")
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         await page.keyboard.press(key)
         return f"Browser pressed: {key}"
 
@@ -5351,7 +5366,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
 
             await asyncio.wait_for(loop.run_in_executor(None, _append), timeout=10.0)
             return f"Appended {len(content)} chars to {path_s}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"append_to_file timed out after 10s writing to {path_s}"
         except Exception as e:
             return _tool_err("append_to_file", e)
@@ -5480,8 +5495,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             import pygetwindow as gw
 
             all_wins = gw.getAllWindows()
-            wins = [w_ for w_ in all_wins if w_.title.lower() == title.lower()] or \
-                   [w_ for w_ in all_wins if title.lower() in w_.title.lower()]
+            wins = [w_ for w_ in all_wins if w_.title.lower() == title.lower()] or [
+                w_ for w_ in all_wins if title.lower() in w_.title.lower()
+            ]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].resizeTo(w, h)
@@ -5500,8 +5516,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             import pygetwindow as gw
 
             all_wins = gw.getAllWindows()
-            wins = [w for w in all_wins if w.title.lower() == title.lower()] or \
-                   [w for w in all_wins if title.lower() in w.title.lower()]
+            wins = [w for w in all_wins if w.title.lower() == title.lower()] or [
+                w for w in all_wins if title.lower() in w.title.lower()
+            ]
             if not wins:
                 return f"No window matching '{title}'"
             wins[0].moveTo(x, y)
@@ -5516,7 +5533,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         amount = max(10, min(int(args.get("amount", 300)), 10000))
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         delta = amount if direction == "down" else -amount
         await page.evaluate(f"window.scrollBy(0, {delta})")
         return f"Browser scrolled {direction} {amount}px"
@@ -5533,11 +5550,11 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return f"browser_eval blocked: access to '{m.group()}' is not permitted"
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         try:
             result = await asyncio.wait_for(page.evaluate(js), timeout=10.0)
             return str(result)[:2000] if result is not None else "(no return value)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             write_log("browser_eval_timeout", f"js={js[:100]!r}")
             return "browser_eval timed out after 10s"
         except Exception as e:
@@ -5547,7 +5564,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
     elif name == "browser_get_url":
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         return page.url or "(no URL)"
 
     elif name == "browser_wait":
@@ -5558,7 +5575,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return "browser_wait error: timeout must be an integer"
         page = await get_browser_page()
         if page is None:
-            return "Browser unavailable"
+            return _browser_unavailable_message()
         try:
             await page.wait_for_selector(selector, timeout=timeout)
             return f"Element '{selector}' appeared"
@@ -5577,7 +5594,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
                 result = (out + err).decode(errors="replace").strip()
                 return result[:2000] if result else "(started)"
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return "Orchestrator starting in background (dashboard at http://localhost:3000)"
             except Exception as e:
                 return str(e)
@@ -5626,7 +5643,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             cmd_parts = shlex.split(ao_args, posix=False)
         except ValueError:
             return "ao_command error: invalid argument syntax"
-        cmd_list = ["ao"] + cmd_parts
+        cmd_list = ["ao", *cmd_parts]
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd_list, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -5640,7 +5657,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 out2, err2 = await asyncio.wait_for(proc2.communicate(), timeout=15)
                 result = (out2 + err2).decode(errors="replace").strip()
             return result[:2000] or "(no output)"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return f"Command '{shlex.join(cmd_list)}' timed out"
         except Exception as e:
             return _tool_err("ao_command", e)
@@ -5737,13 +5754,15 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
         enc = args.get("encoding", "utf-8")
         try:
             _validate_tool_path(fpath)
+
             def _write():
                 p = Path(fpath)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(content, encoding=enc)
+
             await asyncio.wait_for(loop.run_in_executor(None, _write), timeout=10.0)
             return f"Written {len(content)} chars to {fpath}"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return _tool_err("write_file", TimeoutError(f"write to {fpath} timed out after 10s"))
         except Exception as e:
             return _tool_err("write_file", e)
@@ -5755,6 +5774,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             return _tool_err("list_files", ValueError(f"invalid pattern: {str(pattern)[:60]}"))
         try:
             _validate_tool_path(fpath)
+
             def _listdir():
                 p = Path(fpath)
                 entries = sorted(p.iterdir(), key=lambda x: (x.is_file(), x.name))
@@ -5774,9 +5794,10 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                             )
                             lines.append(f"📄 {entry.name} ({sz})")
                 return "\n".join(lines[:100]) or "(empty)"
+
             return await loop.run_in_executor(None, _listdir)
         except Exception as e:
-            return f"Error listing {fpath}: {e}"
+            return _tool_err("list_files", e)
 
     # (clipboard_get/clipboard_set handlers removed - use get_clipboard/set_clipboard instead)
     # (screenshot_region duplicate removed - handled earlier with OCR support)
@@ -5850,6 +5871,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 # Post-execution memory guard using psutil (best-effort, Windows-safe)
                 try:
                     import psutil as _ps
+
                     _MAX_RSS = 256 * 1024 * 1024  # 256 MB
                     if result.returncode == 0:
                         # Process already finished; check output size as a proxy
@@ -5923,7 +5945,9 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
                 "-Command",
                 "Add-Type -AssemblyName System.Windows.Forms; "
                 "[System.Windows.Forms.MessageBox]::Show($args[0], $args[1])",
-                "-ArgumentList", message, title,
+                "-ArgumentList",
+                message,
+                title,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -6076,10 +6100,8 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             pname = ""
             if HAS_PSUTIL:
-                try:
+                with contextlib.suppress(Exception):
                     pname = psutil.Process(pid).name()
-                except Exception:
-                    pass
             return f"Active window: '{title}' (PID {pid}, {pname})"
         except Exception as e:
             return _tool_err("get_active_window", e)
@@ -6238,7 +6260,7 @@ async def _exec_tool_impl(name: str, args: dict) -> str:
             vidx = int(v["index"])
             if exact is None and vfold == needle:
                 exact = (vidx, vname)
-            if word is None and re.search(r'\b' + re.escape(needle) + r'\b', vfold):
+            if word is None and re.search(r"\b" + re.escape(needle) + r"\b", vfold):
                 word = (vidx, vname)
             if sub is None and needle in vfold:
                 sub = (vidx, vname)
@@ -6375,10 +6397,8 @@ def _parse_call_args(tool_name: str, raw_args: str) -> dict:
             try:
                 v = int(v)
             except ValueError:
-                try:
+                with contextlib.suppress(ValueError):
                     v = float(v)
-                except ValueError:
-                    pass
             args[k] = v
     else:
         val = raw_args.strip().strip("\"'")
@@ -6544,7 +6564,7 @@ async def _execute_computer_action(action) -> dict:
 
     elif action_type == "scroll":
         x, y = int(action.x), int(action.y)
-        dx = getattr(action, "scroll_x", 0) or getattr(action, "delta_x", 0)
+        getattr(action, "scroll_x", 0) or getattr(action, "delta_x", 0)
         dy = getattr(action, "scroll_y", 0) or getattr(action, "delta_y", 0)
         if dy:
             await loop.run_in_executor(None, lambda: pyautogui.scroll(int(dy), x=x, y=y))
@@ -6634,13 +6654,13 @@ async def _llm_stream_responses_api(user_text: str):
 
     # ── Initial API call ───────────────────────────────────────────────────────
     try:
-        create_kwargs: dict = dict(
-            model=current_model,
-            tools=tools,
-            input=input_items,
-            instructions=system,
-            truncation="auto",
-        )
+        create_kwargs: dict = {
+            "model": current_model,
+            "tools": tools,
+            "input": input_items,
+            "instructions": system,
+            "truncation": "auto",
+        }
         if is_cua:
             create_kwargs["reasoning"] = {"effort": "high", "summary": "concise"}
         response = await oai.responses.create(**create_kwargs)
@@ -6812,13 +6832,13 @@ async def _llm_stream_ollama(user_text: str):
         tool_calls_pending: list = []
         chunk_text = ""
         try:
-            kwargs: dict = dict(
-                model=current_model,
-                messages=msgs,
-                stream=True,
-                tools=tools_to_use,
-                options=options,
-            )
+            kwargs: dict = {
+                "model": current_model,
+                "messages": msgs,
+                "stream": True,
+                "tools": tools_to_use,
+                "options": options,
+            }
             if think:
                 kwargs["think"] = True
 
@@ -7160,13 +7180,13 @@ async def _llm_stream_anthropic(user_text: str):
     think = _is_thinking_model()
 
     for _round in range(8):
-        kwargs: dict = dict(
-            model=current_model,
-            max_tokens=8000 if think else 1024,
-            system=system,
-            messages=msgs,
-            tools=ant_tools if mode == "operator" else [],
-        )
+        kwargs: dict = {
+            "model": current_model,
+            "max_tokens": 8000 if think else 1024,
+            "system": system,
+            "messages": msgs,
+            "tools": ant_tools if mode == "operator" else [],
+        }
         if think:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": 4000}
 
@@ -7485,8 +7505,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         # Trigger learning in background
         _learn_task = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
         _learn_task.add_done_callback(
-            lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-            if not t.cancelled() and t.exception() is not None else None
+            lambda t: (
+                write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                if not t.cancelled() and t.exception() is not None
+                else None
+            )
         )
 
     if current_provider == "anthropic":
@@ -7500,7 +7523,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         first_error = ""
         async for chunk in _llm_stream_ollama(user_text):
             collected_chunks.append(chunk)
-            if len(collected_chunks) == 1 and (chunk.startswith("Ollama error:") or chunk.startswith("Error:")):
+            if len(collected_chunks) == 1 and (chunk.startswith(("Ollama error:", "Error:"))):
                 errored = True
                 first_error = chunk
                 break
@@ -7520,8 +7543,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         else:
             _learn_task2 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
             _learn_task2.add_done_callback(
-                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-                if not t.cancelled() and t.exception() is not None else None
+                lambda t: (
+                    write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                    if not t.cancelled() and t.exception() is not None
+                    else None
+                )
             )
             return
 
@@ -7537,10 +7563,7 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         async for chunk in active_stream:
             collected_chunks.append(chunk)
             if len(collected_chunks) == 1 and (
-                chunk.startswith("Connection error")
-                or chunk.startswith("API error")
-                or chunk.startswith("OpenAI API key not configured")
-                or chunk.startswith("Error:")
+                chunk.startswith(("Connection error", "API error", "OpenAI API key not configured", "Error:"))
             ):
                 errored = True
                 first_error = chunk
@@ -7551,8 +7574,11 @@ async def llm_stream(user_text: str) -> AsyncGenerator[str, Any]:
         if not errored:
             _learn_task3 = asyncio.create_task(_always_learn_step(user_text, "".join(full_response)))
             _learn_task3.add_done_callback(
-                lambda t: write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
-                if not t.cancelled() and t.exception() is not None else None
+                lambda t: (
+                    write_log("always_learn_error", f"{type(t.exception()).__name__}: {str(t.exception())[:200]}")
+                    if not t.cancelled() and t.exception() is not None
+                    else None
+                )
             )
             return
 
@@ -7595,7 +7621,7 @@ async def speak(text_gen):
 
                 await asyncio.wait_for(loop.run_in_executor(None, _sapi), timeout=30.0)
                 return True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print("[tts] pyttsx3 timeout after 30s")
                 return False
             except asyncio.CancelledError:
@@ -7759,10 +7785,24 @@ async def speak(text_gen):
                                 )
                             )
                             out: sd.OutputStream | None = None
-                            out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
                             out_started = False
-                            out.start()
-                            out_started = True
+                            # The audio device occasionally throws a transient
+                            # PaErrorCode -9999 ("Unanticipated host error") on the very
+                            # first stream open right after startup, before the host
+                            # audio backend has settled. One short retry clears it instead
+                            # of falling all the way back to local TTS for the whole utterance.
+                            for _out_attempt in range(2):
+                                try:
+                                    out = sd.OutputStream(samplerate=SR, channels=1, dtype="int16")
+                                    out.start()
+                                    out_started = True
+                                    break
+                                except sd.PortAudioError as _pa_err:
+                                    if _out_attempt == 0:
+                                        write_log("tts", f"output stream open failed, retrying: {str(_pa_err)[:120]}")
+                                        await asyncio.sleep(0.3)
+                                        continue
+                                    raise
                             await broadcast({"type": "tts_active", "provider": "elevenlabs"})
                             got_audio = False
                             audio_started_at: float | None = None
@@ -7924,8 +7964,10 @@ async def handle_input(text: str, target: WebSocket | None = None) -> None:
                 _conf_snapshot: dict[str, Any] | None = None
                 _conf_is_no = False
                 async with _global_state_lock:
-                    if not pending_expired and _pending_tool_confirmation and (
-                        _is_confirmation_yes(text) or _is_confirmation_no(text)
+                    if (
+                        not pending_expired
+                        and _pending_tool_confirmation
+                        and (_is_confirmation_yes(text) or _is_confirmation_no(text))
                     ):
                         _conf_is_no = _is_confirmation_no(text)
                         _conf_snapshot = _pop_pending_tool_confirmation()
@@ -8322,10 +8364,8 @@ async def _start_el_agent() -> None:
 async def _stop_el_agent() -> None:
     global _el_conv, _el_active
     if _el_conv and _el_active:
-        try:
+        with contextlib.suppress(Exception):
             _el_conv.end_session()
-        except Exception:
-            pass
     _el_active = False
     await broadcast({"type": "el_agent", "status": "idle"})
     write_log("el_agent", "stopped by user")
@@ -8401,11 +8441,13 @@ async def startup():
     failures = [k for k, v in _preflight_result.items() if not v]
     if failures:
         print(f"[preflight] ⚠ checks failed: {', '.join(failures)}")
-    await broadcast({
-        "type": "system_preflight",
-        "preflight": _preflight_result,
-        "timestamp": datetime.utcnow().isoformat(),
-    })
+    await broadcast(
+        {
+            "type": "system_preflight",
+            "preflight": _preflight_result,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
     brain_ai.wire_llm(_fast_completion)
     brain_ai.start_background_tasks()
 
@@ -8433,16 +8475,12 @@ async def startup():
     _tracked_task(_voice_supervisor())
     _tracked_task(_restore_ollama_after_startup())
 
-    try:
+    with contextlib.suppress(Exception):
         _tracked_task(_open_ui_browser())
-    except Exception:
-        pass
 
     # Pre-warm Playwright so first browser_open call is instant
-    try:
+    with contextlib.suppress(Exception):
         _tracked_task(_prewarm_playwright())
-    except Exception:
-        pass
 
     await asyncio.sleep(1.2)
 

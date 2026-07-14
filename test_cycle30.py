@@ -32,6 +32,7 @@ def _voice_settings_block() -> str:
 # tts_rate bounds
 # ---------------------------------------------------------------------------
 
+
 def test_tts_rate_clamped():
     body = _voice_settings_block()
     assert "max(50, min(300," in body or "min(300, max(50," in body, (
@@ -55,6 +56,7 @@ def test_tts_rate_still_int_guarded():
 # preferred_stt validation
 # ---------------------------------------------------------------------------
 
+
 def test_preferred_stt_validated():
     body = _voice_settings_block()
     # Must check against allowed set
@@ -63,22 +65,19 @@ def test_preferred_stt_validated():
     )
     # Must not be a bare assignment
     lines = [l.strip() for l in body.splitlines() if "preferred_stt = msg.get" in l]
-    assert not lines, (
-        "preferred_stt must not be set via bare msg.get(); must be validated first"
-    )
+    assert not lines, "preferred_stt must not be set via bare msg.get(); must be validated first"
 
 
 def test_preferred_stt_only_updated_when_key_present():
     body = _voice_settings_block()
     # Must guard with 'if "preferred_stt" in msg'
-    assert '"preferred_stt" in msg' in body, (
-        "preferred_stt must only update when key is present in msg"
-    )
+    assert '"preferred_stt" in msg' in body, "preferred_stt must only update when key is present in msg"
 
 
 # ---------------------------------------------------------------------------
 # preferred_tts validation
 # ---------------------------------------------------------------------------
+
 
 def test_preferred_tts_validated():
     body = _voice_settings_block()
@@ -87,13 +86,9 @@ def test_preferred_tts_validated():
     assert '"elevenlabs"' in body, "preferred_tts validation missing 'elevenlabs'"
     # Must not be a bare assignment
     lines = [l.strip() for l in body.splitlines() if "preferred_tts = msg.get" in l]
-    assert not lines, (
-        "preferred_tts must not be set via bare msg.get(); must be validated first"
-    )
+    assert not lines, "preferred_tts must not be set via bare msg.get(); must be validated first"
 
 
 def test_preferred_tts_only_updated_when_key_present():
     body = _voice_settings_block()
-    assert '"preferred_tts" in msg' in body, (
-        "preferred_tts must only update when key is present in msg"
-    )
+    assert '"preferred_tts" in msg' in body, "preferred_tts must only update when key is present in msg"
