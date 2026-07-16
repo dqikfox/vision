@@ -1,0 +1,3 @@
+## 2025-10-24 - Interactive non-semantic divs Keyboard Accessibility
+**Learning:** For non-semantic elements (like `div` or `span`) functioning as buttons in this app, simply adding a click handler is insufficient. When strict CSS constraints prevent converting them to `<button>` tags, they require `role="button"`, `tabindex="0"`, `aria-label`, and `onkeydown` handlers for both Enter and Space keys to be accessible.
+**Action:** Always add `role="button"`, `tabindex="0"`, an `aria-label`, and an `onkeydown` listener handling 'Enter' and ' ' (Space), ensuring `event.preventDefault()` is used for Space to prevent page scrolling, when making existing non-semantic interactive elements accessible.
