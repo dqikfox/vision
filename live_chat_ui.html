@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot Viewer" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-close" role="button" tabindex="0" aria-label="Close screenshot" onclick="document.getElementById('screenshotModal').classList.remove('open')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('screenshotModal').classList.remove('open')}">✕</div>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Model Picker" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" aria-label="Close model picker" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System Architecture Map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close architecture map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -1498,6 +1498,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <div id="toast"></div>
 
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const screenshotModal = document.getElementById('screenshotModal');
+      const pickerModal = document.getElementById('pickerModal');
+      const systemMapModal = document.getElementById('systemMapModal');
+
+      if (screenshotModal && screenshotModal.classList.contains('open')) {
+        screenshotModal.classList.remove('open');
+      }
+      if (pickerModal && pickerModal.classList.contains('open')) {
+        closePicker();
+      }
+      if (systemMapModal && systemMapModal.classList.contains('open')) {
+        closeSystemMap();
+      }
+    }
+  });
+});
+
 /* ═══════════════════════════════════════
    CONFIG
 ═══════════════════════════════════════ */
