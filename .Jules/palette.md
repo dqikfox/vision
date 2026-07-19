@@ -1,0 +1,3 @@
+## 2024-04-10 - Improved Modal Accessibility
+**Learning:** Custom UI modals missing `role="dialog"` and `aria-modal="true"` create invisible traps for screen readers, and custom `<div>` close buttons fail to receive keyboard focus without semantic `<button>` tags. Furthermore, without a global Escape key listener, keyboard-only users cannot easily dismiss modal overlays.
+**Action:** When implementing or updating custom modals, always enforce the `role="dialog"` pattern, use explicit semantic `<button>` elements with `aria-label`s for dismissal, and bind a global `Escape` key handler to dismiss top-level overlays gracefully.
