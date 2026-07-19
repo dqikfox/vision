@@ -949,7 +949,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div>◆ Voice systems online…</div>
     <div class="ok">✓ All systems operational</div>
   </div>
-  <div class="boot-enter" id="bootEnter" onclick="dismissBoot()">[ CLICK TO ENTER ]</div>
+  <div class="boot-enter" id="bootEnter" role="button" tabindex="0" aria-label="Enter App" onkeydown="if(event.key==='Enter'||event.key===' ') { this.click(); event.preventDefault(); }" onclick="dismissBoot()">[ CLICK TO ENTER ]</div>
 </div>
 
 <!-- ═══ BACKGROUND CANVAS ═══ -->
@@ -1389,7 +1389,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODALS ═══ -->
 <div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+  <div class="modal-close" role="button" tabindex="0" aria-label="Close" onkeydown="if(event.key==='Enter'||event.key===' ') { this.click(); event.preventDefault(); }" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
@@ -2248,6 +2248,15 @@ function escHtml(t) {
 ═══════════════════════════════════════ */
 document.getElementById('textInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closePicker();
+    closeSystemMap();
+    const screenshotModal = document.getElementById('screenshotModal');
+    if (screenshotModal) screenshotModal.classList.remove('open');
+  }
 });
 function sendText() {
   const inp = document.getElementById('textInput');

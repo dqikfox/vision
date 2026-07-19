@@ -1,0 +1,3 @@
+## 2025-05-19 - Adding Accessible Close and Navigation Patterns
+**Learning:** Found an accessibility issue pattern specific to this app: Modals often lack keyboard escape listeners, and custom `div`-based buttons like `modal-close` or `boot-enter` miss ARIA roles, tabindex, and keydown handlers. Converting them to `<button>` can break CSS, so adding attributes manually is crucial.
+**Action:** Enhance non-semantic interactive `div`s with `role="button"`, `tabindex="0"`, `aria-label`, and `onkeydown` for Enter/Space, and attach a global `Escape` keydown event listener calling native closing functions like `closePicker()` and `closeSystemMap()` instead of raw CSS class manipulation.
