@@ -1,0 +1,3 @@
+## 2024-07-15 - Add Keyboard Access to Modals and Interactive Divs
+**Learning:** Found several `div` elements with `onclick` handlers acting as buttons/interactive elements (like `#systemMapBadge`, `#modelBadge`, `.rpanel-tab`, `.modal-close`). These lack `role="button"`, `tabindex="0"`, `aria-label`, and `onkeydown` handlers, making them inaccessible to keyboard users. In strict CSS constraints where `div` cannot be changed to `<button>` without breaking layouts, we need to add standard attributes.
+**Action:** Added semantic roles, tabindex, and keyboard event handlers to make them fully accessible while keeping the layout intact.
