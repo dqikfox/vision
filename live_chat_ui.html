@@ -1613,7 +1613,23 @@ function dismissBoot() {
   ensureBootServices();
 }
 
-window.addEventListener('DOMContentLoaded', ensureBootServices);
+window.addEventListener('DOMContentLoaded', () => {
+  ensureBootServices();
+
+  // Global Escape key handler for modals
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const picker = document.getElementById('pickerModal');
+      if (picker && picker.classList.contains('open')) closePicker();
+
+      const sysMap = document.getElementById('systemMapModal');
+      if (sysMap && sysMap.classList.contains('open')) closeSystemMap();
+
+      const screenshot = document.getElementById('screenshotModal');
+      if (screenshot && screenshot.classList.contains('open')) screenshot.classList.remove('open');
+    }
+  });
+});
 ensureBootServices();
 
 /* ═══════════════════════════════════════
