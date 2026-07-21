@@ -1,0 +1,3 @@
+## 2025-03-05 - Enhance Modal Accessibility and UX Patterns
+**Learning:** For custom modals built using generic `div` structures, failing to include semantic attributes (`role="dialog"`, `aria-modal="true"`) severely limits screen reader support. Moreover, close functionality must be natively reachable via standard keyboard conventions (i.e. the `Escape` key), rather than forcing users to click an ambiguous '✕' or the modal backdrop.
+**Action:** Always wrap modal patterns with semantic ARIA roles, provide explicitly labeled `<button>` elements (or `role="button"` on `div`s with `tabindex` and `keydown` handlers) for close actions, and attach a global `Escape` key listener that safely triggers the component's internal close routines.
