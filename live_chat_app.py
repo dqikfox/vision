@@ -38,7 +38,10 @@ from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import winsound
+try:
+    import winsound
+except ImportError:
+    pass
 
 import httpx
 import numpy as np
@@ -47,7 +50,10 @@ import pyautogui
 import sounddevice as sd
 import uvicorn
 import websockets as ws_lib
-from elevenlabs import ElevenLabs
+try:
+    from elevenlabs import ElevenLabs
+except ImportError:
+    from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
