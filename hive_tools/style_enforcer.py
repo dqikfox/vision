@@ -21,11 +21,11 @@ def run_ruff():
 def main():
     print("Running Elite Style Enforcer...")
     ruff_results = run_ruff()
-    
+
     if isinstance(ruff_results, dict) and "error" in ruff_results:
         print(f"Error: {ruff_results['error']}")
         sys.exit(1)
-        
+
     findings_count = len(ruff_results)
     print(json.dumps({
         "report_type": "Elite Style Audit",

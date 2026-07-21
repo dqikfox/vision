@@ -26,13 +26,13 @@ def find_common_patterns():
 def main():
     print("Generating Elite VS Code Snippets...")
     snippets = find_common_patterns()
-    
+
     snippet_dict = {s["description"]: s for s in snippets}
-    
+
     os.makedirs(".vscode", exist_ok=True)
     with open(".vscode/vision.code-snippets", "w", encoding="utf-8") as f:
         json.dump(snippet_dict, f, indent=2)
-    
+
     print(f"Generated {len(snippets)} snippets in .vscode/vision.code-snippets")
 
 if __name__ == "__main__":

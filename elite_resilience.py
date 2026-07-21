@@ -24,7 +24,7 @@ class CircuitBreakerConfig:
     failure_threshold: int = 5           # Failures before opening
     success_threshold: int = 2           # Successes to close (from half-open)
     timeout_seconds: float = 60.0        # Time before half-open retry
-    
+
 @dataclass
 class ProviderHealth:
     provider: str
@@ -36,16 +36,16 @@ class ProviderHealth:
     total_requests: int = 0
     total_errors: int = 0
     error_rate: float = 0.0
-    
+
 class CircuitBreaker(Generic[T]):
     """Intelligent circuit breaker for provider resilience."""
-    
+
     def __init__(self, name: str, config: CircuitBreakerConfig = None):
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self.health = ProviderHealth(provider=name)
         self._lock = asyncio.Lock()
-    
+
     async def call(self, fn: Callable, *args, **kwargs) -> T:
         """Execute function with circuit breaker protection."""
         async with self._lock:
@@ -55,7 +55,7 @@ class CircuitBreaker(Generic[T]):
                     self.health.success_count = 0
                 else:
                     raise Exception(f"[circuit] {self.name} is OPEN (backoff)")
-        
+
         start = time.monotonic()
         try:
             result = await fn(*args, **kwargs)
@@ -64,12 +64,12 @@ class CircuitBreaker(Generic[T]):
         except Exception as e:
             await self._record_failure()
             raise
-    
+
     async def _record_success(self, elapsed: float):
         async with self._lock:
             self.health.last_response_time_ms = elapsed * 1000
             self.health.total_requests += 1
-            
+
             if self.health.state == CircuitState.HALF_OPEN:
                 self.health.success_count += 1
                 if self.health.success_count >= self.config.success_threshold:
@@ -77,26 +77,26 @@ class CircuitBreaker(Generic[T]):
                     self.health.failure_count = 0
             else:
                 self.health.failure_count = max(0, self.health.failure_count - 1)
-            
+
             self.health.error_rate = (
-                self.health.total_errors / self.health.total_requests 
+                self.health.total_errors / self.health.total_requests
                 if self.health.total_requests > 0 else 0.0
             )
-    
+
     async def _record_failure(self):
         async with self._lock:
             self.health.last_failure_time = time.time()
             self.health.failure_count += 1
             self.health.total_errors += 1
             self.health.total_requests += 1
-            
+
             if self.health.failure_count >= self.config.failure_threshold:
                 self.health.state = CircuitState.OPEN
-            
+
             self.health.error_rate = (
                 self.health.total_errors / self.health.total_requests
             )
-    
+
     async def health_check(self) -> dict:
         """Return health snapshot for monitoring."""
         async with self._lock:
@@ -111,19 +111,19 @@ class CircuitBreaker(Generic[T]):
 
 class FallbackChain:
     """Execute multiple strategies with intelligent fallback."""
-    
-    def __init__(self, name: str, strategies: list[tuple[str, Callable]], 
+
+    def __init__(self, name: str, strategies: list[tuple[str, Callable]],
                  allow_partial: bool = False):
         self.name = name
         self.strategies = strategies  # [(name, fn), ...]
         self.allow_partial = allow_partial
         self.breakers = {s[0]: CircuitBreaker(s[0]) for s in strategies}
         self.attempt_log: list[dict] = []
-    
+
     async def execute(self, *args, **kwargs) -> Any:
         """Try strategies in order until one succeeds."""
         self.attempt_log.clear()
-        
+
         for strategy_name, fn in self.strategies:
             breaker = self.breakers[strategy_name]
             try:
@@ -141,10 +141,10 @@ class FallbackChain:
                     "error": str(e)[:100],
                     "timestamp": datetime.now().isoformat(),
                 })
-        
+
         log_str = json.dumps(self.attempt_log, indent=2)
         raise Exception(f"[fallback] {self.name}: all strategies exhausted\n{log_str}")
-    
+
     async def health_report(self) -> dict:
         """Detailed health report for all strategies."""
         return {
@@ -165,16 +165,16 @@ async def retry_with_backoff(
 ) -> Any:
     """Retry with exponential backoff and optional jitter."""
     import random
-    
+
     for attempt in range(max_retries + 1):
         try:
             return await fn()
         except Exception as e:
             if attempt >= max_retries:
                 raise
-            
+
             delay = min(base_delay * (2 ** attempt), max_delay)
             if jitter:
                 delay *= (0.5 + random.random())
-            
+
             await asyncio.sleep(delay)

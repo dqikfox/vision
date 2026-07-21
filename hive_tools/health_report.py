@@ -35,7 +35,7 @@ def check_keys():
 
 def check_dependencies():
     core_packages = [
-        "fastapi", "uvicorn", "websockets", "sounddevice", "numpy", 
+        "fastapi", "uvicorn", "websockets", "sounddevice", "numpy",
         "scipy", "pyautogui", "pytesseract", "elevenlabs", "openai"
     ]
     missing = []
@@ -44,7 +44,7 @@ def check_dependencies():
             __import__(pkg)
         except ImportError:
             missing.append(pkg)
-    
+
     return {
         "status": "HEALTHY" if not missing else "DEGRADED",
         "missing": missing
@@ -63,14 +63,14 @@ def main():
         "keys": check_keys(),
         "dependencies": check_dependencies(),
     }
-    
+
     # Calculate EHI (Environment Health Index)
     score = 100
     if report["dependencies"]["status"] == "DEGRADED":
         score -= 50
     missing_keys = [k for k, v in report["keys"].items() if v == "MISSING"]
     score -= len(missing_keys) * 10
-    
+
     report["ehi_score"] = max(0, score)
     report["status"] = "ELITE" if report["ehi_score"] >= 90 else "DEGRADED"
 

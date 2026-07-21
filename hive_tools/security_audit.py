@@ -42,7 +42,7 @@ def main():
                 file_path = os.path.join(root, file)
                 findings.extend(scan_for_secrets(file_path))
                 findings.extend(scan_unsafe_imports(file_path))
-    
+
     report = {
         "report_type": "Elite Security Audit",
         "findings_count": len(findings),
