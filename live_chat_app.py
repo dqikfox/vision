@@ -38,7 +38,10 @@ from typing import Any
 
 warnings.filterwarnings("ignore")  # must precede noisy third-party imports
 
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 import httpx
 import numpy as np
@@ -47,7 +50,10 @@ import pyautogui
 import sounddevice as sd
 import uvicorn
 import websockets as ws_lib
-from elevenlabs import ElevenLabs
+try:
+    from elevenlabs import ElevenLabs
+except ImportError:
+    from elevenlabs.client import ElevenLabs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -8004,7 +8010,8 @@ async def voice_loop() -> None:
         start_state = "listening" if (continuous_listening or wake_word_active) else "idle"
         await set_state(start_state)
         if start_state == "listening":
-            winsound.Beep(880, 120)
+            if winsound:
+                winsound.Beep(880, 120)
         print(f"[operator] Ready  {current_provider}/{current_model}")
         while True:
             try:
@@ -8044,12 +8051,14 @@ async def voice_loop() -> None:
                 ev, data = vad.feed(frame)
                 if ev == "start":
                     _voice_capture_active = True
-                    winsound.Beep(400, 80)
+                    if winsound:
+                        winsound.Beep(400, 80)
                     await set_state("recording")
                     await broadcast({"type": "partial_transcript", "text": "🎙 Listening…"})
                 elif ev == "end":
                     _voice_capture_active = False
-                    winsound.Beep(700, 80)
+                    if winsound:
+                        winsound.Beep(700, 80)
                     await set_state("thinking")
                     await broadcast({"type": "partial_transcript", "text": ""})
                     if len(data) < MIN_UTTERANCE_FRAMES:
@@ -8082,7 +8091,8 @@ async def voice_loop() -> None:
                             for p in WAKE_PHRASES:
                                 txt_lo = txt_lo.replace(p, "").strip()
                             text = txt_lo or ""
-                            winsound.Beep(1000, 80)
+                            if winsound:
+                                winsound.Beep(1000, 80)
                             await broadcast({"type": "transcript", "role": "system", "text": "🔓 Wake word detected"})
                             if not text:
                                 # Just a bare wake phrase — acknowledge and wait
