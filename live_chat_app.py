@@ -51,9 +51,9 @@ import sounddevice as sd
 import uvicorn
 import websockets as ws_lib
 try:
-    from elevenlabs import ElevenLabs
-except ImportError:
     from elevenlabs.client import ElevenLabs
+except ImportError:
+    from elevenlabs import ElevenLabs
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
