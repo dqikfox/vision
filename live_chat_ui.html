@@ -1006,8 +1006,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODEL BADGE ═══ -->
 <a id="commandCenterBadge" href="/command-center" target="_blank" rel="noopener">CMD CENTER</a>
-<div id="systemMapBadge" class="sys-map-badge-pulse" onclick="openSystemMap()">SYSTEM MAP</div>
-<div id="modelBadge" onclick="openPicker()">⬡ SELECT MODEL</div>
+<div id="systemMapBadge" class="sys-map-badge-pulse" role="button" tabindex="0" aria-label="Open system architecture map" onclick="openSystemMap()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSystemMap();}">SYSTEM MAP</div>
+<div id="modelBadge" role="button" tabindex="0" aria-label="Open model picker" onclick="openPicker()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPicker();}">⬡ SELECT MODEL</div>
 
 <!-- ═══ STAGE / HERO ═══ -->
 <div id="stage">
@@ -1388,26 +1388,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 </div>
 
 <!-- ═══ MODALS ═══ -->
-<div id="screenshotModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-close" onclick="document.getElementById('screenshotModal').classList.remove('open')">✕</div>
+<div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Screenshot Viewer" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-close" role="button" tabindex="0" aria-label="Close screenshot" onclick="document.getElementById('screenshotModal').classList.remove('open')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('screenshotModal').classList.remove('open');}">✕</div>
   <img id="screenshotImg" src="" alt="Screenshot"/>
 </div>
 
-<div id="pickerModal" onclick="if(event.target===this)closePicker()">
+<div id="pickerModal" role="dialog" aria-modal="true" aria-label="Model Picker" onclick="if(event.target===this)closePicker()">
   <div class="picker-box">
     <div class="picker-hdr">
       ⬡ SELECT MODEL
-      <button onclick="closePicker()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
+      <button onclick="closePicker()" aria-label="Close model picker" style="background:none;border:none;cursor:pointer;color:var(--dim);font-size:16px">✕</button>
     </div>
     <div class="picker-body" id="pickerBody"></div>
   </div>
 </div>
 
-<div id="systemMapModal" onclick="if(event.target===this)closeSystemMap()">
+<div id="systemMapModal" role="dialog" aria-modal="true" aria-label="System Architecture Map" onclick="if(event.target===this)closeSystemMap()">
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" aria-label="Close system map" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">
@@ -2756,6 +2756,20 @@ function toast(msg, type) {
 ═══════════════════════════════════════ */
 updateModelBadge();
 buildKeysList();
+
+// Handle global escape key for modals
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('pickerModal').classList.contains('open')) {
+      closePicker();
+    } else if (document.getElementById('systemMapModal').classList.contains('open')) {
+      closeSystemMap();
+    } else if (document.getElementById('screenshotModal').classList.contains('open')) {
+      document.getElementById('screenshotModal').classList.remove('open');
+    }
+  }
+});
+
 </script>
 </body>
 </html>
