@@ -1,0 +1,3 @@
+## 2024-05-19 - Accessible Modals with Global Escape Support
+**Learning:** In legacy UIs that use custom manual `.classList.add('open')` overlays instead of native `<dialog>` tags, closing these overlays often lacks standardized accessibility paths. They require `role="dialog"`, `aria-modal="true"`, explicit label descriptions (e.g. `aria-label`), keyboard handlers for visual close buttons, and robust global `Escape` key event listeners configured at the top level to act as catch-all escapes.
+**Action:** Always implement semantic roles, keyboard `keydown` support on non-button elements serving as close buttons, and global `Escape` key capture when designing or retrofitting custom overlay components.
