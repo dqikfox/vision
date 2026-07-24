@@ -949,7 +949,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <div>◆ Voice systems online…</div>
     <div class="ok">✓ All systems operational</div>
   </div>
-  <div class="boot-enter" id="bootEnter" role="button" tabindex="0" aria-label="Enter application" onclick="dismissBoot()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dismissBoot();}">[ CLICK TO ENTER ]</div>
+  <div class="boot-enter" id="bootEnter" onclick="dismissBoot()">[ CLICK TO ENTER ]</div>
 </div>
 
 <!-- ═══ BACKGROUND CANVAS ═══ -->
@@ -1006,8 +1006,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- ═══ MODEL BADGE ═══ -->
 <a id="commandCenterBadge" href="/command-center" target="_blank" rel="noopener">CMD CENTER</a>
-<div id="systemMapBadge" class="sys-map-badge-pulse" role="button" tabindex="0" aria-label="Open System Map" onclick="openSystemMap()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openSystemMap();}">SYSTEM MAP</div>
-<div id="modelBadge" role="button" tabindex="0" aria-label="Select Model" onclick="openPicker()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPicker();}">⬡ SELECT MODEL</div>
+<div id="systemMapBadge" class="sys-map-badge-pulse" onclick="openSystemMap()">SYSTEM MAP</div>
+<div id="modelBadge" onclick="openPicker()">⬡ SELECT MODEL</div>
 
 <!-- ═══ STAGE / HERO ═══ -->
 <div id="stage">
@@ -1407,7 +1407,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <div class="system-map-box">
     <div class="system-map-header">
       SOVEREIGN ARCHITECTURE MAP
-      <button class="sys-map-close" aria-label="Close System Map" onclick="closeSystemMap()">✕</button>
+      <button class="sys-map-close" onclick="closeSystemMap()">✕</button>
     </div>
     <div class="sys-map-grid">
       <div class="sys-map-panel">

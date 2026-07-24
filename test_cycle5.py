@@ -28,7 +28,7 @@ def _app():
         return sys.modules["live_chat_app"]
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
-        "elevenlabs.client": types.ModuleType("elevenlabs.client"),
+
         "pyautogui": types.ModuleType("pyautogui"),
         "pytesseract": types.ModuleType("pytesseract"),
         "PIL": types.ModuleType("PIL"),

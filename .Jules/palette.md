@@ -1,3 +1,0 @@
-## 2026-07-24 - Make non-semantic interactive elements accessible
-**Learning:** When improving accessibility for existing non-semantic interactive elements (`div` or `span`) under strict CSS constraints, converting them to `<button>` tags may break layouts. It is safer to add `role="button"`, `tabindex="0"`, `aria-label`s, and `onkeydown` event handlers for keyboard activation (Enter and Space keys), including `event.preventDefault()` for the Space key to prevent unwanted page scrolling.
-**Action:** Add full keyboard support and ARIA roles instead of changing element tags when modifying existing custom UI components like header badges or boot screen entry points.

@@ -1,6 +1,0 @@
-feat(ui): add keyboard accessibility and ARIA labels to primary interactive elements
-
-Adds `role="button"`, `tabindex="0"`, descriptive `aria-label`s, and `onkeydown` handlers (for Enter and Space keys) to `#bootEnter`, `#systemMapBadge`, and `#modelBadge`.
-Adds `aria-label` to `.sys-map-close`.
-
-Also fixes CI failures by updating actions/setup-python to v5 in quality.yml and fixing the elevenlabs import in live_chat_app.py.
