@@ -26,7 +26,7 @@ def _app_module():
     import importlib, sys
     stubs = {
         "elevenlabs": types.ModuleType("elevenlabs"),
-        "elevenlabs.client": types.ModuleType("elevenlabs.client"),
+
         "pyautogui": types.ModuleType("pyautogui"),
         "pytesseract": types.ModuleType("pytesseract"),
         "PIL": types.ModuleType("PIL"),
